@@ -41,6 +41,18 @@ export interface DifyDocumentList {
   page: number
 }
 
+interface DifyDocumentSegment {
+  id: string
+  position?: number
+  content?: string
+}
+
+interface DifyDocumentSegmentList {
+  data: DifyDocumentSegment[]
+  has_more?: boolean
+  total?: number
+}
+
 const fetchKnowledgeDocuments = async ({
   page = 1,
   limit = 20,
@@ -101,4 +113,42 @@ export const getKnowledgeDocumentDownloadUrl = async (documentId: string) => {
   if (!result.url)
   { throw new Error('DIFY_DOCUMENT_DOWNLOAD_URL_MISSING') }
   return result.url
+}
+
+export const getKnowledgeDocumentIndexedText = async (documentId: string) => {
+  const apiKey = process.env.DIFY_DATASET_API_KEY
+  const datasetId = process.env.DIFY_DATASET_ID
+  if (!apiKey || !datasetId)
+  { throw new Error('DIFY_DATASET_NOT_CONFIGURED') }
+
+  const sections: string[] = []
+  let page = 1
+  let hasMore = true
+  let totalCharacters = 0
+
+  while (hasMore && page <= 20 && totalCharacters < 8_000_000) {
+    const response = await fetchDify(
+      `/datasets/${encodeURIComponent(datasetId)}/documents/${encodeURIComponent(documentId)}/segments?page=${page}&limit=100`,
+      { method: 'GET' },
+      { apiKey, connectTimeoutMs: 10_000, retries: 1 },
+    )
+    if (!response.ok)
+    { throw new Error(`DIFY_DOCUMENT_SEGMENTS_FAILED:${response.status}`) }
+
+    const result = await response.json() as DifyDocumentSegmentList
+    result.data.forEach((segment, index) => {
+      if (!segment.content)
+      { return }
+      const position = segment.position || ((page - 1) * 100 + index + 1)
+      const section = `【索引片段 ${position}】\n${segment.content.trim()}`
+      sections.push(section)
+      totalCharacters += section.length
+    })
+    hasMore = Boolean(result.has_more) && result.data.length > 0
+    page += 1
+  }
+
+  if (!sections.length)
+  { throw new Error('DIFY_DOCUMENT_SEGMENTS_EMPTY') }
+  return sections.join('\n\n────────────────────────────────────────\n\n')
 }
