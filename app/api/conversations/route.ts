@@ -1,33 +1,32 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { getInfo, isDifyConfigured, setSession } from '@/app/api/utils/common'
-import { fetchDifyJson } from '@/lib/dify-server'
+import { getInfo, setSession } from '@/app/api/utils/common'
+import { db, isDatabaseConfigured } from '@/lib/db'
 
 export async function GET(request: NextRequest) {
-  const { sessionId, user } = getInfo(request)
-  if (!user)
+  const { sessionId, session } = getInfo(request)
+  if (!session)
   { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-  if (!isDifyConfigured) {
-    return NextResponse.json({ data: [] }, {
-      headers: setSession(sessionId),
+
+  const conversations = isDatabaseConfigured()
+    ? await db.chatConversation.findMany({
+      where: { appUserId: session.id },
+      orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
+      take: 100,
     })
-  }
-  try {
-    const data = await fetchDifyJson<Record<string, unknown>>(
-      `/conversations?user=${encodeURIComponent(user)}&limit=100`,
-    )
-    return NextResponse.json(data, {
-      headers: setSession(sessionId),
-    })
-  }
-  catch {
-    return NextResponse.json({
-      data: [],
-      has_more: false,
-      limit: 100,
-      degraded: true,
-    }, {
-      headers: setSession(sessionId),
-    })
-  }
+    : []
+
+  return NextResponse.json({
+    data: conversations.map(conversation => ({
+      id: conversation.difyConversationId,
+      name: conversation.title || '网络学习会话',
+      inputs: null,
+      introduction: '',
+      suggested_questions: [],
+    })),
+    has_more: false,
+    limit: 100,
+  }, {
+    headers: setSession(sessionId),
+  })
 }
