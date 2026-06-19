@@ -58,6 +58,11 @@ export async function POST(request: NextRequest) {
   let conversationId = body.conversation_id || ''
   let messageId = ''
   let metadata: Record<string, any> | undefined
+  let workflowProcess: {
+    status: string
+    tracing: Record<string, any>[]
+    expand?: boolean
+  } | undefined
 
   const readEvents = (text: string) => {
     buffer += text
@@ -81,6 +86,39 @@ export async function POST(request: NextRequest) {
         { answer = event.answer }
         if (event.event === 'message_end')
         { metadata = event.metadata || metadata }
+        if (event.event === 'workflow_started') {
+          workflowProcess = {
+            status: 'running',
+            tracing: [],
+            expand: true,
+          }
+        }
+        if (event.event === 'node_started' && event.data) {
+          workflowProcess ||= { status: 'running', tracing: [], expand: true }
+          const node = {
+            ...event.data,
+            status: event.data.status || 'running',
+            elapsed_time: event.data.elapsed_time || 0,
+            title: event.data.title || event.data.node_type,
+          }
+          const index = workflowProcess.tracing.findIndex(item => item.node_id === node.node_id)
+          if (index >= 0)
+          { workflowProcess.tracing[index] = node }
+          else
+          { workflowProcess.tracing.push(node) }
+        }
+        if (event.event === 'node_finished' && event.data) {
+          workflowProcess ||= { status: 'running', tracing: [], expand: true }
+          const index = workflowProcess.tracing.findIndex(item => item.node_id === event.data.node_id)
+          if (index >= 0)
+          { workflowProcess.tracing[index] = event.data }
+          else
+          { workflowProcess.tracing.push(event.data) }
+        }
+        if (event.event === 'workflow_finished' && event.data) {
+          workflowProcess ||= { status: event.data.status || 'succeeded', tracing: [] }
+          workflowProcess.status = event.data.status || 'succeeded'
+        }
       }
       catch {
         // Keep proxying malformed or future event types without blocking the chat stream.
@@ -106,6 +144,7 @@ export async function POST(request: NextRequest) {
           conversationId,
           messageId,
           metadata,
+          workflowProcess,
         }).catch(error => console.error('Failed to persist chat exchange', error))
         controller.close()
       }

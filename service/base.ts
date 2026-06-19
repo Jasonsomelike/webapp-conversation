@@ -60,9 +60,12 @@ export interface NodeStartedResponse {
     id: string
     node_id: string
     node_type: string
+    title?: string
+    status?: string
     index: number
     predecessor_node_id?: string
     inputs: any
+    elapsed_time?: number
     created_at: number
     extras?: any
   }
@@ -76,6 +79,7 @@ export interface NodeFinishedResponse {
     id: string
     node_id: string
     node_type: string
+    title?: string
     index: number
     predecessor_node_id?: string
     inputs: any

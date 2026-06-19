@@ -163,10 +163,12 @@ export enum BlockEnum {
   KnowledgeRetrieval = 'knowledge-retrieval',
   QuestionClassifier = 'question-classifier',
   IfElse = 'if-else',
+  Agent = 'agent',
   Code = 'code',
   TemplateTransform = 'template-transform',
   HttpRequest = 'http-request',
   VariableAssigner = 'variable-assigner',
+  Assigner = 'assigner',
   Tool = 'tool',
 }
 

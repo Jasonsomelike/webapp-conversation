@@ -31,6 +31,7 @@ const getIcon = (type: BlockEnum, className: string) => {
   return {
     [BlockEnum.Start]: <Home className={className} />,
     [BlockEnum.LLM]: <Llm className={className} />,
+    [BlockEnum.Agent]: <Llm className={className} />,
     [BlockEnum.Code]: <Code className={className} />,
     [BlockEnum.End]: <End className={className} />,
     [BlockEnum.IfElse]: <IfElse className={className} />,
@@ -40,12 +41,14 @@ const getIcon = (type: BlockEnum, className: string) => {
     [BlockEnum.QuestionClassifier]: <QuestionClassifier className={className} />,
     [BlockEnum.TemplateTransform]: <TemplatingTransform className={className} />,
     [BlockEnum.VariableAssigner]: <VariableX className={className} />,
+    [BlockEnum.Assigner]: <VariableX className={className} />,
     [BlockEnum.Tool]: <VariableX className={className} />,
   }[type]
 }
 const ICON_CONTAINER_BG_COLOR_MAP: Record<string, string> = {
   [BlockEnum.Start]: 'bg-[#2970FF]',
   [BlockEnum.LLM]: 'bg-[#6172F3]',
+  [BlockEnum.Agent]: 'bg-[#6172F3]',
   [BlockEnum.Code]: 'bg-[#2E90FA]',
   [BlockEnum.End]: 'bg-[#F79009]',
   [BlockEnum.IfElse]: 'bg-[#06AED4]',
@@ -55,6 +58,7 @@ const ICON_CONTAINER_BG_COLOR_MAP: Record<string, string> = {
   [BlockEnum.QuestionClassifier]: 'bg-[#16B364]',
   [BlockEnum.TemplateTransform]: 'bg-[#2E90FA]',
   [BlockEnum.VariableAssigner]: 'bg-[#2E90FA]',
+  [BlockEnum.Assigner]: 'bg-[#2E90FA]',
 }
 const BlockIcon: FC<BlockIconProps> = ({
   type,

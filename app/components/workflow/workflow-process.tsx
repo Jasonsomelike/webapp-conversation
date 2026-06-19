@@ -1,6 +1,6 @@
 import {
   useEffect,
-  useMemo,
+  useRef,
   useState,
 } from 'react'
 import cn from 'classnames'
@@ -24,39 +24,34 @@ const WorkflowProcessItem = ({
   expand = false,
   hideInfo = false,
 }: WorkflowProcessProps) => {
-  const [collapse, setCollapse] = useState(!expand)
   const running = data.status === WorkflowRunningStatus.Running
   const succeeded = data.status === WorkflowRunningStatus.Succeeded
   const failed = data.status === WorkflowRunningStatus.Failed || data.status === WorkflowRunningStatus.Stopped
-
-  const background = useMemo(() => {
-    if (running && !collapse) { return 'linear-gradient(180deg, #E1E4EA 0%, #EAECF0 100%)' }
-
-    if (succeeded && !collapse) { return 'linear-gradient(180deg, #ECFDF3 0%, #F6FEF9 100%)' }
-
-    if (failed && !collapse) { return 'linear-gradient(180deg, #FEE4E2 0%, #FEF3F2 100%)' }
-  }, [running, succeeded, failed, collapse])
+  const [collapse, setCollapse] = useState(!(expand || data.expand || running))
+  const wasRunning = useRef(running)
 
   useEffect(() => {
-    setCollapse(!expand)
-  }, [expand])
+    if ((expand || data.expand || running) && !wasRunning.current)
+    { setCollapse(false) }
+    wasRunning.current = running
+  }, [data.expand, expand, running])
 
   return (
     <div
+      data-testid='workflow-process'
       className={cn(
-        'mb-2 rounded-xl border-[0.5px] border-black/[0.08]',
-        collapse ? 'py-[7px]' : hideInfo ? 'pt-2 pb-1' : 'py-2',
-        collapse && (!grayBg ? 'bg-white' : 'bg-gray-50'),
-        hideInfo ? 'mx-[-8px] px-1' : 'w-full px-3',
+        'w-full overflow-hidden rounded-xl border border-[#17342b]/10 bg-[#f2f4f3]',
+        collapse ? 'py-2.5' : 'pb-2 pt-2.5',
+        hideInfo ? 'px-2' : 'px-3',
+        grayBg && 'bg-gray-50',
       )}
-      style={{
-        background,
-      }}
     >
-      <div
+      <button
+        type='button'
+        aria-expanded={!collapse}
         className={cn(
-          'flex items-center h-[18px] cursor-pointer',
-          hideInfo && 'px-[6px]',
+          'flex h-5 w-full cursor-pointer items-center text-left',
+          hideInfo && 'px-1',
         )}
         onClick={() => setCollapse(!collapse)}
       >
@@ -75,15 +70,23 @@ const WorkflowProcessItem = ({
             <AlertCircle className='shrink-0 mr-1 w-3 h-3 text-[#F04438]' />
           )
         }
-        <div className='grow text-xs font-medium text-gray-700 leading-[18px]'>Workflow Process</div>
-        <ChevronRight className={`'ml-1 w-3 h-3 text-gray-500' ${collapse ? '' : 'rotate-90'}`} />
-      </div>
+        <div className='grow text-[13px] font-semibold leading-[18px] text-[#46554f]'>工作流</div>
+        <span className={cn(
+          'mr-1 text-[11px] font-medium',
+          running && 'text-[#2970ff]',
+          succeeded && 'text-[#16845b]',
+          failed && 'text-[#d04438]',
+        )}>
+          {running ? '运行中' : succeeded ? '已完成' : failed ? '已停止' : ''}
+        </span>
+        <ChevronRight className={`ml-1 h-3.5 w-3.5 text-gray-500 transition-transform duration-200 ${collapse ? '' : 'rotate-90'}`} />
+      </button>
       {
         !collapse && (
-          <div className='mt-1.5'>
+          <div className='mt-2 space-y-1'>
             {
               data.tracing.map(node => (
-                <div key={node.id} className='mb-0.5 last-of-type:mb-0'>
+                <div key={node.id || node.node_id}>
                   <NodePanel
                     nodeInfo={node}
                     hideInfo={hideInfo}

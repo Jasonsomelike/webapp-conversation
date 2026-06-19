@@ -15,6 +15,7 @@ import ImageGallery from '../../base/image-gallery'
 import LoadingAnim from '../loading-anim'
 import s from '../style.module.css'
 import Thought from '../thought'
+import ReasoningPanel, { splitReasoningContent } from './reasoning-panel'
 
 function OperationBtn({ innerContent, onClick, className }: { innerContent: React.ReactNode, onClick?: () => void, className?: string }) {
   return (
@@ -83,6 +84,7 @@ const Answer: FC<IAnswerProps> = ({
 }) => {
   const { id, content, feedback, agent_thoughts, workflowProcess, suggestedQuestions = [] } = item
   const isAgentMode = !!agent_thoughts && agent_thoughts.length > 0
+  const answerSegments = splitReasoningContent(content)
 
   const { t } = useTranslation()
 
@@ -154,7 +156,7 @@ const Answer: FC<IAnswerProps> = ({
   const agentModeAnswer = (
     <div>
       {agent_thoughts?.map((item, index) => (
-        <div key={index}>
+        <div key={index} className={index > 0 ? 'mt-4 border-t border-[#17342b]/10 pt-4' : ''}>
           {item.thought && (
             <StreamdownMarkdown content={item.thought} />
           )}
@@ -176,6 +178,28 @@ const Answer: FC<IAnswerProps> = ({
     </div>
   )
 
+  const sectionedAnswer = (
+    <div>
+      {answerSegments.map((segment, index) => (
+        <div
+          key={`${segment.type}-${index}`}
+          className={index > 0 ? 'mt-4 border-t border-[#17342b]/10 pt-4' : ''}
+        >
+          {segment.type === 'reasoning'
+            ? (
+              <ReasoningPanel
+                content={segment.content}
+                isStreaming={Boolean(isResponding && !segment.complete)}
+              />
+            )
+            : segment.content
+              ? <StreamdownMarkdown content={segment.content} />
+              : null}
+        </div>
+      ))}
+    </div>
+  )
+
   return (
     <div key={id}>
       <div className="flex items-start">
@@ -187,11 +211,13 @@ const Answer: FC<IAnswerProps> = ({
               </div>
             )}
         </div>
-        <div className={`${s.answerWrap} max-w-[calc(100%-3rem)]`}>
-          <div className={`${s.answer} relative text-sm text-gray-900`}>
-            <div className={`ml-2 py-3 px-4 bg-gray-100 rounded-tr-2xl rounded-b-2xl ${workflowProcess && 'min-w-[480px]'}`}>
+        <div className={`${s.answerWrap} min-w-0 max-w-[calc(100%_-_3rem)] flex-1`}>
+          <div className='relative text-sm text-gray-900'>
+            <div className='ml-2 min-w-0 rounded-2xl border border-[#17342b]/[0.08] bg-white px-5 py-4 shadow-[0_10px_30px_rgba(31,54,46,0.055)]'>
               {workflowProcess && (
-                <WorkflowProcess data={workflowProcess} hideInfo />
+                <div className='mb-4 border-b border-[#17342b]/10 pb-4'>
+                  <WorkflowProcess data={workflowProcess} hideInfo />
+                </div>
               )}
               {(isResponding && (isAgentMode ? (!content && (agent_thoughts || []).filter(item => !!item.thought || !!item.tool).length === 0) : !content))
                 ? (
@@ -201,11 +227,9 @@ const Answer: FC<IAnswerProps> = ({
                 )
                 : (isAgentMode
                   ? agentModeAnswer
-                  : (
-                    <StreamdownMarkdown content={content} />
-                  ))}
+                  : sectionedAnswer)}
               {suggestedQuestions.length > 0 && (
-                <div className="mt-3">
+                <div className="mt-4 border-t border-[#17342b]/10 pt-3">
                   <div className="flex gap-1 mt-1 flex-wrap">
                     {suggestedQuestions.map((suggestion, index) => (
                       <div key={index} className="flex items-center gap-1">

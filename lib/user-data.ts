@@ -29,6 +29,11 @@ interface PersistChatExchangeInput {
     retriever_resources?: RetrieverResource[]
     [key: string]: unknown
   }
+  workflowProcess?: {
+    status: string
+    tracing: Record<string, unknown>[]
+    expand?: boolean
+  }
 }
 
 const pageFromDocumentName = (name: string, segmentPosition?: number) => {
@@ -48,6 +53,7 @@ export const persistChatExchange = async ({
   conversationId,
   messageId,
   metadata,
+  workflowProcess,
 }: PersistChatExchangeInput) => {
   if (!isDatabaseConfigured() || !conversationId || !messageId)
   { return }
@@ -85,7 +91,12 @@ export const persistChatExchange = async ({
           difyMessageId: messageId,
           role: 'assistant',
           content: answer,
-          rawPayload: metadata ? toJson(metadata) : undefined,
+          rawPayload: metadata || workflowProcess
+            ? toJson({
+              ...(metadata || {}),
+              workflowProcess,
+            })
+            : undefined,
         },
       ],
       skipDuplicates: true,

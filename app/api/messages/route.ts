@@ -30,14 +30,20 @@ export async function GET(request: NextRequest) {
   )
   const data = messages
     .filter(message => message.role === 'assistant')
-    .map(message => ({
-      id: message.difyMessageId || message.id,
-      query: userMessages.get(message.difyMessageId)?.content || '',
-      answer: message.content,
-      message_files: [],
-      agent_thoughts: [],
-      feedback: null,
-    }))
+    .map((message) => {
+      const rawPayload = message.rawPayload && typeof message.rawPayload === 'object' && !Array.isArray(message.rawPayload)
+        ? message.rawPayload as Record<string, any>
+        : undefined
+      return {
+        id: message.difyMessageId || message.id,
+        query: userMessages.get(message.difyMessageId)?.content || '',
+        answer: message.content,
+        message_files: [],
+        agent_thoughts: [],
+        feedback: null,
+        workflowProcess: rawPayload?.workflowProcess,
+      }
+    })
 
   return NextResponse.json({
     data,
