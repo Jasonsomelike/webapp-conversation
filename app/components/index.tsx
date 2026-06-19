@@ -329,15 +329,20 @@ const Main: FC<IMainProps> = () => {
     questionId,
     placeholderAnswerId,
     questionItem,
+    responseTempId,
   }: {
     responseItem: ChatItem
     questionId: string
     placeholderAnswerId: string
     questionItem: ChatItem
+    responseTempId?: string
   }) => {
     // closesure new list is outdated.
     const newListWithAnswer = produce(
-      getChatList().filter(item => item.id !== responseItem.id && item.id !== placeholderAnswerId),
+      getChatList().filter(item =>
+        item.id !== responseItem.id
+        && item.id !== placeholderAnswerId
+        && item.id !== responseTempId),
       (draft) => {
         if (!draft.find(item => item.id === questionId)) { draft.push({ ...questionItem }) }
 
@@ -420,6 +425,7 @@ const Main: FC<IMainProps> = () => {
       message_files: [],
       isAnswer: true,
     }
+    const responseTempId = responseItem.id
     let hasSetResponseId = false
 
     const prevTempNewConversationId = getCurrConversationId() || '-1'
@@ -456,6 +462,7 @@ const Main: FC<IMainProps> = () => {
           questionId,
           placeholderAnswerId,
           questionItem,
+          responseTempId,
         })
       },
       async onCompleted(hasError?: boolean) {
@@ -485,6 +492,7 @@ const Main: FC<IMainProps> = () => {
           questionId,
           placeholderAnswerId,
           questionItem,
+          responseTempId,
         })
       },
       onThought(thought) {
@@ -521,6 +529,7 @@ const Main: FC<IMainProps> = () => {
           questionId,
           placeholderAnswerId,
           questionItem,
+          responseTempId,
         })
       },
       onMessageEnd: (messageEnd) => {
@@ -534,7 +543,10 @@ const Main: FC<IMainProps> = () => {
             authorName: messageEnd.metadata.annotation_reply.account.name,
           } as AnnotationType)
           const newListWithAnswer = produce(
-            getChatList().filter(item => item.id !== responseItem.id && item.id !== placeholderAnswerId),
+            getChatList().filter(item =>
+              item.id !== responseItem.id
+              && item.id !== placeholderAnswerId
+              && item.id !== responseTempId),
             (draft) => {
               if (!draft.find(item => item.id === questionId)) { draft.push({ ...questionItem }) }
 
@@ -547,7 +559,10 @@ const Main: FC<IMainProps> = () => {
           return
         }
         const newListWithAnswer = produce(
-          getChatList().filter(item => item.id !== responseItem.id && item.id !== placeholderAnswerId),
+          getChatList().filter(item =>
+            item.id !== responseItem.id
+            && item.id !== placeholderAnswerId
+            && item.id !== responseTempId),
           (draft) => {
             if (!draft.find(item => item.id === questionId)) { draft.push({ ...questionItem }) }
 
@@ -585,6 +600,7 @@ const Main: FC<IMainProps> = () => {
           questionId,
           placeholderAnswerId,
           questionItem,
+          responseTempId,
         })
       },
       onWorkflowFinished: ({ data }) => {
@@ -595,6 +611,7 @@ const Main: FC<IMainProps> = () => {
           questionId,
           placeholderAnswerId,
           questionItem,
+          responseTempId,
         })
       },
       onNodeStarted: ({ data }) => {
@@ -609,6 +626,7 @@ const Main: FC<IMainProps> = () => {
           questionId,
           placeholderAnswerId,
           questionItem,
+          responseTempId,
         })
       },
       onNodeFinished: ({ data }) => {
@@ -625,6 +643,7 @@ const Main: FC<IMainProps> = () => {
           questionId,
           placeholderAnswerId,
           questionItem,
+          responseTempId,
         })
       },
     })
