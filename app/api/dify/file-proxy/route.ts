@@ -1,8 +1,12 @@
 import type { NextRequest } from 'next/server'
+import { getSessionFromRequest } from '@/lib/session'
 
 const allowedHost = 'dify.jasonsome.cn'
 
 export async function GET(request: NextRequest) {
+  if (!getSessionFromRequest(request))
+  { return new Response('Unauthorized', { status: 401 }) }
+
   const rawUrl = request.nextUrl.searchParams.get('url')
   if (!rawUrl)
   { return new Response('Missing url', { status: 400 }) }

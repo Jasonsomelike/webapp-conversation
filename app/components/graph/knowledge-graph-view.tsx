@@ -11,7 +11,7 @@ import {
   SparklesIcon,
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
-import { graphEdges, graphNodes } from '@/lib/demo-data'
+import { graphEdges, graphNodes } from '@/lib/graph-data'
 
 const tones: Record<string, string> = {
   user: 'bg-[#17342b] text-white border-[#17342b]',

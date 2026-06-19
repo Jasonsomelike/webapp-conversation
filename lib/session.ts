@@ -1,18 +1,18 @@
 import 'server-only'
 
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHmac, timingSafeEqual } from 'node:crypto'
 import { cookies } from 'next/headers'
 import type { NextRequest, NextResponse } from 'next/server'
 
 export const SESSION_COOKIE = 'network_study_session'
-export const WECHAT_STATE_COOKIE = 'network_study_wechat_state'
 
 export interface AppSession {
   id: string
   difyUserId: string
+  username: string
   name: string
-  avatar?: string
-  provider: 'wechat' | 'demo'
+  theme: string
+  provider: 'account'
   createdAt: number
 }
 
@@ -49,6 +49,14 @@ export const verifySessionToken = (token?: string | null): AppSession | null => 
 
   try {
     const session = JSON.parse(decode(payload)) as AppSession
+    if (
+      session.provider !== 'account'
+      || !session.id
+      || !session.difyUserId
+      || !session.username
+      || !session.name
+    )
+    { return null }
     const expired = Date.now() - session.createdAt > sessionMaxAge * 1000
     return expired ? null : session
   }
@@ -84,8 +92,3 @@ export const clearSessionCookie = (response: NextResponse) => {
     maxAge: 0,
   })
 }
-
-export const deriveDifyUserId = (sourceId: string) =>
-  `wx_${createHash('sha256').update(sourceId).digest('hex').slice(0, 32)}`
-
-export const createWechatState = () => randomBytes(24).toString('base64url')

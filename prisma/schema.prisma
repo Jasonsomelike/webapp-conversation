@@ -8,17 +8,19 @@ datasource db {
 }
 
 model AppUser {
-  id                 String   @id @default(uuid()) @db.Uuid
-  provider           String   @default("wechat") @db.VarChar(32)
-  providerUserIdHash String   @unique @map("provider_user_id_hash") @db.VarChar(128)
-  wxOpenidHash       String?  @map("wx_openid_hash") @db.VarChar(128)
-  wxUnionidHash      String?  @map("wx_unionid_hash") @db.VarChar(128)
-  difyUserId         String   @unique @map("dify_user_id") @db.VarChar(128)
-  nickname           String?  @db.VarChar(128)
-  avatarUrl          String?  @map("avatar_url")
-  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz
-  lastLoginAt        DateTime? @map("last_login_at") @db.Timestamptz
+  id                   String    @id @default(uuid()) @db.Uuid
+  username             String    @unique @db.VarChar(32)
+  displayName          String    @map("display_name") @db.VarChar(64)
+  passwordHash         String    @map("password_hash") @db.VarChar(255)
+  securityQuestion     String    @map("security_question") @db.VarChar(255)
+  securityAnswerHash   String    @map("security_answer_hash") @db.VarChar(255)
+  difyUserId           String    @unique @map("dify_user_id") @db.VarChar(128)
+  theme                String    @default("forest") @db.VarChar(32)
+  failedLoginCount     Int       @default(0) @map("failed_login_count")
+  lockedUntil          DateTime? @map("locked_until") @db.Timestamptz
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  lastLoginAt          DateTime? @map("last_login_at") @db.Timestamptz
 
   conversations ChatConversation[]
   messages      ChatMessage[]
@@ -58,6 +60,7 @@ model ChatMessage {
   user AppUser @relation(fields: [appUserId], references: [id], onDelete: Cascade)
 
   @@index([appUserId, difyConversationId])
+  @@unique([appUserId, difyMessageId, role])
   @@map("chat_messages")
 }
 
@@ -81,6 +84,7 @@ model MessageReference {
   user AppUser @relation(fields: [appUserId], references: [id], onDelete: Cascade)
 
   @@index([appUserId, createdAt])
+  @@unique([appUserId, difyMessageId, segmentId])
   @@map("message_references")
 }
 
@@ -148,4 +152,3 @@ model UserAnalysisReport {
   @@index([appUserId, createdAt])
   @@map("user_analysis_reports")
 }
-

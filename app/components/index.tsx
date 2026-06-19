@@ -21,7 +21,6 @@ import AppUnavailable from '@/app/components/app-unavailable'
 import { APP_ID, APP_INFO, isShowPrompt, promptTemplate } from '@/config'
 import type { Annotation as AnnotationType } from '@/types/log'
 import { addFileInfos, sortAgentSorts } from '@/utils/tools'
-import { normalizeCitations, saveReferences } from '@/lib/reference-store'
 
 export interface IMainProps {
   params: any
@@ -525,11 +524,8 @@ const Main: FC<IMainProps> = () => {
       },
       onMessageEnd: (messageEnd) => {
         const citations = messageEnd.metadata?.retriever_resources || []
-        if (citations.length) {
-          responseItem.citation = citations
-          const referenceConversationId = tempNewConversationId || getCurrConversationId()
-          saveReferences(normalizeCitations(citations, referenceConversationId, messageEnd.id))
-        }
+        if (citations.length)
+        { responseItem.citation = citations }
         if (messageEnd.metadata?.annotation_reply) {
           responseItem.id = messageEnd.id
           responseItem.annotation = ({

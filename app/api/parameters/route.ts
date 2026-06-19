@@ -25,6 +25,8 @@ const demoParameters = {
 
 export async function GET(request: NextRequest) {
   const { sessionId, user } = getInfo(request)
+  if (!user)
+  { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   if (!isDifyConfigured) {
     return NextResponse.json(demoParameters, {
       headers: setSession(sessionId),

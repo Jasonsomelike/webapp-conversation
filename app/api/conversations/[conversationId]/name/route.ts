@@ -12,6 +12,8 @@ export async function POST(request: NextRequest, { params }: {
   } = body
   const { conversationId } = await params
   const { user } = getInfo(request)
+  if (!user)
+  { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   if (!isDifyConfigured)
   { return NextResponse.json({ name: name || '网络学习会话' }) }
 

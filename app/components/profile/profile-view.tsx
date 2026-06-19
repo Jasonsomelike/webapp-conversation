@@ -18,48 +18,63 @@ const stages = ['入门', '系统学习', '复习', '刷题', '备考']
 const styles = ['图示讲解', '公式推导', '例题驱动', '简洁回答']
 const targets = ['期末考试', '课程作业', '竞赛', '自学提升']
 
-export default function ProfileView({ session }: { session: AppSession }) {
-  const [stage, setStage] = useState('复习')
-  const [style, setStyle] = useState('图示讲解')
-  const [target, setTarget] = useState('期末考试')
+export default function ProfileView({
+  session,
+  initialProfile,
+  stats,
+  joinedAt,
+}: {
+  session: AppSession
+  initialProfile: { learningStage?: string | null, preferredStyle?: string | null, target?: string | null } | null
+  stats: { conversations: number, references: number, messages: number }
+  joinedAt: string
+}) {
+  const [stage, setStage] = useState(initialProfile?.learningStage || '系统学习')
+  const [style, setStyle] = useState(initialProfile?.preferredStyle || '图示讲解')
+  const [target, setTarget] = useState(initialProfile?.target || '自学提升')
   const [saved, setSaved] = useState(false)
 
-  const save = () => {
-    setSaved(true)
-    setTimeout(() => setSaved(false), 1800)
+  const save = async () => {
+    const response = await fetch('/api/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ learningStage: stage, preferredStyle: style, target }),
+    })
+    if (response.ok) {
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1800)
+    }
   }
 
   return (
     <div className="mx-auto max-w-[1350px] p-4 sm:p-6">
       <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
         <div className="space-y-5">
-          <div className="relative overflow-hidden rounded-[24px] bg-[#17342b] p-6 text-white shadow-[0_20px_60px_rgba(23,52,43,.18)]">
-            <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#dff67a]/10 blur-2xl" />
+          <div className="relative overflow-hidden rounded-[24px] bg-[var(--studio-deep)] p-6 text-white shadow-[0_20px_60px_rgba(23,52,43,.18)]">
+            <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--studio-accent)]/10 blur-2xl" />
             <div className="relative">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#dff67a]">Learner profile</div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--studio-accent)]">Learner profile</div>
                 <button className="grid h-8 w-8 place-items-center rounded-xl bg-white/10">
                   <PencilSquareIcon className="h-4 w-4" />
                 </button>
               </div>
               <div className="mt-7 flex items-center gap-4">
-                {session.avatar
-                  ? <img src={session.avatar} alt="" className="h-16 w-16 rounded-2xl object-cover ring-4 ring-white/10" />
-                  : <div className="grid h-16 w-16 place-items-center rounded-2xl bg-[#dff67a] text-2xl font-semibold text-[#17342b]">{session.name.slice(0, 1)}</div>}
+                <div className="grid h-16 w-16 place-items-center rounded-2xl bg-[var(--studio-accent)] text-2xl font-semibold text-[var(--studio-deep)]">{session.name.slice(0, 1)}</div>
                 <div>
                   <h2 className="text-xl font-semibold">{session.name}</h2>
-                  <div className="mt-1 text-xs text-white/45">{session.provider === 'wechat' ? '微信授权用户' : '产品演示账户'}</div>
+                  <div className="mt-1 text-xs text-white/45">@{session.username} · 账号密码用户</div>
                 </div>
               </div>
 
               <div className="mt-7 grid grid-cols-3 divide-x divide-white/10 rounded-2xl bg-white/[0.06] py-4 text-center">
                 {[
-                  ['18', '会话'],
-                  ['37', '引用'],
-                  ['12', '知识点'],
+                  [String(stats.conversations), '会话'],
+                  [String(stats.references), '引用'],
+                  [String(stats.messages), '提问'],
                 ].map(([value, label]) => (
                   <div key={label}>
-                    <div className="text-lg font-semibold text-[#dff67a]">{value}</div>
+                    <div className="text-lg font-semibold text-[var(--studio-accent)]">{value}</div>
                     <div className="mt-1 text-[9px] text-white/40">{label}</div>
                   </div>
                 ))}
@@ -72,7 +87,7 @@ export default function ProfileView({ session }: { session: AppSession }) {
             <div className="space-y-4">
               {[
                 [FingerPrintIcon, 'Dify 用户 ID', session.difyUserId],
-                [CalendarDaysIcon, '加入时间', '2026 年 6 月 19 日'],
+                [CalendarDaysIcon, '加入时间', new Intl.DateTimeFormat('zh-CN', { dateStyle: 'long' }).format(new Date(joinedAt))],
                 [ShieldCheckIcon, '身份隔离', '已启用'],
               ].map(([Icon, label, value]) => (
                 <div key={label as string} className="flex items-start gap-3">
@@ -129,7 +144,7 @@ export default function ProfileView({ session }: { session: AppSession }) {
             </div>
 
             <div className="mt-8 flex justify-end">
-              <button onClick={save} className="flex h-11 items-center gap-2 rounded-xl bg-[#dff67a] px-5 text-xs font-semibold text-[#17342b] shadow-[0_10px_24px_rgba(132,153,58,.15)]">
+              <button onClick={save} className="flex h-11 items-center gap-2 rounded-xl bg-[var(--studio-accent)] px-5 text-xs font-semibold text-[var(--studio-deep)] shadow-[0_10px_24px_rgba(132,153,58,.15)]">
                 {saved ? <CheckIcon className="h-4 w-4" /> : null}
                 {saved ? '已保存' : '保存偏好'}
               </button>
@@ -144,11 +159,11 @@ export default function ProfileView({ session }: { session: AppSession }) {
                 </div>
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#7f8b85]">Knowledge</div>
-                  <div className="mt-1 text-sm font-semibold">常学领域</div>
+                  <div className="mt-1 text-sm font-semibold">当前学习配置</div>
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {['网络层', 'CIDR', '路由转发', 'TCP', '子网划分'].map((topic, index) => (
+                {[stage, style, target].map((topic, index) => (
                   <span key={topic} className={`rounded-full px-3 py-1.5 text-[10px] font-medium ${index < 2 ? 'bg-[#e8f4ec] text-[#47715c]' : 'bg-[#f1f2ee] text-[#6f7b75]'}`}>{topic}</span>
                 ))}
               </div>
@@ -165,7 +180,7 @@ export default function ProfileView({ session }: { session: AppSession }) {
                 </div>
               </div>
               <p className="text-xs leading-6 text-[#66736c]">
-                偏好先看直观图示，再通过例题确认规则。连续学习节奏较好，遇到边界条件时倾向反复核验。
+                当前处于“{stage}”阶段，偏好“{style}”，主要目标是“{target}”。后续个性化分析会结合这些设置与当前账号的真实学习记录生成。
               </p>
             </PageCard>
           </div>
@@ -176,7 +191,7 @@ export default function ProfileView({ session }: { session: AppSession }) {
               <div>
                 <div className="text-sm font-semibold text-[#315f4b]">隐私与数据隔离</div>
                 <p className="mt-2 text-xs leading-6 text-[#5d786a]">
-                  微信原始 openid / unionid 不会发送给 Dify。系统只使用不可逆哈希生成的用户 ID，并在所有数据库查询中绑定当前登录用户。
+                  系统根据账号名生成不可逆的 Dify 用户 ID，并在会话、引用、画像和分析查询中始终绑定当前登录用户。
                 </p>
               </div>
             </div>

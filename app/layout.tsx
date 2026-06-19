@@ -19,8 +19,8 @@ const LocaleLayout = async ({
 }) => {
   const locale = await getLocaleOnServer()
   return (
-    <html lang={locale ?? 'zh-Hans'} className="h-full">
-      <body className="min-h-full bg-[#f3f1eb] antialiased">
+    <html lang={locale ?? 'zh-Hans'} className="h-full" data-theme="forest">
+      <body className="min-h-full bg-[var(--studio-paper)] antialiased">
         {children}
       </body>
     </html>

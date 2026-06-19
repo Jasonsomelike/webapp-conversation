@@ -1,76 +1,122 @@
 import type { NextRequest } from 'next/server'
-import { demoReferences } from '@/lib/demo-data'
-import { getInfo, isDifyConfigured, requireDifyClient } from '@/app/api/utils/common'
+import { getSessionFromRequest } from '@/lib/session'
+import { persistChatExchange } from '@/lib/user-data'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
-const demoStream = (query: string, user: string) => {
-  const encoder = new TextEncoder()
-  const conversationId = `demo-conversation-${user.slice(-8)}`
-  const messageId = `demo-message-${Date.now()}`
-  const answer = `你问的是「${query}」。在演示模式下，我会保留与正式 Dify WebApp 相同的流式交互方式。\n\n以最长前缀匹配为例：路由器会先找出所有能匹配目的地址的路由项，再选择前缀长度最长的一项。前缀越长，代表地址范围越小、路由越具体。\n\n正式配置 DIFY_API_KEY 后，这里会直接复用现有 Skill Agent、知识库、百炼记忆和工具调用链路。`
-
-  return new ReadableStream({
-    async start(controller) {
-      const chunks = answer.match(/[\s\S]{1,18}/g) || [answer]
-      for (const chunk of chunks) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-          event: 'message',
-          task_id: `demo-task-${messageId}`,
-          id: messageId,
-          conversation_id: conversationId,
-          answer: chunk,
-        })}\n\n`))
-        await new Promise(resolve => setTimeout(resolve, 24))
-      }
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-        event: 'message_end',
-        id: messageId,
-        conversation_id: conversationId,
-        metadata: {
-          retriever_resources: demoReferences.slice(0, 2).map(reference => ({
-            content: reference.quote,
-            data_source_type: 'upload_file',
-            dataset_name: reference.datasetName,
-            dataset_id: 'demo-dataset',
-            document_id: reference.id,
-            document_name: reference.documentName,
-            hit_count: 1,
-            index_node_hash: reference.id,
-            segment_id: reference.id,
-            segment_position: reference.pageNumber,
-            score: reference.score,
-            word_count: reference.quote?.length || 0,
-          })),
-        },
-      })}\n\n`))
-      controller.close()
-    },
-  })
-}
+const apiUrl = (process.env.DIFY_API_BASE_URL || 'https://dify.jasonsome.cn:22380/v1').replace(/\/$/, '')
 
 export async function POST(request: NextRequest) {
-  const body = await request.json()
-  const {
-    inputs,
-    query,
-    files,
-    conversation_id: conversationId,
-    response_mode: responseMode,
-  } = body
-  const { user } = getInfo(request)
+  const session = getSessionFromRequest(request)
+  if (!session)
+  { return Response.json({ error: 'Unauthorized' }, { status: 401 }) }
+  if (!process.env.DIFY_API_KEY)
+  { return Response.json({ error: 'Dify application API is not configured' }, { status: 503 }) }
 
-  if (!isDifyConfigured) {
-    return new Response(demoStream(query, user), {
-      headers: {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        'Connection': 'keep-alive',
-      },
+  const body = await request.json()
+  const query = typeof body.query === 'string' ? body.query.trim() : ''
+  if (!query)
+  { return Response.json({ error: 'Query is required' }, { status: 400 }) }
+
+  const upstream = await fetch(`${apiUrl}/chat-messages`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.DIFY_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      inputs: body.inputs || {},
+      query,
+      files: body.files || [],
+      conversation_id: body.conversation_id || '',
+      response_mode: 'streaming',
+      user: session.difyUserId,
+    }),
+    signal: request.signal,
+  })
+
+  if (!upstream.ok || !upstream.body) {
+    const errorBody = await upstream.text()
+    return new Response(errorBody, {
+      status: upstream.status,
+      headers: { 'Content-Type': upstream.headers.get('content-type') || 'application/json' },
     })
   }
 
-  const res = await requireDifyClient().createChatMessage(inputs, query, user, responseMode, conversationId, files)
-  return new Response(res.data as any)
+  const reader = upstream.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let answer = ''
+  let conversationId = body.conversation_id || ''
+  let messageId = ''
+  let metadata: Record<string, any> | undefined
+
+  const readEvents = (text: string) => {
+    buffer += text
+    const blocks = buffer.split(/\r?\n\r?\n/)
+    buffer = blocks.pop() || ''
+    blocks.forEach((block) => {
+      const data = block
+        .split(/\r?\n/)
+        .filter(line => line.startsWith('data:'))
+        .map(line => line.slice(5).trim())
+        .join('\n')
+      if (!data || data === '[DONE]')
+      { return }
+      try {
+        const event = JSON.parse(data)
+        conversationId = event.conversation_id || conversationId
+        messageId = event.message_id || event.id || messageId
+        if ((event.event === 'message' || event.event === 'agent_message') && typeof event.answer === 'string')
+        { answer += event.answer }
+        if (event.event === 'message_replace' && typeof event.answer === 'string')
+        { answer = event.answer }
+        if (event.event === 'message_end')
+        { metadata = event.metadata || metadata }
+      }
+      catch {
+        // Keep proxying malformed or future event types without blocking the chat stream.
+      }
+    })
+  }
+
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read()
+        if (!done) {
+          controller.enqueue(value)
+          readEvents(decoder.decode(value, { stream: true }))
+          return
+        }
+
+        readEvents(decoder.decode())
+        await persistChatExchange({
+          appUserId: session.id,
+          query,
+          answer,
+          conversationId,
+          messageId,
+          metadata,
+        }).catch(error => console.error('Failed to persist chat exchange', error))
+        controller.close()
+      }
+      catch (error) {
+        controller.error(error)
+      }
+    },
+    cancel() {
+      reader.cancel().catch(() => undefined)
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': upstream.headers.get('content-type') || 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  })
 }

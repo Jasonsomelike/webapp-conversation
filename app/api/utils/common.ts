@@ -2,21 +2,17 @@ import 'server-only'
 
 import type { NextRequest } from 'next/server'
 import { ChatClient } from 'dify-client'
-import { v4 } from 'uuid'
-import { APP_ID, APP_INFO } from '@/config'
+import { APP_INFO } from '@/config'
 import { getSessionFromRequest } from '@/lib/session'
 
-const userPrefix = `user_${APP_ID}:`
 const apiKey = process.env.DIFY_API_KEY
 const apiUrl = process.env.DIFY_API_BASE_URL || 'https://dify.jasonsome.cn:22380/v1'
 
 export const getInfo = (request: NextRequest) => {
-  const sessionId = request.cookies.get('session_id')?.value || v4()
   const session = getSessionFromRequest(request)
-  const user = session?.difyUserId || userPrefix + sessionId
   return {
-    sessionId,
-    user,
+    sessionId: session?.id || '',
+    user: session?.difyUserId || '',
     session,
   }
 }

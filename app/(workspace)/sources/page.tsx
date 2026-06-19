@@ -1,6 +1,11 @@
+import { redirect } from 'next/navigation'
 import SourcesView from '@/app/components/sources/sources-view'
-import { demoReferences } from '@/lib/demo-data'
+import { getSession } from '@/lib/session'
+import { getUserReferences } from '@/lib/user-data'
 
-export default function SourcesPage() {
-  return <SourcesView initialReferences={demoReferences} />
+export default async function SourcesPage() {
+  const session = await getSession()
+  if (!session)
+  { redirect('/login') }
+  return <SourcesView initialReferences={await getUserReferences(session.id)} />
 }

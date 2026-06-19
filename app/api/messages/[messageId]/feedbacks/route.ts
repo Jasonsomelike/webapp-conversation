@@ -11,6 +11,8 @@ export async function POST(request: NextRequest, { params }: {
   } = body
   const { messageId } = await params
   const { user } = getInfo(request)
+  if (!user)
+  { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   if (!isDifyConfigured)
   { return NextResponse.json({ result: 'success' }) }
   const { data } = await requireDifyClient().messageFeedback(messageId, rating, user)

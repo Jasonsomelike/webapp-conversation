@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { graphEdges, graphNodes } from '@/lib/demo-data'
+import { graphEdges, graphNodes } from '@/lib/graph-data'
 import { getSession } from '@/lib/session'
 
 export async function GET() {

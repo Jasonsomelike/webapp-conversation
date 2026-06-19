@@ -4,6 +4,8 @@ import { getInfo, isDifyConfigured, requireDifyClient, setSession } from '@/app/
 
 export async function GET(request: NextRequest) {
   const { sessionId, user } = getInfo(request)
+  if (!user)
+  { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   const { searchParams } = new URL(request.url)
   const conversationId = searchParams.get('conversation_id')
   if (!isDifyConfigured) {
