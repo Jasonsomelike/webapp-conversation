@@ -503,22 +503,36 @@ const Main: FC<IMainProps> = () => {
         })
       },
       async onCompleted(hasError?: boolean) {
-        if (hasError) { return }
+        try {
+          if (!hasError && getConversationIdChangeBecauseOfNew()) {
+            const { data: allConversations }: any = await fetchConversations()
+            const newConversation = allConversations.find((item: any) => item.id === tempNewConversationId)
+              || allConversations[0]
 
-        if (getConversationIdChangeBecauseOfNew()) {
-          const { data: allConversations }: any = await fetchConversations()
-          const newItem: any = await generationConversationName(allConversations[0].id)
-
-          const newAllConversations = produce(allConversations, (draft: any) => {
-            draft[0].name = newItem.name
-          })
-          setConversationList(newAllConversations as any)
+            if (newConversation?.id) {
+              const newItem: any = await generationConversationName(newConversation.id)
+              const newAllConversations = produce(allConversations, (draft: any[]) => {
+                const target = draft.find(item => item.id === newConversation.id)
+                if (target) {
+                  target.name = newItem.name
+                }
+              })
+              setConversationList(newAllConversations as any)
+            }
+          }
         }
-        setConversationIdChangeBecauseOfNew(false)
-        resetNewConversationInputs()
-        setChatNotStarted()
-        setCurrConversationId(tempNewConversationId, APP_ID, true)
-        setRespondingFalse()
+        catch (error) {
+          console.warn('Failed to refresh the completed conversation metadata.', error)
+        }
+        finally {
+          setConversationIdChangeBecauseOfNew(false)
+          resetNewConversationInputs()
+          setChatNotStarted()
+          if (tempNewConversationId) {
+            setCurrConversationId(tempNewConversationId, APP_ID, true)
+          }
+          setRespondingFalse()
+        }
       },
       onFile(file) {
         const lastThought = responseItem.agent_thoughts?.[responseItem.agent_thoughts?.length - 1]
