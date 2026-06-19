@@ -1,5 +1,8 @@
 import 'server-only'
 
+import { unstable_cache } from 'next/cache'
+import { difyApiBaseUrl, fetchDify } from '@/lib/dify-server'
+
 export interface DifyKnowledgeDocument {
   id: string
   name: string
@@ -26,9 +29,7 @@ export interface DifyDocumentList {
   page: number
 }
 
-const apiBase = (process.env.DIFY_API_BASE_URL || 'https://dify.jasonsome.cn:22380/v1').replace(/\/$/, '')
-
-export const listKnowledgeDocuments = async ({
+const fetchKnowledgeDocuments = async ({
   page = 1,
   limit = 20,
   keyword = '',
@@ -53,11 +54,20 @@ export const listKnowledgeDocuments = async ({
   if (status)
   { params.set('status', status) }
 
-  const response = await fetch(`${apiBase}/datasets/${encodeURIComponent(datasetId)}/documents?${params}`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-    cache: 'no-store',
-  })
+  const response = await fetchDify(
+    `/datasets/${encodeURIComponent(datasetId)}/documents?${params}`,
+    { method: 'GET' },
+    { apiKey, connectTimeoutMs: 8_000, retries: 1 },
+  )
   if (!response.ok)
   { throw new Error(`DIFY_DATASET_REQUEST_FAILED:${response.status}`) }
   return response.json()
 }
+
+const cachedKnowledgeDocuments = unstable_cache(
+  fetchKnowledgeDocuments,
+  ['dify-knowledge-documents', difyApiBaseUrl],
+  { revalidate: 300, tags: ['dify-knowledge-documents'] },
+)
+
+export const listKnowledgeDocuments = cachedKnowledgeDocuments

@@ -1,17 +1,16 @@
 import type { NextRequest } from 'next/server'
+import { difyApiKey, fetchDify } from '@/lib/dify-server'
 import { getSessionFromRequest } from '@/lib/session'
 import { persistChatExchange } from '@/lib/user-data'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
-const apiUrl = (process.env.DIFY_API_BASE_URL || 'https://dify.jasonsome.cn:22380/v1').replace(/\/$/, '')
-
 export async function POST(request: NextRequest) {
   const session = getSessionFromRequest(request)
   if (!session)
   { return Response.json({ error: 'Unauthorized' }, { status: 401 }) }
-  if (!process.env.DIFY_API_KEY)
+  if (!difyApiKey)
   { return Response.json({ error: 'Dify application API is not configured' }, { status: 503 }) }
 
   const body = await request.json()
@@ -19,22 +18,30 @@ export async function POST(request: NextRequest) {
   if (!query)
   { return Response.json({ error: 'Query is required' }, { status: 400 }) }
 
-  const upstream = await fetch(`${apiUrl}/chat-messages`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.DIFY_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      inputs: body.inputs || {},
-      query,
-      files: body.files || [],
-      conversation_id: body.conversation_id || '',
-      response_mode: 'streaming',
-      user: session.difyUserId,
-    }),
-    signal: request.signal,
-  })
+  let upstream: Response
+  try {
+    upstream = await fetchDify('/chat-messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        inputs: body.inputs || {},
+        query,
+        files: body.files || [],
+        conversation_id: body.conversation_id || '',
+        response_mode: 'streaming',
+        user: session.difyUserId,
+      }),
+      signal: request.signal,
+    }, { connectTimeoutMs: 12_000, retries: 0 })
+  }
+  catch {
+    return Response.json(
+      { error: 'Dify 服务暂时无法连接，请稍后重试' },
+      { status: 503 },
+    )
+  }
 
   if (!upstream.ok || !upstream.body) {
     const errorBody = await upstream.text()

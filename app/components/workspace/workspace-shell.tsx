@@ -75,6 +75,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [themeOpen, setThemeOpen] = useState(false)
+  const [pendingHref, setPendingHref] = useState('')
   const initialTheme = isThemeId(session.theme) ? session.theme : 'forest'
   const [theme, setTheme] = useState<ThemeId>(initialTheme)
   const current = routeMeta[pathname] || routeMeta['/chat']
@@ -82,6 +83,17 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
+
+  useEffect(() => {
+    setPendingHref('')
+  }, [pathname])
+
+  useEffect(() => {
+    const timer = globalThis.setTimeout(() => {
+      navItems.forEach(item => router.prefetch(item.href))
+    }, 300)
+    return () => globalThis.clearTimeout(timer)
+  }, [router])
 
   const logout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -124,7 +136,11 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
               <Link
                 href={item.href}
                 key={item.href}
-                onClick={() => setMobileOpen(false)}
+                onClick={() => {
+                  setMobileOpen(false)
+                  if (pathname !== item.href)
+                  { setPendingHref(item.href) }
+                }}
                 className={`group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm transition-all ${
                   active
                     ? 'bg-[var(--studio-accent)] font-semibold text-[var(--studio-deep)] shadow-[0_10px_30px_rgba(0,0,0,0.16)]'
@@ -191,6 +207,11 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {pendingHref && (
+          <div className="fixed inset-x-0 top-0 z-[70] h-0.5 overflow-hidden bg-black/5">
+            <div className="h-full w-1/2 animate-pulse rounded-r-full bg-[var(--studio-accent-strong)]" />
+          </div>
+        )}
         <header className="relative z-30 flex h-[84px] shrink-0 items-center gap-4 border-b border-black/[0.07] bg-[var(--studio-surface)]/90 px-4 backdrop-blur-xl sm:px-7">
           <button
             className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-black/10 bg-white lg:hidden"
@@ -252,6 +273,10 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => {
+                  if (pathname !== item.href)
+                  { setPendingHref(item.href) }
+                }}
                 className={`flex min-w-[53px] flex-col items-center gap-1 text-[10px] font-medium ${active ? 'text-[var(--studio-deep)]' : 'text-black/45'}`}
               >
                 <span className={`grid h-8 w-10 place-items-center rounded-xl ${active ? 'bg-[var(--studio-accent)]' : ''}`}>

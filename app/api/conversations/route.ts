@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { getInfo, isDifyConfigured, requireDifyClient, setSession } from '@/app/api/utils/common'
+import { getInfo, isDifyConfigured, setSession } from '@/app/api/utils/common'
+import { fetchDifyJson } from '@/lib/dify-server'
 
 export async function GET(request: NextRequest) {
   const { sessionId, user } = getInfo(request)
@@ -12,15 +13,21 @@ export async function GET(request: NextRequest) {
     })
   }
   try {
-    const { data }: any = await requireDifyClient().getConversations(user)
+    const data = await fetchDifyJson<Record<string, unknown>>(
+      `/conversations?user=${encodeURIComponent(user)}&limit=100`,
+    )
     return NextResponse.json(data, {
       headers: setSession(sessionId),
     })
   }
-  catch (error: any) {
+  catch {
     return NextResponse.json({
       data: [],
-      error: error.message,
+      has_more: false,
+      limit: 100,
+      degraded: true,
+    }, {
+      headers: setSession(sessionId),
     })
   }
 }

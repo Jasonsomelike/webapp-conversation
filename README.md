@@ -30,6 +30,7 @@ pnpm dev
 
 ```env
 NEXT_PUBLIC_APP_ID=你的_Dify_App_ID
+NEXT_PUBLIC_API_URL=https://你的-dify.example.com/v1
 DIFY_API_BASE_URL=https://你的-dify.example.com/v1
 DIFY_API_KEY=app-xxxxxxxx
 DIFY_DATASET_API_KEY=dataset-xxxxxxxx
@@ -39,11 +40,11 @@ AUTH_URL=https://你的前端域名
 DATABASE_URL=postgresql://...
 ```
 
-`DIFY_API_KEY`、`DIFY_DATASET_API_KEY`、`AUTH_SECRET` 和 `DATABASE_URL` 禁止使用 `NEXT_PUBLIC_` 前缀。
+`DIFY_API_KEY`、`DIFY_DATASET_API_KEY`、`AUTH_SECRET` 和 `DATABASE_URL` 禁止使用 `NEXT_PUBLIC_` 前缀。尤其不要创建 `NEXT_PUBLIC_APP_KEY`，否则 Dify 应用密钥会进入浏览器构建产物。
 
 ## 账号与数据隔离
 
-- 密码至少 8 位，并同时包含大写字母、小写字母、数字和特殊字符。
+- 新密码至少 8 位，并同时包含字母和数字。
 - 密码和安全问题答案使用 bcrypt 加盐哈希保存。
 - 连续 5 次登录失败后，账号临时锁定 15 分钟。
 - 会话、消息、引用、画像和分析查询全部绑定当前 `appUserId`。

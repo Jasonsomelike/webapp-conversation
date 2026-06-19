@@ -7,21 +7,23 @@ import { securityQuestions } from '@/lib/account-policy'
 import { db, isDatabaseConfigured } from '@/lib/db'
 
 const usernamePattern = /^[a-zA-Z][a-zA-Z0-9_-]{2,31}$/
-const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,72}$/
+const passwordPattern = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,72}$/
 
 export const credentialsSchema = z.object({
   username: z.string().trim().regex(usernamePattern, '账号需以字母开头，可包含字母、数字、下划线或连字符，长度 3–32 位'),
-  password: z.string().regex(passwordPattern, '密码至少 8 位，并同时包含大写字母、小写字母、数字和特殊字符'),
+  password: z.string().min(1, '请输入密码').max(72, '密码不能超过 72 位'),
 })
 
 export const registerSchema = credentialsSchema.extend({
-  displayName: z.string().trim().min(2, '显示名称至少 2 个字符').max(64, '显示名称不能超过 64 个字符'),
+  displayName: z.string().trim().min(1, '请输入显示名称').max(64, '显示名称不能超过 64 个字符'),
+  password: z.string().regex(passwordPattern, '密码至少 8 位，并同时包含字母和数字'),
   securityQuestion: z.string().refine(value => (securityQuestions as readonly string[]).includes(value), '请选择有效的安全问题'),
-  securityAnswer: z.string().trim().min(2, '安全问题答案至少 2 个字符').max(128),
+  securityAnswer: z.string().trim().min(1, '请输入安全问题答案').max(128),
 })
 
 export const resetPasswordSchema = credentialsSchema.extend({
-  securityAnswer: z.string().trim().min(2).max(128),
+  password: z.string().regex(passwordPattern, '密码至少 8 位，并同时包含字母和数字'),
+  securityAnswer: z.string().trim().min(1, '请输入安全问题答案').max(128),
 })
 
 export const normalizeUsername = (username: string) => username.trim().toLowerCase()

@@ -1,9 +1,15 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
+  "regions": [
+    "hkg1"
+  ],
   "functions": {
     "app/api/chat-messages/route.ts": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "regions": [
+        "hkg1"
+      ]
     }
   }
 }
-

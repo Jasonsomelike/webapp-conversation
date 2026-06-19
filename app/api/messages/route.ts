@@ -13,8 +13,19 @@ export async function GET(request: NextRequest) {
       headers: setSession(sessionId),
     })
   }
-  const { data }: any = await requireDifyClient().getConversationMessages(user, conversationId as string)
-  return NextResponse.json(data, {
-    headers: setSession(sessionId),
-  })
+  try {
+    const { data }: any = await requireDifyClient().getConversationMessages(user, conversationId as string)
+    return NextResponse.json(data, {
+      headers: setSession(sessionId),
+    })
+  }
+  catch {
+    return NextResponse.json({
+      data: [],
+      has_more: false,
+      degraded: true,
+    }, {
+      headers: setSession(sessionId),
+    })
+  }
 }

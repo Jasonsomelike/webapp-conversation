@@ -16,7 +16,7 @@ import { securityQuestions } from '@/lib/account-policy'
 
 type Mode = 'login' | 'register' | 'forgot'
 
-const passwordHint = '至少 8 位，包含大写字母、小写字母、数字和特殊字符'
+const passwordHint = '至少 8 位，同时包含字母和数字'
 
 export default function LoginPanel() {
   const [mode, setMode] = useState<Mode>('login')
