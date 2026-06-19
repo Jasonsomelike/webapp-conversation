@@ -1,7 +1,8 @@
 'use client'
 
 import type { FormEvent } from 'react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -19,12 +20,17 @@ type Mode = 'login' | 'register' | 'forgot'
 const passwordHint = '至少 8 位，同时包含字母和数字'
 
 export default function LoginPanel() {
+  const router = useRouter()
   const [mode, setMode] = useState<Mode>('login')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [securityQuestion, setSecurityQuestion] = useState('')
   const [resetUsername, setResetUsername] = useState('')
+
+  useEffect(() => {
+    router.prefetch('/chat')
+  }, [router])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -47,8 +53,10 @@ export default function LoginPanel() {
       body: JSON.stringify(payload),
     })
     const result = await response.json()
-    if (response.ok)
-    { globalThis.location.href = '/chat' }
+    if (response.ok) {
+      router.replace('/chat')
+      router.refresh()
+    }
     else
     { setError(result.error || '操作失败，请稍后重试') }
     setLoading(false)
