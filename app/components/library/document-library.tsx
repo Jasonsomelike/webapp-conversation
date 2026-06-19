@@ -3,7 +3,9 @@ import {
   CheckCircleIcon,
   CircleStackIcon,
   ClockIcon,
+  ArrowDownTrayIcon,
   DocumentTextIcon,
+  EyeIcon,
   MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
@@ -104,7 +106,7 @@ export default function DocumentLibrary({
                     const currentStatus = document.indexing_status || document.display_status || 'waiting'
                     const healthy = ['completed', 'available'].includes(currentStatus)
                     return (
-                      <div key={document.id} className="grid gap-4 px-5 py-5 transition hover:bg-black/[0.018] md:grid-cols-[minmax(0,1fr)_120px_120px_190px] md:items-center">
+                      <div key={document.id} className="grid gap-4 px-5 py-5 transition hover:bg-black/[0.018] md:grid-cols-[minmax(0,1fr)_110px_100px_150px_150px] md:items-center">
                         <div className="flex min-w-0 items-start gap-4">
                           <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[var(--studio-accent)]/30 text-[var(--studio-accent-strong)]">
                             <DocumentTextIcon className="h-5 w-5" />
@@ -132,6 +134,22 @@ export default function DocumentLibrary({
                         <div className="flex items-center gap-2 text-[10px] text-black/40">
                           <ClockIcon className="h-4 w-4" />
                           {formatDate(document.created_at)}
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                          <a
+                            href={`/api/library/documents/${document.id}/file?disposition=inline&filename=${encodeURIComponent(document.name)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 bg-white px-2.5 py-2 text-[10px] font-semibold transition hover:-translate-y-0.5 hover:shadow-md"
+                          >
+                            <EyeIcon className="h-3.5 w-3.5" />预览
+                          </a>
+                          <a
+                            href={`/api/library/documents/${document.id}/file?disposition=attachment&filename=${encodeURIComponent(document.name)}`}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--studio-deep)] px-2.5 py-2 text-[10px] font-semibold text-white transition hover:-translate-y-0.5 hover:shadow-md"
+                          >
+                            <ArrowDownTrayIcon className="h-3.5 w-3.5" />下载
+                          </a>
                         </div>
                       </div>
                     )

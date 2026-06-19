@@ -1,8 +1,10 @@
-import { useMemo, useRef, useState } from 'react'
+import type { ClipboardEvent } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { imageUpload } from './utils'
 import Toast from '@/app/components/base/toast'
 import type { ImageFile } from '@/types/app'
+import { TransferMethod } from '@/types/app'
 
 export const useImageFiles = () => {
   const { t } = useTranslation()
@@ -92,6 +94,42 @@ export const useImageFiles = () => {
     filesRef.current = []
   }
 
+  const handleClipboardPaste = useCallback((event: ClipboardEvent<HTMLTextAreaElement>, limit = 5) => {
+    const image = Array.from(event.clipboardData?.files || []).find(file => file.type.startsWith('image/'))
+    if (!image)
+    { return false }
+    if (filesRef.current.filter(file => !file.deleted).length >= limit) {
+      notify({ type: 'error', message: `最多可上传 ${limit} 张图片` })
+      return true
+    }
+
+    event.preventDefault()
+    const reader = new FileReader()
+    reader.addEventListener('load', () => {
+      const imageFile: ImageFile = {
+        type: TransferMethod.local_file,
+        _id: `${Date.now()}-${image.name}`,
+        fileId: '',
+        file: image,
+        url: reader.result as string,
+        base64Url: reader.result as string,
+        progress: 0,
+      }
+      handleUpload(imageFile)
+      imageUpload({
+        file: image,
+        onProgressCallback: progress => handleUpload({ ...imageFile, progress }),
+        onSuccessCallback: result => handleUpload({ ...imageFile, fileId: result.id, progress: 100 }),
+        onErrorCallback: () => {
+          notify({ type: 'error', message: t('common.imageUploader.uploadFromComputerUploadError') })
+          handleUpload({ ...imageFile, progress: -1 })
+        },
+      })
+    })
+    reader.readAsDataURL(image)
+    return true
+  }, [notify, t])
+
   const filteredFiles = useMemo(() => {
     return files.filter(file => !file.deleted)
   }, [files])
@@ -104,5 +142,6 @@ export const useImageFiles = () => {
     onImageLinkLoadSuccess: handleImageLinkLoadSuccess,
     onReUpload: handleReUpload,
     onClear: handleClear,
+    onPaste: handleClipboardPaste,
   }
 }

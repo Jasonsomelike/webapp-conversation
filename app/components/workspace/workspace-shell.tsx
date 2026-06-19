@@ -22,6 +22,7 @@ import {
 } from '@heroicons/react/24/outline'
 import type { AppSession } from '@/lib/session'
 import { isThemeId, themes, type ThemeId } from '@/lib/themes'
+import { resetChatRuntime, useChatRuntime } from '@/app/components/chat/runtime-store'
 
 const navItems = [
   { href: '/chat', label: 'AI 学习助手', shortLabel: '对话', icon: ChatBubbleLeftRightIcon },
@@ -78,6 +79,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
   const [pendingHref, setPendingHref] = useState('')
   const initialTheme = isThemeId(session.theme) ? session.theme : 'forest'
   const [theme, setTheme] = useState<ThemeId>(initialTheme)
+  const chatResponding = useChatRuntime(state => state.isResponding)
   const current = routeMeta[pathname] || routeMeta['/chat']
 
   useEffect(() => {
@@ -96,6 +98,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
   }, [router])
 
   const logout = async () => {
+    resetChatRuntime()
     await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/login')
     router.refresh()
@@ -149,7 +152,13 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
               >
                 <Icon className={`h-5 w-5 ${active ? 'text-[var(--studio-deep)]' : 'text-white/48 group-hover:text-white'}`} />
                 <span>{item.label}</span>
-                {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-[var(--studio-deep)]" />}
+                {item.href === '/chat' && chatResponding && (
+                  <span className="ml-auto flex items-center gap-1 text-[10px] font-medium">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                    生成中
+                  </span>
+                )}
+                {active && !(item.href === '/chat' && chatResponding) && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-[var(--studio-deep)]" />}
               </Link>
             )
           })}
@@ -240,7 +249,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
               <PaintBrushIcon className="h-[18px] w-[18px]" />
             </button>
             {themeOpen && (
-              <div className="absolute right-0 top-12 z-40 w-44 rounded-2xl border border-black/10 bg-white p-2 shadow-xl">
+              <div className="absolute right-0 top-12 z-40 max-h-[360px] w-48 overflow-y-auto rounded-2xl border border-black/10 bg-white p-2 shadow-xl">
                 {themes.map(item => (
                   <button
                     key={item.id}
@@ -279,8 +288,11 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
                 }}
                 className={`flex min-w-[53px] flex-col items-center gap-1 text-[10px] font-medium ${active ? 'text-[var(--studio-deep)]' : 'text-black/45'}`}
               >
-                <span className={`grid h-8 w-10 place-items-center rounded-xl ${active ? 'bg-[var(--studio-accent)]' : ''}`}>
+                <span className={`relative grid h-8 w-10 place-items-center rounded-xl ${active ? 'bg-[var(--studio-accent)]' : ''}`}>
                   <Icon className="h-[18px] w-[18px]" />
+                  {item.href === '/chat' && chatResponding && (
+                    <span className="absolute ml-7 mt-[-22px] h-2 w-2 animate-pulse rounded-full bg-orange-500 ring-2 ring-[var(--studio-surface)]" />
+                  )}
                 </span>
                 {item.shortLabel}
               </Link>

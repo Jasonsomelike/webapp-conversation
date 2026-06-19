@@ -13,6 +13,7 @@ import type { ChatItem, ConversationItem, Feedbacktype, PromptConfig, VisionFile
 import type { FileUpload } from '@/app/components/base/file-uploader-in-attachment/types'
 import { Resolution, TransferMethod, WorkflowRunningStatus } from '@/types/app'
 import Chat from '@/app/components/chat'
+import { getChatRuntime, useChatRuntime } from '@/app/components/chat/runtime-store'
 import { setLocaleOnClient } from '@/i18n/client'
 import useBreakpoints, { MediaType } from '@/hooks/use-breakpoints'
 import Loading from '@/app/components/base/loading'
@@ -82,7 +83,10 @@ const Main: FC<IMainProps> = () => {
   } = useConversation()
 
   const [conversationIdChangeBecauseOfNew, setConversationIdChangeBecauseOfNew, getConversationIdChangeBecauseOfNew] = useGetState(false)
-  const [isChatStarted, { setTrue: setChatStarted, setFalse: setChatNotStarted }] = useBoolean(false)
+  const isChatStarted = useChatRuntime(state => state.isChatStarted)
+  const setRuntimeChatStarted = useChatRuntime(state => state.setIsChatStarted)
+  const setChatStarted = () => setRuntimeChatStarted(true)
+  const setChatNotStarted = () => setRuntimeChatStarted(false)
   const handleStartChat = (inputs: Record<string, any>) => {
     createNewChat()
     setConversationIdChangeBecauseOfNew(true)
@@ -151,7 +155,8 @@ const Main: FC<IMainProps> = () => {
       })
     }
 
-    if (isNewConversation && isChatStarted) { setChatList(generateNewChatListWithOpenStatement()) }
+    if (isNewConversation && isChatStarted && getChatRuntime().chatList.length === 0)
+    { setChatList(generateNewChatListWithOpenStatement()) }
   }
   useEffect(handleConversationSwitch, [currConversationId, inited])
 
@@ -171,18 +176,46 @@ const Main: FC<IMainProps> = () => {
   /*
   * chat info. chat is under conversation.
   */
-  const [chatList, setChatList, getChatList] = useGetState<ChatItem[]>([])
+  const chatList = useChatRuntime(state => state.chatList)
+  const setChatList = useChatRuntime(state => state.setChatList)
+  const getChatList = () => getChatRuntime().chatList
   const chatListDomRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    // scroll to bottom with page-level scrolling
-    if (chatListDomRef.current) {
-      setTimeout(() => {
-        chatListDomRef.current?.scrollIntoView({
-          behavior: 'auto',
-          block: 'end',
-        })
-      }, 50)
+  const followOutputRef = useRef(true)
+
+  const findScrollParent = (element: HTMLElement | null) => {
+    let current = element?.parentElement || null
+    while (current) {
+      const style = globalThis.getComputedStyle(current)
+      if (/(auto|scroll)/.test(style.overflowY))
+      { return current }
+      current = current.parentElement
     }
+    return null
+  }
+
+  useEffect(() => {
+    const scrollParent = findScrollParent(chatListDomRef.current)
+    if (!scrollParent)
+    { return }
+
+    const handleScroll = () => {
+      const distanceToBottom = scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight
+      followOutputRef.current = distanceToBottom < 120
+    }
+    scrollParent.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
+    return () => scrollParent.removeEventListener('scroll', handleScroll)
+  }, [currConversationId])
+
+  useEffect(() => {
+    if (!followOutputRef.current)
+    { return }
+    const timer = setTimeout(() => {
+      const scrollParent = findScrollParent(chatListDomRef.current)
+      if (scrollParent)
+      { scrollParent.scrollTop = scrollParent.scrollHeight }
+    }, 50)
+    return () => clearTimeout(timer)
   }, [chatList, currConversationId])
   // user can not edit inputs if user had send message
   const canEditInputs = !chatList.some(item => item.isAnswer === false) && isNewConversation
@@ -264,7 +297,7 @@ const Main: FC<IMainProps> = () => {
         setVisionConfig({
           ...file_upload?.image,
           enabled: !!(outerFileUploadEnabled && file_upload?.image?.enabled),
-          image_file_size_limit: system_parameters?.system_parameters || 0,
+          image_file_size_limit: system_parameters?.image_file_size_limit || 10,
         })
         setFileConfig({
           enabled: outerFileUploadEnabled,
@@ -292,7 +325,10 @@ const Main: FC<IMainProps> = () => {
     })()
   }, [])
 
-  const [isResponding, { setTrue: setRespondingTrue, setFalse: setRespondingFalse }] = useBoolean(false)
+  const isResponding = useChatRuntime(state => state.isResponding)
+  const setRuntimeResponding = useChatRuntime(state => state.setIsResponding)
+  const setRespondingTrue = () => setRuntimeResponding(true)
+  const setRespondingFalse = () => setRuntimeResponding(false)
   const [abortController, setAbortController] = useState<AbortController | null>(null)
   const { notify } = Toast
   const logError = (message: string) => {
@@ -425,6 +461,7 @@ const Main: FC<IMainProps> = () => {
       message_files: [],
       isAnswer: true,
     }
+    followOutputRef.current = true
     const responseTempId = responseItem.id
     let hasSetResponseId = false
 
@@ -486,6 +523,7 @@ const Main: FC<IMainProps> = () => {
       onFile(file) {
         const lastThought = responseItem.agent_thoughts?.[responseItem.agent_thoughts?.length - 1]
         if (lastThought) { lastThought.message_files = [...(lastThought as any).message_files, { ...file }] }
+        responseItem.message_files = [...(responseItem.message_files || []), { ...file }]
 
         updateCurrentQA({
           responseItem,

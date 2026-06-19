@@ -210,7 +210,11 @@ const handleStream = (
               onThought?.(bufferObj as ThoughtItem)
             }
             else if (bufferObj.event === 'message_file') {
-              onFile?.(bufferObj as VisionFile)
+              onFile?.({
+                ...bufferObj,
+                url: bufferObj.url || bufferObj.file_url || '',
+                name: bufferObj.name || bufferObj.filename,
+              } as VisionFile)
             }
             else if (bufferObj.event === 'message_end') {
               onMessageEnd?.(bufferObj as MessageEnd)

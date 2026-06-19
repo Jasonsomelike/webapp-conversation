@@ -10,10 +10,13 @@ import {
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
 import type { KnowledgeReference } from '@/lib/learning-types'
+import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
+import ImagePreview from '@/app/components/base/image-uploader/image-preview'
 
 export default function SourcesView({ initialReferences }: { initialReferences: KnowledgeReference[] }) {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState(initialReferences[0]?.id)
+  const [previewUrl, setPreviewUrl] = useState('')
 
   const filtered = useMemo(() => initialReferences.filter(item =>
     `${item.documentName} ${item.topic} ${item.quote}`.toLowerCase().includes(query.toLowerCase()),
@@ -137,6 +140,20 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
                       <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.16em] text-black/40">Dify 命中片段</div>
                       <blockquote className="border-l-2 border-[var(--studio-accent-strong)]/50 pl-4 text-sm leading-8 text-black/70">{selected.quote}</blockquote>
                     </div>
+                    {selected.pageImageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewUrl(toDifyAssetProxyUrl(selected.pageImageUrl!))}
+                        className="group mt-5 overflow-hidden rounded-2xl border border-black/10 bg-black/[0.025] p-2 text-left shadow-sm"
+                      >
+                        <img
+                          src={toDifyAssetProxyUrl(selected.pageImageUrl)}
+                          alt={`${selected.documentName} 来源页`}
+                          className="max-h-[430px] max-w-full rounded-xl object-contain transition-transform duration-200 group-hover:scale-[1.01]"
+                        />
+                        <div className="px-2 pb-1 pt-2 text-[10px] text-black/40">点击放大查看来源页</div>
+                      </button>
+                    )}
                     <div className="mt-5 flex flex-wrap gap-3">
                       {selected.conversationId && (
                         <a href={`/chat?conversation=${selected.conversationId}`} className="inline-flex items-center gap-2 rounded-xl bg-[var(--studio-deep)] px-4 py-2.5 text-xs font-semibold text-white">
@@ -144,9 +161,27 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
                         </a>
                       )}
                       {selected.sourceUrl && (
-                        <a href={selected.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-xs font-semibold">
+                        <a href={toDifyAssetProxyUrl(selected.sourceUrl)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-xs font-semibold">
                           打开来源 <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
                         </a>
+                      )}
+                      {selected.documentId && (
+                        <>
+                          <a
+                            href={`/api/library/documents/${selected.documentId}/file?disposition=inline&filename=${encodeURIComponent(selected.documentName)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-xs font-semibold"
+                          >
+                            预览文档 <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+                          </a>
+                          <a
+                            href={`/api/library/documents/${selected.documentId}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`}
+                            className="inline-flex items-center gap-2 rounded-xl bg-[var(--studio-accent)] px-4 py-2.5 text-xs font-semibold text-[var(--studio-deep)]"
+                          >
+                            下载文档 <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+                          </a>
+                        </>
                       )}
                     </div>
                     <p className="mt-8 text-[11px] leading-5 text-black/35">该记录由当前账号的 Dify 对话产生，并在服务端按用户 ID 隔离保存。</p>
@@ -156,6 +191,7 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
             </div>
           )}
       </PageCard>
+      {previewUrl && <ImagePreview url={previewUrl} onCancel={() => setPreviewUrl('')} />}
     </div>
   )
 }

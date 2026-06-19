@@ -19,6 +19,18 @@ export interface DifyKnowledgeDocument {
   word_count?: number
   hit_count?: number
   doc_form?: string
+  data_source_info?: {
+    upload_file_id?: string
+  }
+  data_source_detail_dict?: {
+    upload_file?: {
+      id?: string
+      name?: string
+      size?: number
+      extension?: string
+      mime_type?: string
+    }
+  }
 }
 
 export interface DifyDocumentList {
@@ -71,3 +83,22 @@ const cachedKnowledgeDocuments = unstable_cache(
 )
 
 export const listKnowledgeDocuments = cachedKnowledgeDocuments
+
+export const getKnowledgeDocumentDownloadUrl = async (documentId: string) => {
+  const apiKey = process.env.DIFY_DATASET_API_KEY
+  const datasetId = process.env.DIFY_DATASET_ID
+  if (!apiKey || !datasetId)
+  { throw new Error('DIFY_DATASET_NOT_CONFIGURED') }
+
+  const response = await fetchDify(
+    `/datasets/${encodeURIComponent(datasetId)}/documents/${encodeURIComponent(documentId)}/download`,
+    { method: 'GET' },
+    { apiKey, connectTimeoutMs: 10_000, retries: 1 },
+  )
+  if (!response.ok)
+  { throw new Error(`DIFY_DOCUMENT_DOWNLOAD_FAILED:${response.status}`) }
+  const result = await response.json() as { url?: string }
+  if (!result.url)
+  { throw new Error('DIFY_DOCUMENT_DOWNLOAD_URL_MISSING') }
+  return result.url
+}

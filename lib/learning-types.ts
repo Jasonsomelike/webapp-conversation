@@ -2,6 +2,7 @@ export interface KnowledgeReference {
   id: string
   conversationId: string
   messageId?: string
+  documentId?: string
   documentName: string
   datasetName?: string
   pageNumber?: number

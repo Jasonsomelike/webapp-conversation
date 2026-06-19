@@ -11,15 +11,19 @@ const ImagePreview: FC<ImagePreviewProps> = ({
   onCancel,
 }) => {
   return createPortal(
-    <div className='fixed inset-0 p-8 flex items-center justify-center bg-black/80 z-[1000]' onClick={e => e.stopPropagation()}>
+    <div className='fixed inset-0 z-[1000] flex items-center justify-center bg-black/85 p-5 backdrop-blur-sm' onClick={onCancel}>
       <img
         alt='preview image'
         src={url}
-        className='max-w-full max-h-full'
+        className='max-h-full max-w-full rounded-lg object-contain shadow-2xl'
+        onClick={event => event.stopPropagation()}
       />
       <div
         className='absolute top-6 right-6 flex items-center justify-center w-8 h-8 bg-white/[0.08] rounded-lg backdrop-blur-[2px] cursor-pointer'
-        onClick={onCancel}
+        onClick={(event) => {
+          event.stopPropagation()
+          onCancel()
+        }}
       >
         <XClose className='w-4 h-4 text-white' />
       </div>

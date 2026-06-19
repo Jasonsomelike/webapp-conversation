@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
         id: message.difyMessageId || message.id,
         query: userMessages.get(message.difyMessageId)?.content || '',
         answer: message.content,
-        message_files: [],
+        message_files: rawPayload?.assistantFiles || [],
         agent_thoughts: [],
         feedback: null,
         workflowProcess: rawPayload?.workflowProcess,

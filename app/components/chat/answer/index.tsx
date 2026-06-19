@@ -16,6 +16,10 @@ import LoadingAnim from '../loading-anim'
 import s from '../style.module.css'
 import Thought from '../thought'
 import ReasoningPanel, { splitReasoningContent } from './reasoning-panel'
+import {
+  isImageAsset,
+  toDifyAssetProxyUrl,
+} from '@/lib/dify-assets'
 
 function OperationBtn({ innerContent, onClick, className }: { innerContent: React.ReactNode, onClick?: () => void, className?: string }) {
   return (
@@ -82,9 +86,15 @@ const Answer: FC<IAnswerProps> = ({
   allToolIcons,
   suggestionClick = () => { },
 }) => {
-  const { id, content, feedback, agent_thoughts, workflowProcess, suggestedQuestions = [] } = item
+  const { id, content, feedback, agent_thoughts, workflowProcess, message_files, suggestedQuestions = [] } = item
   const isAgentMode = !!agent_thoughts && agent_thoughts.length > 0
   const answerSegments = splitReasoningContent(content)
+  const assistantImages = (message_files || [])
+    .filter(file => file.type === 'image' || isImageAsset(file.url || ''))
+    .map(file => toDifyAssetProxyUrl(file.url))
+    .filter(Boolean)
+  const assistantDocuments = (message_files || [])
+    .filter(file => file.url && file.type !== 'image' && !isImageAsset(file.url))
 
   const { t } = useTranslation()
 
@@ -171,7 +181,7 @@ const Answer: FC<IAnswerProps> = ({
           )}
 
           {getImgs(item.message_files).length > 0 && (
-            <ImageGallery srcs={getImgs(item.message_files).map(item => item.url)} />
+            <ImageGallery srcs={getImgs(item.message_files).map(item => toDifyAssetProxyUrl(item.url))} />
           )}
         </div>
       ))}
@@ -228,6 +238,28 @@ const Answer: FC<IAnswerProps> = ({
                 : (isAgentMode
                   ? agentModeAnswer
                   : sectionedAnswer)}
+              {(assistantImages.length > 0 || assistantDocuments.length > 0) && (
+                <div className='mt-4 border-t border-[#17342b]/10 pt-4'>
+                  {assistantImages.length > 0 && <ImageGallery srcs={assistantImages} />}
+                  {assistantDocuments.length > 0 && (
+                    <div className='mt-2 flex flex-wrap gap-2'>
+                      {assistantDocuments.map((file, index) => {
+                        const filename = file.name || file.filename || `生成文件 ${index + 1}`
+                        return (
+                          <a
+                            key={`${file.url}-${index}`}
+                            href={toDifyAssetProxyUrl(file.url, true, filename)}
+                            download={filename}
+                            className='inline-flex items-center gap-2 rounded-xl border border-[var(--studio-accent-strong)]/20 bg-[var(--studio-accent)]/20 px-3 py-2 text-xs font-semibold text-[var(--studio-accent-strong)] transition hover:-translate-y-0.5 hover:shadow-md'
+                          >
+                            <span>↓</span>{filename}
+                          </a>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               {suggestedQuestions.length > 0 && (
                 <div className="mt-4 border-t border-[#17342b]/10 pt-3">
                   <div className="flex gap-1 mt-1 flex-wrap">

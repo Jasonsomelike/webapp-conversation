@@ -12,7 +12,7 @@ interface Props {
 const getWidthStyle = (imgNum: number) => {
   if (imgNum === 1) {
     return {
-      maxWidth: '100%',
+      maxWidth: 'min(100%, 660px)',
     }
   }
 

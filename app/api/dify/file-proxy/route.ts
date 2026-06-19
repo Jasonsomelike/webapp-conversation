@@ -26,16 +26,29 @@ export async function GET(request: NextRequest) {
   if (process.env.DIFY_API_KEY)
   { headers.Authorization = `Bearer ${process.env.DIFY_API_KEY}` }
 
+  const range = request.headers.get('range')
+  if (range)
+  { headers.Range = range }
   const upstream = await fetch(target, { headers, cache: 'no-store' })
   if (!upstream.ok || !upstream.body)
   { return new Response('Upstream file unavailable', { status: upstream.status }) }
 
+  const shouldDownload = request.nextUrl.searchParams.get('download') === '1'
+  const requestedFilename = request.nextUrl.searchParams.get('filename')
+  const filename = (requestedFilename || target.pathname.split('/').pop() || 'download')
+    .replace(/["\r\n]/g, '_')
+
   return new Response(upstream.body, {
-    status: 200,
+    status: upstream.status,
     headers: {
       'Content-Type': upstream.headers.get('Content-Type') || 'application/octet-stream',
       'Cache-Control': 'private, max-age=300',
       'X-Content-Type-Options': 'nosniff',
+      ...(upstream.headers.get('Content-Length') ? { 'Content-Length': upstream.headers.get('Content-Length')! } : {}),
+      ...(upstream.headers.get('Content-Range') ? { 'Content-Range': upstream.headers.get('Content-Range')! } : {}),
+      ...(shouldDownload
+        ? { 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}` }
+        : {}),
     },
   })
 }

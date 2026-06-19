@@ -92,6 +92,7 @@ const Chat: FC<IChatProps> = ({
     onImageLinkLoadError,
     onImageLinkLoadSuccess,
     onClear,
+    onPaste,
   } = useImageFiles()
 
   const [attachmentFiles, setAttachmentFiles] = React.useState<FileEntity[]>([])
@@ -221,6 +222,7 @@ const Chat: FC<IChatProps> = ({
                 onChange={handleContentChange}
                 onKeyUp={handleKeyUp}
                 onKeyDown={handleKeyDown}
+                onPaste={event => onPaste(event, visionConfig?.number_limits || 5)}
                 autoSize
               />
               <div className="absolute bottom-2.5 right-3 flex items-center h-8">

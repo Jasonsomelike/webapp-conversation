@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server'
 import { difyApiKey, fetchDify } from '@/lib/dify-server'
 import { getSessionFromRequest } from '@/lib/session'
 import { persistChatExchange } from '@/lib/user-data'
+import { extractKnowledgeReferences } from '@/lib/reference-extractor'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -18,6 +19,17 @@ export async function POST(request: NextRequest) {
   if (!query)
   { return Response.json({ error: 'Query is required' }, { status: 400 }) }
 
+  const currentDate = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(new Date())
+  const documentRequest = /文档|报告|讲义|总结|导出|word|docx|pdf/i.test(query)
+  const upstreamQuery = documentRequest
+    ? `${query}\n\n[文档格式要求：落款统一使用“计网Agent”，日期使用当前日期“${currentDate}”。]`
+    : query
+
   let upstream: Response
   try {
     upstream = await fetchDify('/chat-messages', {
@@ -27,13 +39,12 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         inputs: body.inputs || {},
-        query,
+        query: upstreamQuery,
         files: body.files || [],
         conversation_id: body.conversation_id || '',
         response_mode: 'streaming',
         user: session.difyUserId,
       }),
-      signal: request.signal,
     }, { connectTimeoutMs: 12_000, retries: 0 })
   }
   catch {
@@ -58,6 +69,9 @@ export async function POST(request: NextRequest) {
   let conversationId = body.conversation_id || ''
   let messageId = ''
   let metadata: Record<string, any> | undefined
+  const agentLogs: unknown[] = []
+  const assistantFiles: Record<string, unknown>[] = []
+  let agentLogBytes = 0
   let workflowProcess: {
     status: string
     tracing: Record<string, any>[]
@@ -86,6 +100,20 @@ export async function POST(request: NextRequest) {
         { answer = event.answer }
         if (event.event === 'message_end')
         { metadata = event.metadata || metadata }
+        if (event.event === 'agent_log' && agentLogBytes < 2_000_000) {
+          const log = event.data || event
+          const serialized = JSON.stringify(log)
+          agentLogBytes += serialized.length
+          if (agentLogBytes < 2_000_000)
+          { agentLogs.push(log) }
+        }
+        if (event.event === 'message_file') {
+          assistantFiles.push({
+            ...event,
+            url: event.url || event.file_url,
+            name: event.name || event.filename,
+          })
+        }
         if (event.event === 'workflow_started') {
           workflowProcess = {
             status: 'running',
@@ -126,34 +154,51 @@ export async function POST(request: NextRequest) {
     })
   }
 
+  let clientConnected = true
   const stream = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const { done, value } = await reader.read()
-        if (!done) {
-          controller.enqueue(value)
-          readEvents(decoder.decode(value, { stream: true }))
-          return
-        }
+    start(controller) {
+      const pump = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done)
+            { break }
+            if (clientConnected)
+            { controller.enqueue(value) }
+            readEvents(decoder.decode(value, { stream: true }))
+          }
 
-        readEvents(decoder.decode())
-        await persistChatExchange({
-          appUserId: session.id,
-          query,
-          answer,
-          conversationId,
-          messageId,
-          metadata,
-          workflowProcess,
-        }).catch(error => console.error('Failed to persist chat exchange', error))
-        controller.close()
+          readEvents(decoder.decode())
+          await persistChatExchange({
+            appUserId: session.id,
+            query,
+            answer,
+            conversationId,
+            messageId,
+            metadata,
+            workflowProcess,
+            references: extractKnowledgeReferences({
+              metadata,
+              agentLogs,
+              answer,
+            }),
+            assistantFiles,
+          }).catch(error => console.error('Failed to persist chat exchange', error))
+          if (clientConnected)
+          { controller.close() }
+        }
+        catch (error) {
+          if (clientConnected)
+          { controller.error(error) }
+          else
+          { console.error('Detached Dify stream failed', error) }
+        }
       }
-      catch (error) {
-        controller.error(error)
-      }
+      void pump()
     },
     cancel() {
-      reader.cancel().catch(() => undefined)
+      // Keep draining and persisting the upstream response after route navigation.
+      clientConnected = false
     },
   })
 

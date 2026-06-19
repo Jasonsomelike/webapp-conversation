@@ -148,6 +148,10 @@ export interface ImageFile {
 
 export interface VisionFile {
   id?: string
+  name?: string
+  filename?: string
+  mime_type?: string
+  size?: number
   type: string
   transfer_method: TransferMethod
   url: string
