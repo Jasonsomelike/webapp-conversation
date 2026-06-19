@@ -1,7 +1,16 @@
 import { getLocaleOnServer } from '@/i18n/server'
+import type { Metadata } from 'next'
 
 import './styles/globals.css'
 import './styles/markdown.scss'
+
+export const metadata: Metadata = {
+  title: {
+    default: '知行网络学堂',
+    template: '%s · 知行网络学堂',
+  },
+  description: '基于 Dify 的计算机网络个性化学习空间',
+}
 
 const LocaleLayout = async ({
   children,
@@ -10,13 +19,9 @@ const LocaleLayout = async ({
 }) => {
   const locale = await getLocaleOnServer()
   return (
-    <html lang={locale ?? 'en'} className="h-full">
-      <body className="h-full">
-        <div className="overflow-x-auto">
-          <div className="w-screen h-screen min-w-[300px]">
-            {children}
-          </div>
-        </div>
+    <html lang={locale ?? 'zh-Hans'} className="h-full">
+      <body className="min-h-full bg-[#f3f1eb] antialiased">
+        {children}
       </body>
     </html>
   )

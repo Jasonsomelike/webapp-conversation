@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AppUser {
+  id                 String   @id @default(uuid()) @db.Uuid
+  provider           String   @default("wechat") @db.VarChar(32)
+  providerUserIdHash String   @unique @map("provider_user_id_hash") @db.VarChar(128)
+  wxOpenidHash       String?  @map("wx_openid_hash") @db.VarChar(128)
+  wxUnionidHash      String?  @map("wx_unionid_hash") @db.VarChar(128)
+  difyUserId         String   @unique @map("dify_user_id") @db.VarChar(128)
+  nickname           String?  @db.VarChar(128)
+  avatarUrl          String?  @map("avatar_url")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  lastLoginAt        DateTime? @map("last_login_at") @db.Timestamptz
+
+  conversations ChatConversation[]
+  messages      ChatMessage[]
+  references    MessageReference[]
+  graphNodes    GraphNode[]
+  graphEdges    GraphEdge[]
+  profile       UserProfile?
+  reports       UserAnalysisReport[]
+
+  @@map("app_users")
+}
+
+model ChatConversation {
+  id                 String   @id @default(uuid()) @db.Uuid
+  appUserId          String   @map("app_user_id") @db.Uuid
+  difyConversationId String   @map("dify_conversation_id") @db.VarChar(128)
+  title              String?  @db.VarChar(255)
+  lastMessageAt      DateTime? @map("last_message_at") @db.Timestamptz
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user AppUser @relation(fields: [appUserId], references: [id], onDelete: Cascade)
+
+  @@unique([appUserId, difyConversationId])
+  @@map("chat_conversations")
+}
+
+model ChatMessage {
+  id                 String   @id @default(uuid()) @db.Uuid
+  appUserId          String   @map("app_user_id") @db.Uuid
+  difyConversationId String   @map("dify_conversation_id") @db.VarChar(128)
+  difyMessageId      String?  @map("dify_message_id") @db.VarChar(128)
+  role               String   @db.VarChar(32)
+  content            String
+  rawPayload         Json?    @map("raw_payload")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user AppUser @relation(fields: [appUserId], references: [id], onDelete: Cascade)
+
+  @@index([appUserId, difyConversationId])
+  @@map("chat_messages")
+}
+
+model MessageReference {
+  id                 String   @id @default(uuid()) @db.Uuid
+  appUserId          String   @map("app_user_id") @db.Uuid
+  difyConversationId String?  @map("dify_conversation_id") @db.VarChar(128)
+  difyMessageId      String?  @map("dify_message_id") @db.VarChar(128)
+  documentName       String?  @map("document_name")
+  datasetName        String?  @map("dataset_name")
+  segmentId          String?  @map("segment_id") @db.VarChar(128)
+  pageNumber         Int?     @map("page_number")
+  originalPageNumber Int?     @map("original_page_number")
+  quote              String?
+  score              Decimal?
+  pageImageUrl       String?  @map("page_image_url")
+  sourceUrl          String?  @map("source_url")
+  rawPayload         Json?    @map("raw_payload")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user AppUser @relation(fields: [appUserId], references: [id], onDelete: Cascade)
+
+  @@index([appUserId, createdAt])
+  @@map("message_references")
+}
+
+model GraphNode {
+  id        String   @id @default(uuid()) @db.Uuid
+  appUserId String   @map("app_user_id") @db.Uuid
+  nodeKey   String   @map("node_key") @db.VarChar(255)
+  nodeType  String   @map("node_type") @db.VarChar(64)
+  label     String   @db.VarChar(255)
+  meta      Json?
+  weight    Decimal  @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user AppUser @relation(fields: [appUserId], references: [id], onDelete: Cascade)
+
+  @@unique([appUserId, nodeKey])
+  @@map("graph_nodes")
+}
+
+model GraphEdge {
+  id        String   @id @default(uuid()) @db.Uuid
+  appUserId String   @map("app_user_id") @db.Uuid
+  sourceKey String   @map("source_key") @db.VarChar(255)
+  targetKey String   @map("target_key") @db.VarChar(255)
+  edgeType  String   @map("edge_type") @db.VarChar(64)
+  weight    Decimal  @default(1)
+  meta      Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user AppUser @relation(fields: [appUserId], references: [id], onDelete: Cascade)
+
+  @@unique([appUserId, sourceKey, targetKey, edgeType])
+  @@map("graph_edges")
+}
+
+model UserProfile {
+  appUserId      String   @id @map("app_user_id") @db.Uuid
+  learningStage  String?  @map("learning_stage") @db.VarChar(64)
+  preferredStyle String?  @map("preferred_style") @db.VarChar(64)
+  target         String?  @db.VarChar(128)
+  weakTopics     Json?    @map("weak_topics")
+  strongTopics   Json?    @map("strong_topics")
+  interests      Json?
+  profileSummary String?  @map("profile_summary")
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user AppUser @relation(fields: [appUserId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model UserAnalysisReport {
+  id              String   @id @default(uuid()) @db.Uuid
+  appUserId       String   @map("app_user_id") @db.Uuid
+  reportType      String   @map("report_type") @db.VarChar(64)
+  summary         String?
+  metrics         Json?
+  recommendations Json?
+  rawPayload      Json?    @map("raw_payload")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user AppUser @relation(fields: [appUserId], references: [id], onDelete: Cascade)
+
+  @@index([appUserId, createdAt])
+  @@map("user_analysis_reports")
+}
+

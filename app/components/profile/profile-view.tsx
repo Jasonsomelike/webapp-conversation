@@ -1,0 +1,188 @@
+'use client'
+
+import { useState } from 'react'
+import {
+  AcademicCapIcon,
+  AdjustmentsHorizontalIcon,
+  CalendarDaysIcon,
+  CheckIcon,
+  FingerPrintIcon,
+  PencilSquareIcon,
+  ShieldCheckIcon,
+  SparklesIcon,
+} from '@heroicons/react/24/outline'
+import PageCard from '@/app/components/workspace/page-card'
+import type { AppSession } from '@/lib/session'
+
+const stages = ['入门', '系统学习', '复习', '刷题', '备考']
+const styles = ['图示讲解', '公式推导', '例题驱动', '简洁回答']
+const targets = ['期末考试', '课程作业', '竞赛', '自学提升']
+
+export default function ProfileView({ session }: { session: AppSession }) {
+  const [stage, setStage] = useState('复习')
+  const [style, setStyle] = useState('图示讲解')
+  const [target, setTarget] = useState('期末考试')
+  const [saved, setSaved] = useState(false)
+
+  const save = () => {
+    setSaved(true)
+    setTimeout(() => setSaved(false), 1800)
+  }
+
+  return (
+    <div className="mx-auto max-w-[1350px] p-4 sm:p-6">
+      <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
+        <div className="space-y-5">
+          <div className="relative overflow-hidden rounded-[24px] bg-[#17342b] p-6 text-white shadow-[0_20px_60px_rgba(23,52,43,.18)]">
+            <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#dff67a]/10 blur-2xl" />
+            <div className="relative">
+              <div className="flex items-center justify-between">
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#dff67a]">Learner profile</div>
+                <button className="grid h-8 w-8 place-items-center rounded-xl bg-white/10">
+                  <PencilSquareIcon className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="mt-7 flex items-center gap-4">
+                {session.avatar
+                  ? <img src={session.avatar} alt="" className="h-16 w-16 rounded-2xl object-cover ring-4 ring-white/10" />
+                  : <div className="grid h-16 w-16 place-items-center rounded-2xl bg-[#dff67a] text-2xl font-semibold text-[#17342b]">{session.name.slice(0, 1)}</div>}
+                <div>
+                  <h2 className="text-xl font-semibold">{session.name}</h2>
+                  <div className="mt-1 text-xs text-white/45">{session.provider === 'wechat' ? '微信授权用户' : '产品演示账户'}</div>
+                </div>
+              </div>
+
+              <div className="mt-7 grid grid-cols-3 divide-x divide-white/10 rounded-2xl bg-white/[0.06] py-4 text-center">
+                {[
+                  ['18', '会话'],
+                  ['37', '引用'],
+                  ['12', '知识点'],
+                ].map(([value, label]) => (
+                  <div key={label}>
+                    <div className="text-lg font-semibold text-[#dff67a]">{value}</div>
+                    <div className="mt-1 text-[9px] text-white/40">{label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <PageCard className="p-5">
+            <div className="mb-4 text-[10px] font-bold uppercase tracking-[0.18em] text-[#748179]">账户信息</div>
+            <div className="space-y-4">
+              {[
+                [FingerPrintIcon, 'Dify 用户 ID', session.difyUserId],
+                [CalendarDaysIcon, '加入时间', '2026 年 6 月 19 日'],
+                [ShieldCheckIcon, '身份隔离', '已启用'],
+              ].map(([Icon, label, value]) => (
+                <div key={label as string} className="flex items-start gap-3">
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#f0f2ed] text-[#63736b]">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] text-[#89958f]">{label as string}</div>
+                    <div className="mt-1 break-all text-xs font-medium">{value as string}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </PageCard>
+        </div>
+
+        <div className="space-y-5">
+          <PageCard className="p-6">
+            <div className="flex items-center gap-3">
+              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#e8f4ec] text-[#47715c]">
+                <AdjustmentsHorizontalIcon className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#748179]">Learning preferences</div>
+                <h2 className="mt-1 text-base font-semibold">学习偏好设置</h2>
+              </div>
+            </div>
+
+            <div className="mt-7 space-y-7">
+              {[
+                ['当前阶段', stages, stage, setStage],
+                ['偏好风格', styles, style, setStyle],
+                ['学习目标', targets, target, setTarget],
+              ].map(([label, options, value, setter]) => (
+                <div key={label as string}>
+                  <div className="mb-3 text-xs font-semibold">{label as string}</div>
+                  <div className="flex flex-wrap gap-2">
+                    {(options as string[]).map(option => (
+                      <button
+                        key={option}
+                        onClick={() => (setter as (value: string) => void)(option)}
+                        className={`rounded-xl border px-4 py-2.5 text-xs transition ${
+                          option === value
+                            ? 'border-[#17342b] bg-[#17342b] font-semibold text-white'
+                            : 'border-[#183129]/10 bg-[#fafaf6] text-[#69766f] hover:bg-white'
+                        }`}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8 flex justify-end">
+              <button onClick={save} className="flex h-11 items-center gap-2 rounded-xl bg-[#dff67a] px-5 text-xs font-semibold text-[#17342b] shadow-[0_10px_24px_rgba(132,153,58,.15)]">
+                {saved ? <CheckIcon className="h-4 w-4" /> : null}
+                {saved ? '已保存' : '保存偏好'}
+              </button>
+            </div>
+          </PageCard>
+
+          <div className="grid gap-5 md:grid-cols-2">
+            <PageCard className="p-6">
+              <div className="mb-5 flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#fff0df] text-[#a4653a]">
+                  <AcademicCapIcon className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#7f8b85]">Knowledge</div>
+                  <div className="mt-1 text-sm font-semibold">常学领域</div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {['网络层', 'CIDR', '路由转发', 'TCP', '子网划分'].map((topic, index) => (
+                  <span key={topic} className={`rounded-full px-3 py-1.5 text-[10px] font-medium ${index < 2 ? 'bg-[#e8f4ec] text-[#47715c]' : 'bg-[#f1f2ee] text-[#6f7b75]'}`}>{topic}</span>
+                ))}
+              </div>
+            </PageCard>
+
+            <PageCard className="p-6">
+              <div className="mb-5 flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#f1eafa] text-[#765692]">
+                  <SparklesIcon className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#7f8b85]">AI Persona</div>
+                  <div className="mt-1 text-sm font-semibold">学习特征</div>
+                </div>
+              </div>
+              <p className="text-xs leading-6 text-[#66736c]">
+                偏好先看直观图示，再通过例题确认规则。连续学习节奏较好，遇到边界条件时倾向反复核验。
+              </p>
+            </PageCard>
+          </div>
+
+          <div className="rounded-[22px] border border-[#5f866f]/15 bg-[#e8f4ec] p-6">
+            <div className="flex items-start gap-3">
+              <ShieldCheckIcon className="mt-0.5 h-5 w-5 shrink-0 text-[#4e755f]" />
+              <div>
+                <div className="text-sm font-semibold text-[#315f4b]">隐私与数据隔离</div>
+                <p className="mt-2 text-xs leading-6 text-[#5d786a]">
+                  微信原始 openid / unionid 不会发送给 Dify。系统只使用不可逆哈希生成的用户 ID，并在所有数据库查询中绑定当前登录用户。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

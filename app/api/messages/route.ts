@@ -1,12 +1,17 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { client, getInfo, setSession } from '@/app/api/utils/common'
+import { getInfo, isDifyConfigured, requireDifyClient, setSession } from '@/app/api/utils/common'
 
 export async function GET(request: NextRequest) {
   const { sessionId, user } = getInfo(request)
   const { searchParams } = new URL(request.url)
   const conversationId = searchParams.get('conversation_id')
-  const { data }: any = await client.getConversationMessages(user, conversationId as string)
+  if (!isDifyConfigured) {
+    return NextResponse.json({ data: [] }, {
+      headers: setSession(sessionId),
+    })
+  }
+  const { data }: any = await requireDifyClient().getConversationMessages(user, conversationId as string)
   return NextResponse.json(data, {
     headers: setSession(sessionId),
   })

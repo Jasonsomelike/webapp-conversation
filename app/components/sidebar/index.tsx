@@ -32,13 +32,13 @@ const Sidebar: FC<ISidebarProps> = ({
   const { t } = useTranslation()
   return (
     <div
-      className="shrink-0 flex flex-col overflow-y-auto bg-white pc:w-[244px] tablet:w-[192px] mobile:w-[240px]  border-r border-gray-200 tablet:h-[calc(100vh_-_3rem)] mobile:h-screen"
+      className="flex h-full shrink-0 flex-col overflow-y-auto border-r border-[#183129]/[0.07] bg-[#f7f7f2] pc:w-[236px] tablet:w-[210px] mobile:w-[260px]"
     >
       {list.length < MAX_CONVERSATION_LENTH && (
         <div className="flex flex-shrink-0 p-4 !pb-0">
           <Button
             onClick={() => { onCurrentIdChange('-1') }}
-            className="group block w-full flex-shrink-0 !justify-start !h-9 text-primary-600 items-center text-sm"
+            className="group block w-full flex-shrink-0 !justify-start !h-9 !rounded-xl !border-0 !bg-[#17342b] !text-white items-center text-sm"
           >
             <PencilSquareIcon className="mr-2 h-4 w-4" /> {t('app.chat.newChat')}
           </Button>
@@ -56,15 +56,15 @@ const Sidebar: FC<ISidebarProps> = ({
               key={item.id}
               className={classNames(
                 isCurrent
-                  ? 'bg-primary-50 text-primary-600'
-                  : 'text-gray-700 hover:bg-gray-100 hover:text-gray-700',
-                'group flex items-center rounded-md px-2 py-2 text-sm font-medium cursor-pointer',
+                  ? 'bg-[#e4eee6] text-[#285440]'
+                  : 'text-gray-700 hover:bg-[#eceee9] hover:text-gray-700',
+                'group flex items-center rounded-xl px-2.5 py-2.5 text-xs font-medium cursor-pointer',
               )}
             >
               <ItemIcon
                 className={classNames(
                   isCurrent
-                    ? 'text-primary-600'
+                    ? 'text-[#396b53]'
                     : 'text-gray-400 group-hover:text-gray-500',
                   'mr-3 h-5 w-5 flex-shrink-0',
                 )}

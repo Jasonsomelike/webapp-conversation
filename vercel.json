@@ -1,0 +1,9 @@
+{
+  "framework": "nextjs",
+  "functions": {
+    "app/api/chat-messages/route.ts": {
+      "maxDuration": 300
+    }
+  }
+}
+

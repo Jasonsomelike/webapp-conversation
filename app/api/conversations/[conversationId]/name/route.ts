@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { client, getInfo } from '@/app/api/utils/common'
+import { getInfo, isDifyConfigured, requireDifyClient } from '@/app/api/utils/common'
 
 export async function POST(request: NextRequest, { params }: {
   params: Promise<{ conversationId: string }>
@@ -12,8 +12,10 @@ export async function POST(request: NextRequest, { params }: {
   } = body
   const { conversationId } = await params
   const { user } = getInfo(request)
+  if (!isDifyConfigured)
+  { return NextResponse.json({ name: name || '网络学习会话' }) }
 
   // auto generate name
-  const { data } = await client.renameConversation(conversationId, name, user, auto_generate)
+  const { data } = await requireDifyClient().renameConversation(conversationId, name, user, auto_generate)
   return NextResponse.json(data)
 }

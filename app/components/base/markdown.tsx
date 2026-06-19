@@ -11,10 +11,10 @@ export function Markdown(props: { content: string }) {
   return (
     <div className="markdown-body">
       <ReactMarkdown
-        remarkPlugins={[RemarkMath, RemarkGfm, RemarkBreaks]}
+        remarkPlugins={[RemarkMath, RemarkGfm, RemarkBreaks] as any}
         rehypePlugins={[
           RehypeKatex,
-        ]}
+        ] as any}
         components={{
           code({ node, inline, className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || '')

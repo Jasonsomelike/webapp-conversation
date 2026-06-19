@@ -8,7 +8,7 @@ export interface IButtonProps {
   disabled?: boolean
   loading?: boolean
   children: React.ReactNode
-  onClick?: MouseEventHandler<HTMLDivElement>
+  onClick?: MouseEventHandler<HTMLButtonElement>
 }
 
 const Button: FC<IButtonProps> = ({
@@ -33,14 +33,16 @@ const Button: FC<IButtonProps> = ({
   }
 
   return (
-    <div
+    <button
+      type="button"
       className={`flex justify-center items-center content-center h-9 leading-5 rounded-lg px-4 py-2 text-base ${style} ${className && className}`}
       onClick={disabled ? undefined : onClick}
+      disabled={disabled || loading}
     >
       {children}
       {/* Spinner is hidden when loading is false */}
       <Spinner loading={loading} className='!text-white !h-3 !w-3 !border-2 !ml-1' />
-    </div>
+    </button>
   )
 }
 
