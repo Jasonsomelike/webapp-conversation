@@ -17,7 +17,7 @@ export interface ExtractedReference {
 }
 
 const documentExtension = /\.(?:docx?|md|pdf|pptx?|txt|xlsx?)$/i
-const imageUrlPattern = /(?:https?:\/\/dify\.jasonsome\.cn:22380)?\/files\/[^\s<>"')\]]+\.(?:avif|gif|jpe?g|png|webp)(?:\?[^\s<>"')\]]*)?/gi
+const imageUrlPattern = /(?:https?:\/\/dify\.jasonsome\.cn:22380)?\/(?:files|page-images)\/[^\s<>"')\]]+\.(?:avif|gif|jpe?g|png|webp)(?:\?[^\s<>"')\]]*)?/gi
 
 const stableSegmentId = (value: string) =>
   `derived_${createHash('sha256').update(value).digest('hex').slice(0, 28)}`
@@ -118,7 +118,7 @@ const referencesFromAnswer = (answer: string): ExtractedReference[] => {
     const originalPage = window.match(/原\s*PDF\s*第\s*(\d+)\s*页/i)
     const page = window.match(/(?:分卷内|来源页码|第)\s*第?\s*(\d+)\s*页/i)
     const nearestImage = imageMatches.find(image => (image.index || 0) >= (match.index || 0) && (image.index || 0) < (match.index || 0) + 900)
-    const identity = `${documentName}|${originalPage?.[1] || page?.[1] || index}|${nearestImage?.[0] || ''}`
+    const identity = `${documentName}|${originalPage?.[1] || page?.[1] || index}|`
     references.push({
       document_name: documentName,
       segment_id: stableSegmentId(identity),

@@ -186,7 +186,23 @@ export const getUserReferences = async (appUserId: string): Promise<KnowledgeRef
     })
   })
   if (recoveredReferences.length)
-  { await db.messageReference.createMany({ data: recoveredReferences, skipDuplicates: true }) }
+  {
+    await db.messageReference.createMany({ data: recoveredReferences, skipDuplicates: true })
+    await Promise.all(recoveredReferences
+      .filter(reference => reference.pageImageUrl || reference.sourceUrl)
+      .map(reference => db.messageReference.updateMany({
+        where: {
+          appUserId,
+          difyMessageId: reference.difyMessageId,
+          segmentId: reference.segmentId,
+        },
+        data: {
+          pageImageUrl: reference.pageImageUrl,
+          sourceUrl: reference.sourceUrl,
+          rawPayload: reference.rawPayload,
+        },
+      })))
+  }
 
   const references = await db.messageReference.findMany({
     where: { appUserId },
