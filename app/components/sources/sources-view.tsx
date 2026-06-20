@@ -22,8 +22,11 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
   ), [query, initialReferences])
   const selected = initialReferences.find(item => item.id === selectedId) || filtered[0]
   const documentCount = new Set(initialReferences.map(item => item.documentName)).size
-  const documentPreviewUrl = selected?.documentId
-    ? `/api/library/documents/${selected.documentId}/file?disposition=inline&filename=${encodeURIComponent(selected.documentName)}${selected.pageNumber ? `&page=${selected.pageNumber}` : ''}`
+  const documentPreviewUrl = selected
+    ? `/api/sources/${selected.id}/file?disposition=inline&filename=${encodeURIComponent(selected.documentName)}`
+    : ''
+  const documentDownloadUrl = selected
+    ? `/api/sources/${selected.id}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`
     : ''
   const pageImageHref = selected?.pageImageUrl
     ? toDifyAssetProxyUrl(selected.pageImageUrl)
@@ -184,24 +187,20 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
                           {selected.messageId ? '回到原消息' : '回到原对话'} <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
                         </a>
                       )}
-                      {selected.documentId && (
-                        <>
-                          <a
-                            href={documentPreviewUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-xs font-semibold"
-                          >
-                            预览来源 PDF <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
-                          </a>
-                          <a
-                            href={`/api/library/documents/${selected.documentId}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`}
-                            className="inline-flex items-center gap-2 rounded-xl bg-[var(--studio-accent)] px-4 py-2.5 text-xs font-semibold text-[var(--studio-deep)]"
-                          >
-                            下载文档 <ArrowDownTrayIcon className="h-3.5 w-3.5" />
-                          </a>
-                        </>
-                      )}
+                      <a
+                        href={documentPreviewUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-xs font-semibold"
+                      >
+                        预览来源 PDF <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+                      </a>
+                      <a
+                        href={documentDownloadUrl}
+                        className="inline-flex items-center gap-2 rounded-xl bg-[var(--studio-accent)] px-4 py-2.5 text-xs font-semibold text-[var(--studio-deep)]"
+                      >
+                        下载文档 <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+                      </a>
                     </div>
                     <p className="mt-8 text-[11px] leading-5 text-black/35">该记录由当前账号的 Dify 对话产生，并在服务端按用户 ID 隔离保存。</p>
                   </>

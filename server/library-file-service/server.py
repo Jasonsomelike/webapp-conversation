@@ -71,6 +71,48 @@ def signed_request_is_valid(
     return bool(signature and hmac.compare_digest(signature, expected))
 
 
+def signed_name_request_is_valid(
+    document_name: str,
+    disposition: str,
+    filename: str,
+    request_id: str,
+) -> bool:
+    expires = request.args.get("expires", "")
+    signature = request.args.get("signature", "")
+    try:
+        expires_at = int(expires)
+    except ValueError:
+        return False
+    now = int(time.time())
+    if expires_at < now or expires_at > now + 600:
+        return False
+    canonical = f"{document_name}\n{disposition}\n{filename}\n{request_id}\n{expires}"
+    expected = base64.urlsafe_b64encode(
+        hmac.new(INTERNAL_TOKEN.encode(), canonical.encode(), hashlib.sha256).digest()
+    ).decode().rstrip("=")
+    return bool(signature and hmac.compare_digest(signature, expected))
+
+
+def signed_page_image_request_is_valid(asset_path: str, request_id: str) -> bool:
+    expires = request.args.get("expires", "")
+    signature = request.args.get("signature", "")
+    try:
+        expires_at = int(expires)
+    except ValueError:
+        return False
+    now = int(time.time())
+    if expires_at < now or expires_at > now + 600:
+        return False
+    canonical = f"{asset_path}\n{request_id}\n{expires}"
+    expected = base64.urlsafe_b64encode(
+        hmac.new(INTERNAL_TOKEN.encode(), canonical.encode(), hashlib.sha256).digest()
+    ).decode().rstrip("=")
+    return bool(signature and hmac.compare_digest(signature, expected))
+
+
+def normalize_document_name(value: str) -> str:
+    return re.sub(r"[^\w\u3400-\u9fff]+", "", value or "").lower()
+
 def authorize(
     document_id: uuid.UUID,
     disposition: str,
@@ -152,6 +194,105 @@ def storage_file_response(
 @app.get("/health")
 def health():
     return {"ok": True}
+
+@app.get("/page-images/<batch>/<filename>")
+def page_image_file(batch: str, filename: str):
+    request_id = request.args.get("requestId", "") or str(uuid.uuid4())
+    asset_path = f"/page-images/{batch}/{filename}"
+    if not re.fullmatch(r"[A-Za-z0-9_-]{6,64}", batch) or not re.fullmatch(
+        r"page_\d+\.(?:jpe?g|png|webp)", filename, re.I
+    ):
+        return error_response("Invalid page image path", 400, request_id)
+    if not signed_page_image_request_is_valid(asset_path, request_id):
+        return error_response("Unauthorized", 401, request_id)
+
+    storage_key = f"page_images/{batch}/{filename}"
+    file_path = (STORAGE_ROOT / storage_key).resolve()
+    try:
+        file_path.relative_to(STORAGE_ROOT)
+    except ValueError:
+        return error_response("Invalid page image path", 403, request_id)
+    if not file_path.is_file():
+        return error_response("Page image not found", 404, request_id)
+    mimetype = "image/png" if filename.lower().endswith(".png") else "image/webp" if filename.lower().endswith(".webp") else "image/jpeg"
+    return storage_file_response(
+        file_path,
+        storage_key,
+        mimetype,
+        filename,
+        "inline",
+        request_id,
+        "dify-page-image-storage",
+    )
+
+
+@app.get("/library/documents/by-name/file")
+def document_file_by_name():
+    request_id = request.args.get("requestId", "") or str(uuid.uuid4())
+    disposition = "attachment" if request.args.get("disposition") == "attachment" else "inline"
+    document_name = request.args.get("name", "").strip()
+    filename = request.args.get("filename") or document_name or "document.bin"
+    if not document_name or not signed_name_request_is_valid(
+        document_name, disposition, filename, request_id
+    ):
+        return error_response("Unauthorized", 401, request_id)
+
+    requested = normalize_document_name(document_name)
+    try:
+        with database_connection() as connection:
+            connection.set_session(readonly=True, autocommit=False)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, name
+                    FROM documents
+                    WHERE (%s = '' OR dataset_id::text = %s)
+                    """,
+                    (DATASET_ID, DATASET_ID),
+                )
+                candidates = cursor.fetchall()
+    except Exception as error:
+        logger.exception("[library-file-service] name lookup failed requestId=%s", request_id)
+        return error_response(f"Document lookup failed: {type(error).__name__}", 500, request_id)
+
+    ranked = []
+    for candidate_id, candidate_name in candidates:
+        normalized = normalize_document_name(candidate_name)
+        if not normalized:
+            continue
+        if normalized == requested:
+            score = (3, len(normalized))
+        elif len(normalized) > 5 and normalized in requested:
+            score = (2, len(normalized))
+        elif len(requested) > 5 and requested in normalized:
+            score = (1, len(requested))
+        else:
+            continue
+        ranked.append((score, candidate_id))
+    if not ranked:
+        return error_response("Document not found by name", 404, request_id)
+
+    ranked.sort(reverse=True)
+    document_id = ranked[0][1]
+    next_expires = str(int(time.time()) + 300)
+    canonical = f"{document_id}\n{disposition}\n{filename}\n{request_id}\n{next_expires}"
+    next_signature = base64.urlsafe_b64encode(
+        hmac.new(INTERNAL_TOKEN.encode(), canonical.encode(), hashlib.sha256).digest()
+    ).decode().rstrip("=")
+    location = (
+        f"../{document_id}/file?disposition={quote(disposition, safe='')}"
+        f"&filename={quote(filename, safe='')}&requestId={quote(request_id, safe='')}"
+        f"&expires={next_expires}&signature={quote(next_signature, safe='')}"
+    )
+    return Response(
+        status=307,
+        headers={
+            "Location": location,
+            "Cache-Control": "private, no-store",
+            "X-Request-Id": request_id,
+            "X-Library-File-Source": "document-name-resolution",
+        },
+    )
 
 
 @app.get("/library/documents/<uuid:document_id>/file")

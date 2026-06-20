@@ -1,6 +1,6 @@
 'use client'
 import type { AnchorHTMLAttributes, ImgHTMLAttributes, ReactNode } from 'react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Streamdown } from 'streamdown'
 import { ArrowDownTrayIcon, DocumentTextIcon } from '@heroicons/react/24/outline'
 import 'katex/dist/katex.min.css'
@@ -8,6 +8,7 @@ import ImagePreview from '@/app/components/base/image-uploader/image-preview'
 import {
   isDownloadableAsset,
   normalizeAssistantMarkdown,
+  toAbsoluteDifyAssetUrl,
   toDifyAssetProxyUrl,
 } from '@/lib/dify-assets'
 
@@ -19,41 +20,91 @@ interface StreamdownMarkdownProps {
 const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElement>) => {
   const [preview, setPreview] = useState(false)
   const [failed, setFailed] = useState(false)
-  const imageUrl = toDifyAssetProxyUrl(String(src))
+  const [sourceInfo, setSourceInfo] = useState<{ documentName?: string, pageNumber?: number }>()
+  const sourceUrl = String(src)
+  const absoluteSourceUrl = toAbsoluteDifyAssetUrl(sourceUrl)
+  const imageUrl = toDifyAssetProxyUrl(sourceUrl)
+
+  const pageNumber = sourceInfo?.pageNumber || Number(sourceUrl.match(/\/page-images\/[^/]+\/page_(\d+)\./i)?.[1] || 0) || undefined
+  const sourceFilename = sourceInfo?.documentName || String(alt).match(/([^\n|]+?\.(?:pdf|docx?|pptx?))/i)?.[1]?.replace(/^[\s\-–—*#>|![\]()"'“”‘’]+/, '').trim()
+  const isKnowledgeSource = Boolean(pageNumber || sourceUrl.includes('/page-images/'))
+  const isGeneratedImage = sourceUrl.includes('/files/tools/')
+  const sourceLabel = isKnowledgeSource
+    ? `来源：${sourceFilename || '课程知识库原页'}${pageNumber ? ` · 第 ${pageNumber} 页` : ''}`
+    : isGeneratedImage
+      ? '来源：计网Agent AI 生成图片'
+      : alt
+        ? `图片说明：${alt}`
+        : '来源：回答附图'
+  const originalLabel = isKnowledgeSource ? '查看来源原图' : '查看原图'
+
+  useEffect(() => {
+    if (!absoluteSourceUrl.includes('/page-images/'))
+    { return }
+    let cancelled = false
+    const timers: ReturnType<typeof setTimeout>[] = []
+    const loadSourceInfo = async (attempt = 0) => {
+      const response = await fetch(`/api/sources/image-info?url=${encodeURIComponent(absoluteSourceUrl)}`, {
+        credentials: 'include',
+      }).catch(() => null)
+      if (cancelled)
+      { return }
+      if (response?.ok) {
+        setSourceInfo(await response.json())
+        return
+      }
+      if (attempt < 2)
+      { timers.push(setTimeout(() => void loadSourceInfo(attempt + 1), attempt === 0 ? 4000 : 8000)) }
+    }
+    void loadSourceInfo()
+    return () => {
+      cancelled = true
+      timers.forEach(timer => clearTimeout(timer))
+    }
+  }, [absoluteSourceUrl])
+
   if (!imageUrl)
   { return null }
 
   if (failed) {
     return (
       <span className='markdown-media-error'>
-        图片加载失败
-        <a href={imageUrl} target='_blank' rel='noreferrer'>打开原图</a>
+        <span>{sourceLabel} · 图片加载失败</span>
+        <button type='button' onClick={() => setFailed(false)}>重试</button>
+        <a href={imageUrl} target='_blank' rel='noreferrer'>{originalLabel}</a>
       </span>
     )
   }
 
   return (
     <>
-      <span
-        role='button'
-        tabIndex={0}
-        className='markdown-media group relative my-4 block max-w-full overflow-hidden rounded-xl border border-black/10 bg-black/[0.025] text-left shadow-sm'
-        onClick={() => setPreview(true)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ')
-          { setPreview(true) }
-        }}
-      >
-        <img src={imageUrl} alt={alt} loading='lazy' onError={() => setFailed(true)} />
-        <span className='pointer-events-none absolute inset-x-0 bottom-0 translate-y-full bg-black/65 px-3 py-2 text-[11px] text-white transition-transform group-hover:translate-y-0'>
-          点击放大查看
+      <figure className='markdown-source-figure my-4 max-w-full overflow-hidden rounded-xl border border-black/10 bg-black/[0.025] shadow-sm'>
+        <span
+          role='button'
+          tabIndex={0}
+          className='markdown-media group relative block max-w-full overflow-hidden text-left'
+          onClick={() => setPreview(true)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ')
+            { setPreview(true) }
+          }}
+        >
+          <img src={imageUrl} alt={alt} loading='lazy' onError={() => setFailed(true)} />
+          <span className='pointer-events-none absolute inset-x-0 bottom-0 translate-y-full bg-black/65 px-3 py-2 text-[11px] text-white transition-transform group-hover:translate-y-0'>
+            点击放大查看
+          </span>
         </span>
-      </span>
+        <figcaption className='flex flex-wrap items-center justify-between gap-2 border-t border-black/10 px-3 py-2 text-[11px] text-[var(--studio-muted)]'>
+          <span>{sourceLabel}</span>
+          <a href={imageUrl} target='_blank' rel='noreferrer' onClick={event => event.stopPropagation()} className='font-semibold text-[var(--studio-accent-strong)]'>
+            {originalLabel}
+          </a>
+        </figcaption>
+      </figure>
       {preview && <ImagePreview url={imageUrl} onCancel={() => setPreview(false)} />}
     </>
   )
 }
-
 const childText = (children: ReactNode) => Array.isArray(children)
   ? children.map(child => String(child)).join('').trim()
   : String(children || '').trim()

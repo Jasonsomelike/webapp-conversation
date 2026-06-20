@@ -4,7 +4,7 @@ import type { Prisma } from '@prisma/client'
 import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
 import type { KnowledgeReference, LearningAnalysis, WeakTopic } from '@/lib/learning-types'
 import type { ExtractedReference } from '@/lib/reference-extractor'
-import { extractKnowledgeReferences } from '@/lib/reference-extractor'
+import { cleanReferenceDocumentName, extractKnowledgeReferences } from '@/lib/reference-extractor'
 import { listKnowledgeDocuments } from '@/lib/dify-dataset'
 
 interface RetrieverResource extends ExtractedReference {
@@ -222,17 +222,25 @@ const getUserReferencesOnce = async (appUserId: string): Promise<KnowledgeRefere
     take: 300,
   })
 
+  const normalizeDocumentName = (value: string) =>
+    cleanReferenceDocumentName(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
   const documentIdsByName = new Map<string, string>()
   try {
     const documents = await listKnowledgeDocuments({ page: 1, limit: 100 })
-    documents.data.forEach(document => documentIdsByName.set(document.name, document.id))
+    documents.data.forEach(document => documentIdsByName.set(normalizeDocumentName(document.name), document.id))
   }
   catch {
     // References remain usable even when the document catalog is temporarily unavailable.
   }
 
   return references.map((reference) => {
-    const documentName = reference.documentName || '未命名文档'
+    const documentName = cleanReferenceDocumentName(reference.documentName || '未命名文档')
+    const normalizedName = normalizeDocumentName(documentName)
+    const matchedDocumentId = documentIdsByName.get(normalizedName)
+      || [...documentIdsByName.entries()]
+        .filter(([candidate]) => candidate.length > 5 && (normalizedName.includes(candidate) || candidate.includes(normalizedName)))
+        .sort(([left], [right]) => right.length - left.length)[0]?.[1]
+    const inferredPage = Number(reference.pageImageUrl?.match(/\/page_(\d+)\./i)?.[1] || 0) || undefined
     const rawDocumentId = reference.rawPayload && typeof reference.rawPayload === 'object' && !Array.isArray(reference.rawPayload)
       ? (reference.rawPayload as Record<string, any>).document_id as string | undefined
       : undefined
@@ -240,10 +248,10 @@ const getUserReferencesOnce = async (appUserId: string): Promise<KnowledgeRefere
       id: reference.id,
       conversationId: reference.difyConversationId || '',
       messageId: reference.difyMessageId || undefined,
-      documentId: rawDocumentId || documentIdsByName.get(documentName),
+      documentId: rawDocumentId || matchedDocumentId,
       documentName,
       datasetName: reference.datasetName || undefined,
-      pageNumber: reference.pageNumber || undefined,
+      pageNumber: reference.pageNumber || inferredPage,
       originalPageNumber: reference.originalPageNumber || undefined,
       quote: reference.quote || undefined,
       score: reference.score ? Number(reference.score) : undefined,

@@ -1,8 +1,10 @@
+import { createHmac, randomUUID } from 'node:crypto'
 import type { NextRequest } from 'next/server'
 import { getSessionFromRequest } from '@/lib/session'
 
 const allowedHosts = new Set(['dify.jasonsome.cn', 'www.jasonsome.cn', 'jasonsome.cn'])
 const allowedPaths = ['/files/', '/page-images/']
+const pageImagePathPattern = /^\/page-images\/[a-z0-9_-]{6,64}\/page_\d+\.(?:jpe?g|png|webp)$/i
 
 export const runtime = 'nodejs'
 
@@ -12,20 +14,45 @@ const contentDisposition = (filename: string, download: boolean) => {
   return `${mode}; filename*=UTF-8''${encodeURIComponent(safeFilename)}`
 }
 
+const signedPageImageRedirect = (path: string, requestId: string) => {
+  const baseUrl = process.env.LIBRARY_FILE_SERVICE_URL?.replace(/\/$/, '')
+  const token = process.env.LIBRARY_FILE_SERVICE_TOKEN
+  if (!baseUrl || !token || !pageImagePathPattern.test(path))
+  { return null }
+
+  const expires = String(Math.floor(Date.now() / 1000) + 300)
+  const canonical = `${path}\n${requestId}\n${expires}`
+  const signature = createHmac('sha256', token).update(canonical).digest('base64url')
+  const url = new URL(`${baseUrl}${path}`)
+  url.searchParams.set('requestId', requestId)
+  url.searchParams.set('expires', expires)
+  url.searchParams.set('signature', signature)
+  return new Response(null, {
+    status: 307,
+    headers: {
+      'Location': url.toString(),
+      'Cache-Control': 'private, no-store',
+      'X-Request-Id': requestId,
+      'X-Dify-Asset-Source': 'signed-page-image-redirect',
+    },
+  })
+}
+
 export async function GET(request: NextRequest) {
+  const requestId = randomUUID()
   if (!getSessionFromRequest(request))
-  { return new Response('Unauthorized', { status: 401 }) }
+  { return new Response('Unauthorized', { status: 401, headers: { 'X-Request-Id': requestId } }) }
 
   const rawUrl = request.nextUrl.searchParams.get('url')
   if (!rawUrl)
-  { return new Response('Missing url', { status: 400 }) }
+  { return new Response('Missing url', { status: 400, headers: { 'X-Request-Id': requestId } }) }
 
   let target: URL
   try {
     target = new URL(rawUrl)
   }
   catch {
-    return new Response('Invalid url', { status: 400 })
+    return new Response('Invalid url', { status: 400, headers: { 'X-Request-Id': requestId } })
   }
 
   const allowed = target.protocol === 'https:'
@@ -33,7 +60,13 @@ export async function GET(request: NextRequest) {
     && (target.hostname !== 'dify.jasonsome.cn' || !target.port || target.port === '22380')
     && allowedPaths.some(path => target.pathname.startsWith(path))
   if (!allowed)
-  { return new Response('Forbidden file proxy url', { status: 403 }) }
+  { return new Response('Forbidden file proxy url', { status: 403, headers: { 'X-Request-Id': requestId } }) }
+
+  if (target.pathname.startsWith('/page-images/')) {
+    const redirect = signedPageImageRedirect(target.pathname, requestId)
+    if (redirect)
+    { return redirect }
+  }
 
   const headers: HeadersInit = {}
   const range = request.headers.get('range')
@@ -42,7 +75,7 @@ export async function GET(request: NextRequest) {
 
   let upstream: Response
   try {
-    // Fetch the exact decoded signed URL. Do not rebuild timestamp, nonce, sign, or query order.
+    // Preserve the exact signed URL for non-page-image assets.
     upstream = await fetch(rawUrl, {
       method: 'GET',
       headers,
@@ -52,13 +85,13 @@ export async function GET(request: NextRequest) {
   }
   catch (error) {
     const message = error instanceof Error ? error.message : 'network error'
-    return new Response(`Unable to proxy file. ${message}`, { status: 502 })
+    return new Response(`Unable to proxy file. ${message}`, { status: 502, headers: { 'X-Request-Id': requestId } })
   }
   if (!upstream.ok || !upstream.body) {
     const body = await upstream.text().catch(() => '')
     return new Response(
       `Unable to proxy file. Upstream status=${upstream.status}. ${body.slice(0, 500)}`,
-      { status: upstream.status || 502 },
+      { status: upstream.status || 502, headers: { 'X-Request-Id': requestId } },
     )
   }
 
@@ -73,6 +106,7 @@ export async function GET(request: NextRequest) {
       'Content-Disposition': contentDisposition(filename, shouldDownload),
       'Cache-Control': 'private, no-store',
       'X-Content-Type-Options': 'nosniff',
+      'X-Request-Id': requestId,
       'Accept-Ranges': upstream.headers.get('Accept-Ranges') || 'bytes',
       ...(upstream.headers.get('Content-Length') ? { 'Content-Length': upstream.headers.get('Content-Length')! } : {}),
       ...(upstream.headers.get('Content-Range') ? { 'Content-Range': upstream.headers.get('Content-Range')! } : {}),

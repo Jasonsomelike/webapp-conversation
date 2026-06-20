@@ -181,7 +181,10 @@ const Answer: FC<IAnswerProps> = ({
           )}
 
           {getImgs(item.message_files).length > 0 && (
-            <ImageGallery srcs={getImgs(item.message_files).map(item => toDifyAssetProxyUrl(item.url))} />
+            <div>
+              <div className='mb-2 text-[11px] text-[var(--studio-muted)]'>来源：计网Agent 回答附图</div>
+              <ImageGallery srcs={getImgs(item.message_files).map(item => toDifyAssetProxyUrl(item.url))} />
+            </div>
           )}
         </div>
       ))}
@@ -245,7 +248,12 @@ const Answer: FC<IAnswerProps> = ({
                   : sectionedAnswer)}
               {(assistantImages.length > 0 || assistantDocuments.length > 0) && (
                 <div className='mt-4 border-t border-[#17342b]/10 pt-4'>
-                  {assistantImages.length > 0 && <ImageGallery srcs={assistantImages} />}
+                  {assistantImages.length > 0 && (
+                    <div>
+                      <div className='mb-2 text-[11px] text-[var(--studio-muted)]'>来源：计网Agent AI 生成图片</div>
+                      <ImageGallery srcs={assistantImages} />
+                    </div>
+                  )}
                   {assistantDocuments.length > 0 && (
                     <div className='mt-2 flex flex-wrap gap-2'>
                       {assistantDocuments.map((file, index) => {

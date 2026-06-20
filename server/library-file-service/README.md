@@ -3,6 +3,8 @@
 This read-only companion service runs beside Dify and provides three server-side capabilities for the customized webapp:
 
 - Resolve knowledge-library `documents.id` values to the original files in Dify local storage.
+- Resolve user-owned references by normalized document name when Agent output omits `document_id`.
+- Serve signed `page-images` directly from Dify storage instead of sending Vercel back through the public Dify port.
 - Resolve generated `tool_files.id` values so expired Dify download signatures do not break historical chat files.
 - Relay authenticated browser chat requests to the local Dify API when the serverless deployment cannot reliably reach the non-standard public HTTPS port.
 

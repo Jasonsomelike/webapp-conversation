@@ -22,6 +22,21 @@ const imageUrlPattern = /(?:https?:\/\/dify\.jasonsome\.cn:22380)?\/(?:files|pag
 const stableSegmentId = (value: string) =>
   `derived_${createHash('sha256').update(value).digest('hex').slice(0, 28)}`
 
+export const cleanReferenceDocumentName = (value: unknown) => {
+  let name = String(value || '').trim()
+  const quotedParts = name.split(/["“”'‘’`|]/).map(part => part.trim()).filter(Boolean)
+  const quotedFilename = [...quotedParts].reverse().find(part => documentExtension.test(part))
+  if (quotedFilename)
+  { name = quotedFilename }
+  const afterMarker = name.match(/(?:即|来源(?:文件|文档)?|文件名)\s*[:：]?\s*(.+\.(?:docx?|md|pdf|pptx?|txt|xlsx?))/i)
+  if (afterMarker?.[1])
+  { name = afterMarker[1] }
+  return name
+    .replace(/^[\s\-–—*#>|![\]()"'“”‘’]+/, '')
+    .replace(/[\s)"'“”‘’]+$/, '')
+    .trim()
+}
+
 const asNumber = (value: unknown) => {
   const number = Number(value)
   return Number.isFinite(number) ? number : undefined
@@ -29,7 +44,7 @@ const asNumber = (value: unknown) => {
 
 const referenceFromObject = (value: Record<string, any>): ExtractedReference | null => {
   const metadata = value.metadata && typeof value.metadata === 'object' ? value.metadata : {}
-  const documentName = value.document_name
+  const rawDocumentName = value.document_name
     || value.documentName
     || metadata.document_name
     || metadata.documentName
@@ -38,6 +53,8 @@ const referenceFromObject = (value: Record<string, any>): ExtractedReference | n
   const segmentId = value.segment_id || value.segmentId || metadata.segment_id
   const pageImageUrl = value.page_image_url || value.pageImageUrl || metadata.page_image_url
   const sourceUrl = value.url || value.source_url || metadata.url
+  const documentName = rawDocumentName ? cleanReferenceDocumentName(rawDocumentName) : ''
+  const pageFromImage = String(pageImageUrl || sourceUrl || '').match(/\/page_(\d+)\.(?:jpe?g|png|webp)/i)?.[1]
 
   if (!documentName && !segmentId && !pageImageUrl)
   { return null }
@@ -60,7 +77,7 @@ const referenceFromObject = (value: Record<string, any>): ExtractedReference | n
     score: asNumber(value.score || metadata.score),
     segment_position: asNumber(value.segment_position || metadata.segment_position),
     page: asNumber(value.page || metadata.page),
-    page_number: asNumber(value.page_number || metadata.page_number),
+    page_number: asNumber(value.page_number || metadata.page_number || pageFromImage),
     original_page_number: asNumber(value.original_page_number || metadata.original_page_number),
     page_image_url: pageImageUrl ? String(pageImageUrl) : undefined,
     url: sourceUrl ? String(sourceUrl) : undefined,
@@ -113,7 +130,7 @@ const referencesFromAnswer = (answer: string): ExtractedReference[] => {
   const imageMatches = [...answer.matchAll(imageUrlPattern)]
 
   documentMatches.forEach((match, index) => {
-    const documentName = match[1].trim()
+    const documentName = cleanReferenceDocumentName(match[1])
     const window = answer.slice(match.index || 0, (match.index || 0) + 600)
     const originalPage = window.match(/原\s*PDF\s*第\s*(\d+)\s*页/i)
     const page = window.match(/(?:分卷内|来源页码|第)\s*第?\s*(\d+)\s*页/i)
@@ -134,12 +151,14 @@ const referencesFromAnswer = (answer: string): ExtractedReference[] => {
     if (references.some(reference => reference.page_image_url === match[0]))
     { return }
     const before = answer.slice(Math.max(0, (match.index || 0) - 500), match.index || 0)
-    const documentName = [...before.matchAll(/([^\n`*]+?\.(?:docx?|md|pdf|pptx?|txt|xlsx?))/gi)].pop()?.[1]?.trim()
+    const rawDocumentName = [...before.matchAll(/([^\n`*]+?\.(?:docx?|md|pdf|pptx?|txt|xlsx?))/gi)].pop()?.[1]
+    const documentName = cleanReferenceDocumentName(rawDocumentName)
     if (!documentName)
     { return }
     references.push({
       document_name: documentName,
       segment_id: stableSegmentId(`${documentName}|${match[0]}|${index}`),
+      page_number: asNumber(match[0].match(/\/page_(\d+)\./i)?.[1]),
       page_image_url: match[0],
       url: match[0],
     })

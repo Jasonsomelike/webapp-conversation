@@ -485,9 +485,20 @@ a {
   font-size: 0.78rem;
 }
 
-.streamdown-markdown .markdown-media-error a {
+.streamdown-markdown .markdown-media-error a,
+.streamdown-markdown .markdown-media-error button {
+  border: 0;
+  background: transparent;
+  padding: 0;
   color: var(--studio-accent-strong);
+  font: inherit;
+  font-weight: 650;
   text-decoration: underline;
+  cursor: pointer;
+}
+
+.streamdown-markdown .markdown-source-figure figcaption {
+  background: color-mix(in srgb, var(--studio-surface) 92%, var(--studio-accent));
 }
 
 :root[data-theme="midnight"] input,
