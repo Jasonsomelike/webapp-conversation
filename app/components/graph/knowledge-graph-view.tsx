@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   ArrowsPointingOutIcon,
   BookOpenIcon,
@@ -27,9 +27,46 @@ const tones: Record<string, string> = {
 export default function KnowledgeGraphView({ nodes, edges }: { nodes: KnowledgeGraphNode[], edges: KnowledgeGraphEdge[] }) {
   const [selected, setSelected] = useState(nodes.find(node => node.type === 'weakness')?.id || nodes[0]?.id || 'user')
   const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const dragRef = useRef({ active: false, x: 0, y: 0, panX: 0, panY: 0 })
   const selectedNode = nodes.find(node => node.id === selected) || nodes[0]!
 
   const related = useMemo(() => edges.filter(edge => edge.source === selected || edge.target === selected), [edges, selected])
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest('button, a'))
+    { return }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragRef.current = { active: true, x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y }
+    setIsDragging(true)
+  }
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active)
+    { return }
+    setPan({
+      x: dragRef.current.panX + event.clientX - dragRef.current.x,
+      y: dragRef.current.panY + event.clientY - dragRef.current.y,
+    })
+  }
+  const finishDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active)
+    { return }
+    dragRef.current.active = false
+    setIsDragging(false)
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+    { event.currentTarget.releasePointerCapture(event.pointerId) }
+  }
+  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey)
+    { return }
+    event.preventDefault()
+    setZoom(value => Math.min(2, Math.max(0.5, value + (event.deltaY < 0 ? 0.1 : -0.1))))
+  }
+  const resetViewport = () => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }
 
   return (
     <div className="mx-auto max-w-[1500px] p-4 sm:p-6">
@@ -51,31 +88,39 @@ export default function KnowledgeGraphView({ nodes, edges }: { nodes: KnowledgeG
           <div className="rounded-full bg-[#e9f3ed] px-3 py-1.5 text-[11px] font-medium text-[#4c6b5c]">
             {nodes.length} 节点 · {edges.length} 关系
           </div>
-          <button className="grid h-9 w-9 place-items-center rounded-xl border border-[#183129]/10 bg-white">
+          <button onClick={resetViewport} title="重置画布位置和缩放" className="grid h-9 w-9 place-items-center rounded-xl border border-[#183129]/10 bg-white">
             <ArrowsPointingOutIcon className="h-4 w-4" />
           </button>
         </div>
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_320px]">
-        <PageCard className="relative min-h-[680px] overflow-hidden bg-[#f8f8f3]">
+        <PageCard
+          className={`relative min-h-[680px] overflow-hidden bg-[#f8f8f3] ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
+          style={{ touchAction: 'none' }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={finishDrag}
+          onPointerCancel={finishDrag}
+          onWheel={handleWheel}
+        >
           <div className="absolute left-5 top-5 z-20 rounded-xl border border-[#183129]/10 bg-white/90 px-3 py-2 text-[10px] text-[#728078] shadow-sm backdrop-blur">
             <CursorArrowRaysIcon className="mr-1.5 inline h-3.5 w-3.5" />
-            点击节点查看学习证据
+            拖动画布 · Ctrl + 滚轮缩放 · 点击节点查看证据
           </div>
           <div className="absolute bottom-5 right-5 z-20 flex overflow-hidden rounded-xl border border-[#183129]/10 bg-white shadow-sm">
-            <button onClick={() => setZoom(value => Math.min(1.25, value + 0.1))} className="grid h-9 w-9 place-items-center border-r border-[#183129]/10">
+            <button onClick={() => setZoom(value => Math.min(2, value + 0.1))} className="grid h-9 w-9 place-items-center border-r border-[#183129]/10">
               <MagnifyingGlassPlusIcon className="h-4 w-4" />
             </button>
-            <button onClick={() => setZoom(value => Math.max(0.75, value - 0.1))} className="grid h-9 w-9 place-items-center">
+            <button onClick={() => setZoom(value => Math.max(0.5, value - 0.1))} className="grid h-9 w-9 place-items-center">
               <MagnifyingGlassMinusIcon className="h-4 w-4" />
             </button>
           </div>
 
           <div
-            className="absolute inset-0 origin-center transition-transform duration-300"
+            className={`absolute inset-0 origin-center ${isDragging ? '' : 'transition-transform duration-200'}`}
             style={{
-              transform: `scale(${zoom})`,
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
               backgroundImage: 'radial-gradient(rgba(57,80,69,.12) 1px, transparent 1px)',
               backgroundSize: '22px 22px',
             }}

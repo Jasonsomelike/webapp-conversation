@@ -1,7 +1,6 @@
 import 'server-only'
 
-import { unstable_cache } from 'next/cache'
-import { difyApiBaseUrl, fetchDify } from '@/lib/dify-server'
+import { fetchDify } from '@/lib/dify-server'
 
 export interface DifyKnowledgeDocument {
   id: string
@@ -88,13 +87,7 @@ const fetchKnowledgeDocuments = async ({
   return response.json()
 }
 
-const cachedKnowledgeDocuments = unstable_cache(
-  fetchKnowledgeDocuments,
-  ['dify-knowledge-documents', difyApiBaseUrl],
-  { revalidate: 300, tags: ['dify-knowledge-documents'] },
-)
-
-export const listKnowledgeDocuments = cachedKnowledgeDocuments
+export const listKnowledgeDocuments = fetchKnowledgeDocuments
 
 export const getKnowledgeDocumentDownloadUrl = async (documentId: string) => {
   const apiKey = process.env.DIFY_DATASET_API_KEY

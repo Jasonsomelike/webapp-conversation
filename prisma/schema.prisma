@@ -29,6 +29,7 @@ model AppUser {
   graphEdges    GraphEdge[]
   profile       UserProfile?
   reports       UserAnalysisReport[]
+  parsedUploads ParsedUpload[]
 
   @@map("app_users")
 }
@@ -153,4 +154,19 @@ model UserAnalysisReport {
 
   @@index([appUserId, createdAt])
   @@map("user_analysis_reports")
+}
+model ParsedUpload {
+  id            String   @id @default(uuid()) @db.Uuid
+  appUserId     String   @map("app_user_id") @db.Uuid
+  filename      String   @db.VarChar(255)
+  mimeType      String   @map("mime_type") @db.VarChar(128)
+  extension     String   @db.VarChar(24)
+  size          Int
+  extractedText String   @map("extracted_text")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user AppUser @relation(fields: [appUserId], references: [id], onDelete: Cascade)
+
+  @@index([appUserId, createdAt])
+  @@map("parsed_uploads")
 }

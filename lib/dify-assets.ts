@@ -81,7 +81,21 @@ export const normalizeAssistantMarkdown = (content: string) => {
       `$1${currentChinaDate()}`,
     )
 
-  return normalizedSignature
+  const seenImages = new Set<string>()
+  const deduplicatedImages = normalizedSignature.replace(
+    /!\[([^\]]*)\]\(([^)\s]+)\)/g,
+    (full, _alt: string, rawUrl: string) => {
+      const key = toAbsoluteDifyAssetUrl(rawUrl).replace(/[?#].*$/, '')
+      if (!key || !isImageAsset(rawUrl))
+      { return full }
+      if (seenImages.has(key))
+      { return '' }
+      seenImages.add(key)
+      return full
+    },
+  )
+
+  return deduplicatedImages
     .split('\n')
     .map((line) => {
       const value = line.trim()

@@ -96,10 +96,22 @@ export async function POST(request: NextRequest) {
     month: 'long',
     day: 'numeric',
   }).format(new Date())
-  const documentRequest = /文档|报告|讲义|总结|导出|word|docx|pdf/i.test(query)
-  const upstreamQuery = documentRequest
-    ? `${query}\n\n[文档格式要求：落款统一使用“计网Agent”，日期使用当前日期“${currentDate}”。]`
-    : query
+  const memoryContext = String(body.memory_context || '').trim().slice(0, 8_000)
+  const fileContext = String(body.file_context || '').trim().slice(0, 120_000)
+  const contextBlocks: string[] = []
+  if (memoryContext) {
+    contextBlocks.push(`[应用层跨对话长期学习记忆]\n${memoryContext}\n[请将以上内容视为已成功读取的当前用户长期记忆；回答时直接使用，不要声称没有跨对话记忆。]`)
+  }
+  if (fileContext) {
+    contextBlocks.push(`[当前消息上传文件的解析文本]\n${fileContext}\n[请基于这些文件内容回答，并在必要时注明所使用的文件名。]`)
+  }
+  if (/文档|报告|讲义|总结|导出|word|docx|pdf/i.test(query)) {
+    contextBlocks.push(`[文档格式要求：落款统一使用“计网Agent”，日期使用当前日期“${currentDate}”。]`)
+  }
+  const upstreamQuery = query + (contextBlocks.length ? `\n\n${contextBlocks.join('\n\n')}` : '')
+  const upstreamFiles = (Array.isArray(body.files) ? body.files : []).filter((file: Record<string, any>) =>
+    !String(file.upload_file_id || '').startsWith('localdoc_'),
+  )
 
   let upstream: Response
   try {
@@ -111,7 +123,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         inputs: body.inputs || {},
         query: upstreamQuery,
-        files: body.files || [],
+        files: upstreamFiles,
         conversation_id: body.conversation_id || '',
         response_mode: 'streaming',
         user: session.difyUserId,

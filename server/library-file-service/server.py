@@ -505,18 +505,37 @@ def chat_messages():
     query = str(body.get("query") or "").strip()
     if not query:
         return chat_error("请输入问题后再发送", 400, request_id)
+    memory_context = str(body.pop("memory_context", "") or "").strip()[:8000]
+    file_context = str(body.pop("file_context", "") or "").strip()[:120000]
+    files = [
+        item for item in (body.get("files") or [])
+        if not str(item.get("upload_file_id") or "").startswith("localdoc_")
+    ]
+    context_blocks = []
+    if memory_context:
+        context_blocks.append(
+            "[应用层跨对话长期学习记忆]\n"
+            + memory_context
+            + "\n[请将以上内容视为已成功读取的当前用户长期记忆；回答时直接使用，不要声称没有跨对话记忆。]"
+        )
+    if file_context:
+        context_blocks.append(
+            "[当前消息上传文件的解析文本]\n"
+            + file_context
+            + "\n[请基于这些文件内容回答，并在必要时注明所使用的文件名。]"
+        )
     current_date = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y年%-m月%-d日")
     if re.search(r"文档|报告|讲义|总结|导出|word|docx|pdf", query, re.I):
-        body["query"] = (
-            f"{query}\n\n[文档格式要求：落款统一使用“计网Agent”，"
-            f"日期使用当前日期“{current_date}”。]"
+        context_blocks.append(
+            f"[文档格式要求：落款统一使用“计网Agent”，日期使用当前日期“{current_date}”。]"
         )
+    body["query"] = query + ("\n\n" + "\n\n".join(context_blocks) if context_blocks else "")
     body.update({
         "response_mode": "streaming",
         "user": dify_user_id,
         "conversation_id": body.get("conversation_id") or "",
         "inputs": body.get("inputs") or {},
-        "files": body.get("files") or [],
+        "files": files,
     })
 
     try:

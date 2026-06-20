@@ -186,6 +186,9 @@ const Main: FC<IMainProps> = () => {
   const getChatList = () => getChatRuntime().chatList
   const chatListDomRef = useRef<HTMLDivElement>(null)
   const followOutputRef = useRef(true)
+  const lastScrollTopRef = useRef(0)
+  const programmaticScrollRef = useRef(false)
+  const touchYRef = useRef<number | null>(null)
 
   const findScrollParent = (element: HTMLElement | null) => {
     let current = element?.parentElement || null
@@ -204,12 +207,40 @@ const Main: FC<IMainProps> = () => {
     { return }
 
     const handleScroll = () => {
-      const distanceToBottom = scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight
-      followOutputRef.current = distanceToBottom < 120
+      const currentTop = scrollParent.scrollTop
+      const distanceToBottom = scrollParent.scrollHeight - currentTop - scrollParent.clientHeight
+      if (!programmaticScrollRef.current) {
+        if (currentTop < lastScrollTopRef.current - 2)
+        { followOutputRef.current = false }
+        else if (distanceToBottom < 70)
+        { followOutputRef.current = true }
+      }
+      lastScrollTopRef.current = currentTop
+    }
+    const handleWheel = (event: WheelEvent) => {
+      if (event.deltaY < 0)
+      { followOutputRef.current = false }
+    }
+    const handleTouchStart = (event: TouchEvent) => {
+      touchYRef.current = event.touches[0]?.clientY ?? null
+    }
+    const handleTouchMove = (event: TouchEvent) => {
+      const currentY = event.touches[0]?.clientY
+      if (currentY !== undefined && touchYRef.current !== null && currentY > touchYRef.current + 3)
+      { followOutputRef.current = false }
+      touchYRef.current = currentY ?? null
     }
     scrollParent.addEventListener('scroll', handleScroll, { passive: true })
+    scrollParent.addEventListener('wheel', handleWheel, { passive: true })
+    scrollParent.addEventListener('touchstart', handleTouchStart, { passive: true })
+    scrollParent.addEventListener('touchmove', handleTouchMove, { passive: true })
     handleScroll()
-    return () => scrollParent.removeEventListener('scroll', handleScroll)
+    return () => {
+      scrollParent.removeEventListener('scroll', handleScroll)
+      scrollParent.removeEventListener('wheel', handleWheel)
+      scrollParent.removeEventListener('touchstart', handleTouchStart)
+      scrollParent.removeEventListener('touchmove', handleTouchMove)
+    }
   }, [currConversationId])
 
   useEffect(() => {
@@ -217,8 +248,12 @@ const Main: FC<IMainProps> = () => {
     { return }
     const timer = setTimeout(() => {
       const scrollParent = findScrollParent(chatListDomRef.current)
-      if (scrollParent)
-      { scrollParent.scrollTop = scrollParent.scrollHeight }
+      if (scrollParent) {
+        programmaticScrollRef.current = true
+        scrollParent.scrollTop = scrollParent.scrollHeight
+        lastScrollTopRef.current = scrollParent.scrollTop
+        requestAnimationFrame(() => { programmaticScrollRef.current = false })
+      }
     }, 50)
     return () => clearTimeout(timer)
   }, [chatList, currConversationId])
@@ -488,6 +523,32 @@ const Main: FC<IMainProps> = () => {
     }
   }
 
+  const loadSupplementalContext = async (files: VisionFile[] = []) => {
+    const localUploadIds = files
+      .map(file => file.upload_file_id)
+      .filter(id => id?.startsWith('localdoc_'))
+    const memoryUrl = new URL('/api/memory', globalThis.location.origin)
+    if (!isNewConversation && currConversationId)
+    { memoryUrl.searchParams.set('excludeConversationId', currConversationId) }
+
+    const [memoryResult, fileResult] = await Promise.all([
+      fetch(memoryUrl, { credentials: 'include' })
+        .then(response => response.ok ? response.json() : { context: '' })
+        .catch(() => ({ context: '' })),
+      localUploadIds.length
+        ? fetch('/api/uploads/context', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uploadIds: localUploadIds }),
+        }).then(response => response.ok ? response.json() : { context: '' }).catch(() => ({ context: '' }))
+        : Promise.resolve({ context: '' }),
+    ])
+    return {
+      memoryContext: String(memoryResult.context || ''),
+      fileContext: String(fileResult.context || ''),
+    }
+  }
   const handleSend = async (message: string, files?: VisionFile[]) => {
     if (isResponding) {
       notify({ type: 'info', message: t('app.errorMessage.waitForResponse') })
@@ -505,10 +566,13 @@ const Main: FC<IMainProps> = () => {
       })
     }
 
+    const supplementalContext = await loadSupplementalContext(files || [])
     const data: Record<string, any> = {
       inputs: toServerInputs,
       query: message,
       conversation_id: isNewConversation ? null : currConversationId,
+      memory_context: supplementalContext.memoryContext,
+      file_context: supplementalContext.fileContext,
     }
 
     if (files && files?.length > 0) {

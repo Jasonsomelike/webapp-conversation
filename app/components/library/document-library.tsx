@@ -1,5 +1,9 @@
+'use client'
+
 import Link from 'next/link'
+import { useCallback, useEffect, useState } from 'react'
 import {
+  ArrowPathIcon,
   CheckCircleIcon,
   CircleStackIcon,
   ClockIcon,
@@ -28,16 +32,79 @@ const formatDate = (timestamp?: number) => timestamp
   : '—'
 
 export default function DocumentLibrary({
-  result,
+  result: initialResult,
   keyword,
   status,
-  error,
+  error: initialError,
 }: {
   result: DifyDocumentList
   keyword: string
   status: string
   error: string
 }) {
+  const [result, setResult] = useState(initialResult)
+  const [error, setError] = useState(initialError)
+  const [refreshing, setRefreshing] = useState(false)
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(() => Date.now())
+
+  useEffect(() => {
+    setResult(initialResult)
+    setError(initialError)
+    setLastUpdatedAt(Date.now())
+  }, [initialError, initialResult])
+
+  const refreshDocuments = useCallback(async (showLoading = false) => {
+    if (showLoading)
+    { setRefreshing(true) }
+    try {
+      const params = new URLSearchParams({
+        page: String(initialResult.page),
+        limit: '20',
+      })
+      if (keyword)
+      { params.set('keyword', keyword) }
+      if (status)
+      { params.set('status', status) }
+      params.set('_', String(Date.now()))
+      const response = await fetch(`/api/library/documents?${params}`, {
+        credentials: 'include',
+        cache: 'no-store',
+      })
+      if (!response.ok)
+      { throw new Error(`LIBRARY_REFRESH_FAILED:${response.status}`) }
+      setResult(await response.json())
+      setError('')
+      setLastUpdatedAt(Date.now())
+    }
+    catch {
+      if (showLoading)
+      { setError('知识库同步失败，请稍后重试。') }
+    }
+    finally {
+      if (showLoading)
+      { setRefreshing(false) }
+    }
+  }, [initialResult.page, keyword, status])
+
+  useEffect(() => {
+    void refreshDocuments()
+    const timer = globalThis.setInterval(() => {
+      if (document.visibilityState === 'visible')
+      { void refreshDocuments() }
+    }, 10_000)
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible')
+      { void refreshDocuments() }
+    }
+    globalThis.addEventListener('focus', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      globalThis.clearInterval(timer)
+      globalThis.removeEventListener('focus', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [refreshDocuments])
+
   const completed = result.data.filter(item => ['completed', 'available'].includes(item.indexing_status || item.display_status || '')).length
   const totalWords = result.data.reduce((sum, item) => sum + (item.word_count || 0), 0)
   const summaryCards = [
@@ -85,7 +152,21 @@ export default function DocumentLibrary({
             <option value="paused">已暂停</option>
           </select>
           <button className="h-10 rounded-xl bg-[var(--studio-deep)] px-5 text-xs font-semibold text-white">查询文档</button>
+          <button
+            type="button"
+            onClick={() => void refreshDocuments(true)}
+            disabled={refreshing}
+            className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-black/10 bg-white px-4 text-xs font-semibold disabled:opacity-50"
+          >
+            <ArrowPathIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            刷新
+          </button>
         </form>
+
+        <div className="flex items-center justify-end border-b border-black/[0.05] px-5 py-2 text-[10px] text-black/40">
+          <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          热更新已开启 · 每 10 秒同步 · {new Date(lastUpdatedAt).toLocaleTimeString('zh-CN', { hour12: false })}
+        </div>
 
         {error
           ? <div className="p-10 text-center text-sm text-red-600">{error}</div>

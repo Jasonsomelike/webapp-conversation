@@ -15,7 +15,11 @@ export async function GET(request: Request) {
       keyword: params.get('keyword') || '',
       status: params.get('status') || '',
     })
-    return NextResponse.json(data)
+    return NextResponse.json(data, {
+      headers: {
+        'Cache-Control': 'private, no-store, no-cache, must-revalidate',
+      },
+    })
   }
   catch (error) {
     const message = error instanceof Error && error.message === 'DIFY_DATASET_NOT_CONFIGURED'

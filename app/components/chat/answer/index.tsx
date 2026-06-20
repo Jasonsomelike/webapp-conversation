@@ -89,10 +89,16 @@ const Answer: FC<IAnswerProps> = ({
   const { id, content, feedback, agent_thoughts, workflowProcess, message_files, suggestedQuestions = [] } = item
   const isAgentMode = !!agent_thoughts && agent_thoughts.length > 0
   const answerSegments = splitReasoningContent(content)
-  const assistantImages = (message_files || [])
+  const contentImageUrls = new Set(
+    [...content.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)]
+      .map(match => toDifyAssetProxyUrl(match[1]))
+      .filter(Boolean),
+  )
+  const assistantImages = [...new Set((message_files || [])
     .filter(file => file.type === 'image' || isImageAsset(file.url || ''))
     .map(file => toDifyAssetProxyUrl(file.url))
-    .filter(Boolean)
+    .filter(Boolean))]
+    .filter(url => !contentImageUrls.has(url))
   const assistantDocuments = (message_files || [])
     .filter(file => file.url && file.type !== 'image' && !isImageAsset(file.url))
 
@@ -180,12 +186,18 @@ const Answer: FC<IAnswerProps> = ({
             />
           )}
 
-          {getImgs(item.message_files).length > 0 && (
-            <div>
-              <div className='mb-2 text-[11px] text-[var(--studio-muted)]'>来源：计网Agent 回答附图</div>
-              <ImageGallery srcs={getImgs(item.message_files).map(item => toDifyAssetProxyUrl(item.url))} />
-            </div>
-          )}
+          {(() => {
+            const thoughtImages = [...new Set(getImgs(item.message_files)
+              .map(file => toDifyAssetProxyUrl(file.url))
+              .filter(Boolean))]
+              .filter(url => !new Set([...String(item.thought || '').matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)].map(match => toDifyAssetProxyUrl(match[1]))).has(url))
+            return thoughtImages.length > 0 && (
+              <div>
+                <div className='mb-2 text-[11px] text-[var(--studio-muted)]'>来源：计网Agent 回答附图</div>
+                <ImageGallery srcs={thoughtImages} />
+              </div>
+            )
+          })()}
         </div>
       ))}
     </div>
