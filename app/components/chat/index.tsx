@@ -176,7 +176,7 @@ const Chat: FC<IChatProps> = ({
       {
         !isHideSendInput && (
           <div className='sticky z-10 bottom-0 mx-auto w-full max-w-[860px] bg-gradient-to-t from-[var(--studio-chat-surface)] via-[var(--studio-chat-surface)] to-transparent px-3.5 pb-5 pt-8'>
-            <div className='relative max-h-[170px] overflow-y-auto rounded-2xl border border-[#17342b]/15 bg-white p-[7px] shadow-[0_18px_45px_rgba(35,55,47,.12)]'>
+            <div className='chat-composer relative max-h-[170px] overflow-y-auto rounded-2xl border border-[#17342b]/15 bg-white p-[7px] shadow-[0_18px_45px_rgba(35,55,47,.12)]'>
               {fileConfig?.enabled && (
                 <div className='mb-1'>
                   <FileUploaderInAttachmentWrapper

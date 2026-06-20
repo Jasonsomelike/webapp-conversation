@@ -91,13 +91,6 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
     setPendingHref('')
   }, [pathname])
 
-  useEffect(() => {
-    const timer = globalThis.setTimeout(() => {
-      navItems.forEach(item => router.prefetch(item.href))
-    }, 300)
-    return () => globalThis.clearTimeout(timer)
-  }, [router])
-
   const logout = async () => {
     resetChatRuntime()
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -139,6 +132,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
             return (
               <Link
                 href={item.href}
+                prefetch={false}
                 key={item.href}
                 onClick={() => {
                   setMobileOpen(false)
@@ -178,10 +172,17 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
         </div>
       </div>
 
-      <div className="border-t border-white/10 p-3">
-        <button
-          onClick={logout}
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-white/[0.06]"
+      <div className="flex items-center gap-1 border-t border-white/10 p-3">
+        <Link
+          href="/profile"
+          prefetch={false}
+          onClick={() => {
+            setMobileOpen(false)
+            if (pathname !== '/profile')
+            { setPendingHref('/profile') }
+          }}
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-white/[0.06]"
+          title="进入我的画像"
         >
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--studio-accent)] font-semibold text-[var(--studio-deep)]">
             {session.name.slice(0, 1)}
@@ -190,7 +191,14 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
             <div className="truncate text-xs font-semibold">{session.name}</div>
             <div className="mt-0.5 truncate text-[10px] text-white/38">@{session.username}</div>
           </div>
-          <ArrowRightStartOnRectangleIcon className="h-4 w-4 text-white/35" />
+        </Link>
+        <button
+          onClick={logout}
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white/40 transition hover:bg-white/[0.08] hover:text-white"
+          title="退出账号"
+          aria-label="退出账号"
+        >
+          <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
         </button>
       </div>
     </div>
@@ -298,6 +306,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={false}
                 onClick={() => {
                   if (pathname !== item.href)
                   { setPendingHref(item.href) }

@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
-import { graphEdges, graphNodes } from '@/lib/graph-data'
 import { getSession } from '@/lib/session'
+import { getUserKnowledgeGraph } from '@/lib/user-graph'
 
 export async function GET() {
   const session = await getSession()
   if (!session)
   { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-  return NextResponse.json({ nodes: graphNodes, edges: graphEdges })
+  return NextResponse.json(await getUserKnowledgeGraph(session.id))
 }

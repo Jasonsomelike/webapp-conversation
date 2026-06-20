@@ -40,7 +40,7 @@ const WorkflowProcessItem = ({
     <div
       data-testid='workflow-process'
       className={cn(
-        'w-full overflow-hidden rounded-xl border border-[#17342b]/10 bg-[#f2f4f3]',
+        'chat-workflow-card w-full overflow-hidden rounded-xl border border-[#17342b]/10 bg-[#f2f4f3]',
         collapse ? 'py-2.5' : 'pb-2 pt-2.5',
         hideInfo ? 'px-2' : 'px-3',
         grayBg && 'bg-gray-50',

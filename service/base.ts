@@ -163,10 +163,12 @@ const handleStream = (
   let buffer = ''
   let bufferObj: Record<string, any>
   let isFirstMessage = true
+  let persistPromise: Promise<void> | undefined
   function read() {
     let hasError = false
-    reader?.read().then((result: any) => {
+    reader?.read().then(async (result: any) => {
       if (result.done) {
+        await persistPromise
         onCompleted && onCompleted()
         return
       }
@@ -215,6 +217,16 @@ const handleStream = (
                 url: bufferObj.url || bufferObj.file_url || '',
                 name: bufferObj.name || bufferObj.filename,
               } as VisionFile)
+            } else if (bufferObj.event === 'relay_persist' && bufferObj.data) {
+              persistPromise = globalThis.fetch('/api/chat-persist', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(bufferObj.data),
+              }).then(async (persistResponse) => {
+                if (!persistResponse.ok)
+                { throw new Error(`CHAT_PERSIST_FAILED:${persistResponse.status}`) }
+              }).catch(error => console.error('[chat-persist] browser callback failed', error))
             }
             else if (bufferObj.event === 'message_end') {
               onMessageEnd?.(bufferObj as MessageEnd)
@@ -380,6 +392,9 @@ export const ssePost = (
 ) => {
   const options = Object.assign({}, baseOptions, {
     method: 'POST',
+    // Authenticate the same-origin first hop without forwarding unrelated cookies
+    // when the request is redirected to the cross-origin browser relay.
+    credentials: 'same-origin',
   }, fetchOptions)
 
   const urlPrefix = API_PREFIX

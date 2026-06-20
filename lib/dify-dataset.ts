@@ -182,7 +182,7 @@ export const getKnowledgeDocumentPageImages = async (documentId: string) => {
       if (!segment.content)
       { return }
       const matches = segment.content.matchAll(
-        /!\[[^\]]*]\((https:\/\/dify\.jasonsome\.cn:22380\/page-images\/[^\s)]+\.(?:jpe?g|png|webp))\)/gi,
+        /!\[[^\]]*]\((https:\/\/(?:dify\.jasonsome\.cn(?::22380)?|www\.jasonsome\.cn|jasonsome\.cn)\/page-images\/[^\s)]+\.(?:jpe?g|png|webp))\)/gi,
       )
       for (const match of matches) {
         const pageMatch = match[1].match(/\/page_(\d+)\.(?:jpe?g|png|webp)$/i)

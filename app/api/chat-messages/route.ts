@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server'
-import { randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { difyApiKey, fetchDify } from '@/lib/dify-server'
 import { getSessionFromRequest } from '@/lib/session'
 import { persistChatExchange } from '@/lib/user-data'
@@ -8,6 +8,43 @@ import { extractKnowledgeReferences } from '@/lib/reference-extractor'
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
+const signedChatRelayRedirect = ({
+  rawBody,
+  appUserId,
+  difyUserId,
+  requestId,
+}: {
+  rawBody: string
+  appUserId: string
+  difyUserId: string
+  requestId: string
+}) => {
+  const baseUrl = process.env.LIBRARY_FILE_SERVICE_URL?.replace(/\/$/, '')
+  const token = process.env.LIBRARY_FILE_SERVICE_TOKEN
+  if (!baseUrl || !token)
+  { return null }
+
+  const expires = String(Math.floor(Date.now() / 1000) + 120)
+  const bodyHash = createHash('sha256').update(rawBody).digest('hex')
+  const canonical = `${appUserId}\n${difyUserId}\n${requestId}\n${bodyHash}\n${expires}`
+  const signature = createHmac('sha256', token).update(canonical).digest('base64url')
+  const url = new URL(`${baseUrl}/chat-messages`)
+  url.searchParams.set('appUserId', appUserId)
+  url.searchParams.set('difyUserId', difyUserId)
+  url.searchParams.set('requestId', requestId)
+  url.searchParams.set('bodyHash', bodyHash)
+  url.searchParams.set('expires', expires)
+  url.searchParams.set('signature', signature)
+
+  return new Response(null, {
+    status: 307,
+    headers: {
+      'Location': url.toString(),
+      'Cache-Control': 'private, no-store',
+      'X-Request-Id': requestId,
+    },
+  })
+}
 export async function POST(request: NextRequest) {
   const requestId = randomUUID()
   const session = getSessionFromRequest(request)
@@ -25,9 +62,11 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  let rawBody = ''
   let body: Record<string, any>
   try {
-    body = await request.json()
+    rawBody = await request.text()
+    body = JSON.parse(rawBody) as Record<string, any>
   }
   catch {
     return Response.json(
@@ -42,6 +81,14 @@ export async function POST(request: NextRequest) {
       { status: 400, headers: { 'X-Request-Id': requestId } },
     )
   }
+  const relayRedirect = signedChatRelayRedirect({
+    rawBody,
+    appUserId: session.id,
+    difyUserId: session.difyUserId,
+    requestId,
+  })
+  if (relayRedirect)
+  { return relayRedirect }
 
   const currentDate = new Intl.DateTimeFormat('zh-CN', {
     timeZone: 'Asia/Shanghai',
@@ -69,7 +116,7 @@ export async function POST(request: NextRequest) {
         response_mode: 'streaming',
         user: session.difyUserId,
       }),
-    }, { connectTimeoutMs: 30_000, retries: 0 })
+    }, { connectTimeoutMs: 20_000, retries: 2 })
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error)

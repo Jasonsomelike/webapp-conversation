@@ -228,7 +228,7 @@ const Answer: FC<IAnswerProps> = ({
         </div>
         <div className={`${s.answerWrap} min-w-0 max-w-[calc(100%_-_3rem)] flex-1`}>
           <div className='relative text-sm text-gray-900'>
-            <div className='ml-2 min-w-0 rounded-2xl border border-[#17342b]/[0.08] bg-white px-5 py-4 shadow-[0_10px_30px_rgba(31,54,46,0.055)]'>
+            <div className='chat-answer-card ml-2 min-w-0 rounded-2xl border border-[#17342b]/[0.08] bg-white px-5 py-4 shadow-[0_10px_30px_rgba(31,54,46,0.055)]'>
               {workflowProcess && (
                 <div className='mb-4 border-b border-[#17342b]/10 pb-4'>
                   <WorkflowProcess data={workflowProcess} hideInfo />

@@ -25,6 +25,7 @@ services:
       - ./.env
     environment:
       DIFY_STORAGE_ROOT: /data/storage
+      USE_X_ACCEL_REDIRECT: "true"
       HOME: /tmp
     volumes:
       - ./server.py:/srv/server.py:ro
@@ -36,6 +37,25 @@ services:
       - /tmp:size=16m,mode=1777
     cap_drop:
       - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dify
+
+  library-file-accelerator:
+    image: nginx:latest
+    container_name: dify-library-file-accelerator
+    restart: unless-stopped
+    depends_on:
+      - library-file-service
+    volumes:
+      - ./accelerator.conf:/etc/nginx/nginx.conf:ro
+      - /opt/dify/volumes/app/storage:/data/storage:ro
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=32m,mode=0755
+      - /var/run:size=2m,mode=0755
+      - /tmp:size=8m,mode=1777
     security_opt:
       - no-new-privileges:true
     networks:

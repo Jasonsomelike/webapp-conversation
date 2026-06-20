@@ -11,7 +11,7 @@ import {
   SparklesIcon,
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
-import { graphEdges, graphNodes } from '@/lib/graph-data'
+import type { KnowledgeGraphEdge, KnowledgeGraphNode } from '@/lib/graph-data'
 
 const tones: Record<string, string> = {
   user: 'bg-[#17342b] text-white border-[#17342b]',
@@ -20,15 +20,16 @@ const tones: Record<string, string> = {
   weakness: 'bg-[#fff0df] text-[#9b5d31] border-[#d69b68]/35',
   document: 'bg-white text-[#5e6d65] border-[#89978f]/25',
   skill: 'bg-[#f0e8fa] text-[#745294] border-[#9b80b5]/30',
+  question: 'bg-[#fff7d9] text-[#80611b] border-[#d8bd67]/35',
   next: 'bg-[#eaf5bc] text-[#4e6422] border-[#91a952]/35',
 }
 
-export default function KnowledgeGraphView() {
-  const [selected, setSelected] = useState('lpm')
+export default function KnowledgeGraphView({ nodes, edges }: { nodes: KnowledgeGraphNode[], edges: KnowledgeGraphEdge[] }) {
+  const [selected, setSelected] = useState(nodes.find(node => node.type === 'weakness')?.id || nodes[0]?.id || 'user')
   const [zoom, setZoom] = useState(1)
-  const selectedNode = graphNodes.find(node => node.id === selected)!
+  const selectedNode = nodes.find(node => node.id === selected) || nodes[0]!
 
-  const related = useMemo(() => graphEdges.filter(edge => edge.source === selected || edge.target === selected), [selected])
+  const related = useMemo(() => edges.filter(edge => edge.source === selected || edge.target === selected), [edges, selected])
 
   return (
     <div className="mx-auto max-w-[1500px] p-4 sm:p-6">
@@ -48,7 +49,7 @@ export default function KnowledgeGraphView() {
         </div>
         <div className="flex items-center gap-2">
           <div className="rounded-full bg-[#e9f3ed] px-3 py-1.5 text-[11px] font-medium text-[#4c6b5c]">
-            9 节点 · 10 关系
+            {nodes.length} 节点 · {edges.length} 关系
           </div>
           <button className="grid h-9 w-9 place-items-center rounded-xl border border-[#183129]/10 bg-white">
             <ArrowsPointingOutIcon className="h-4 w-4" />
@@ -80,9 +81,9 @@ export default function KnowledgeGraphView() {
             }}
           >
             <svg className="absolute inset-0 h-full w-full" aria-hidden="true">
-              {graphEdges.map((edge, index) => {
-                const source = graphNodes.find(node => node.id === edge.source)!
-                const target = graphNodes.find(node => node.id === edge.target)!
+              {edges.map((edge, index) => {
+                const source = nodes.find(node => node.id === edge.source)!
+                const target = nodes.find(node => node.id === edge.target)!
                 const highlighted = edge.source === selected || edge.target === selected
                 return (
                   <line
@@ -100,7 +101,7 @@ export default function KnowledgeGraphView() {
               })}
             </svg>
 
-            {graphNodes.map((node) => {
+            {nodes.map((node) => {
               const active = node.id === selected
               return (
                 <button
@@ -134,9 +135,7 @@ export default function KnowledgeGraphView() {
             </div>
             <div className="p-5">
               <p className="text-xs leading-6 text-[#65736c]">
-                {selectedNode.id === 'lpm'
-                  ? '这是你当前最需要强化的知识点。你已经理解“前缀越长越具体”，但在默认路由、主机路由和重叠地址块同时出现时仍会反复确认。'
-                  : '该节点来自你的近期对话、知识库引用与学习记忆。点击相连节点可以继续追溯它的来源和下一步关系。'}
+                {selectedNode.description || '该节点来自当前账号的近期对话、知识库引用与学习证据。'}
               </p>
               <div className="mt-5 grid grid-cols-2 gap-2">
                 <div className="rounded-xl bg-[#f2f3ee] p-3">
@@ -145,7 +144,7 @@ export default function KnowledgeGraphView() {
                 </div>
                 <div className="rounded-xl bg-[#f2f3ee] p-3">
                   <div className="text-[10px] text-[#819087]">掌握置信度</div>
-                  <div className="mt-1 text-lg font-semibold">{selectedNode.id === 'lpm' ? '58%' : '76%'}</div>
+                  <div className="mt-1 text-lg font-semibold">{selectedNode.confidence || 60}%</div>
                 </div>
               </div>
             </div>
@@ -156,7 +155,7 @@ export default function KnowledgeGraphView() {
             <div className="space-y-3">
               {related.slice(0, 4).map((edge, index) => {
                 const otherId = edge.source === selected ? edge.target : edge.source
-                const other = graphNodes.find(node => node.id === otherId)!
+                const other = nodes.find(node => node.id === otherId)!
                 return (
                   <button key={index} onClick={() => setSelected(otherId)} className="flex w-full items-center gap-3 text-left">
                     <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-[#eef1ed] text-[#64736b]">
@@ -174,8 +173,8 @@ export default function KnowledgeGraphView() {
 
           <div className="rounded-[22px] bg-[#17342b] p-5 text-white shadow-[0_18px_50px_rgba(23,52,43,.16)]">
             <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#dff67a]">AI 建议</div>
-            <div className="mt-2 text-sm font-semibold">从最长前缀匹配进入 OSPF</div>
-            <p className="mt-2 text-[11px] leading-5 text-white/55">完成两道多前缀冲突题后，你的图谱将自动解锁“链路状态路由”学习路径。</p>
+            <div className="mt-2 text-sm font-semibold">围绕当前薄弱点继续学习</div>
+            <p className="mt-2 text-[11px] leading-5 text-white/55">从当前选中的知识点出发，结合相邻问题、引用文档和推荐节点完成下一轮巩固。</p>
             <button className="mt-4 rounded-xl bg-[#dff67a] px-4 py-2 text-[11px] font-semibold text-[#17342b]">开始今日任务</button>
           </div>
         </div>

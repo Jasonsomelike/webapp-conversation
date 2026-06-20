@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { getSessionFromRequest } from '@/lib/session'
 
-const allowedHost = 'dify.jasonsome.cn'
+const allowedHosts = new Set(['dify.jasonsome.cn', 'www.jasonsome.cn', 'jasonsome.cn'])
 const allowedPaths = ['/files/', '/page-images/']
 
 export const runtime = 'nodejs'
@@ -29,8 +29,8 @@ export async function GET(request: NextRequest) {
   }
 
   const allowed = target.protocol === 'https:'
-    && target.hostname === allowedHost
-    && (!target.port || target.port === '22380')
+    && allowedHosts.has(target.hostname)
+    && (target.hostname !== 'dify.jasonsome.cn' || !target.port || target.port === '22380')
     && allowedPaths.some(path => target.pathname.startsWith(path))
   if (!allowed)
   { return new Response('Forbidden file proxy url', { status: 403 }) }

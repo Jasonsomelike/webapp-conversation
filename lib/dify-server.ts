@@ -9,6 +9,13 @@ export const difyApiBaseUrl = (
 export const difyApiKey = process.env.DIFY_API_KEY
 
 const transientStatuses = new Set([408, 425, 429, 500, 502, 503, 504])
+const difyApiBaseUrls = [...new Set([
+  difyApiBaseUrl,
+  ...(process.env.DIFY_API_FALLBACK_URLS || '').split(',').map(value => value.trim()).filter(Boolean),
+].map(value => value.replace(/\/$/, '')))]
+
+const wait = (milliseconds: number) =>
+  new Promise(resolve => setTimeout(resolve, milliseconds))
 
 export const fetchDify = async (
   path: string,
@@ -20,41 +27,48 @@ export const fetchDify = async (
   { throw new Error('DIFY_API_NOT_CONFIGURED') }
 
   const connectTimeoutMs = options.connectTimeoutMs ?? 8_000
-  const retries = options.retries ?? (init.method && init.method !== 'GET' ? 0 : 1)
+  const retries = options.retries ?? 1
   let lastError: unknown
 
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(new Error('DIFY_CONNECT_TIMEOUT')), connectTimeoutMs)
-    const abortFromRequest = () => controller.abort(init.signal?.reason)
-    if (init.signal?.aborted)
-    { abortFromRequest() }
-    init.signal?.addEventListener('abort', abortFromRequest, { once: true })
+  for (const baseUrl of difyApiBaseUrls) {
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(new Error('DIFY_CONNECT_TIMEOUT')), connectTimeoutMs)
+      const abortFromRequest = () => controller.abort(init.signal?.reason)
+      if (init.signal?.aborted)
+      { abortFromRequest() }
+      init.signal?.addEventListener('abort', abortFromRequest, { once: true })
 
-    try {
-      const response = await fetch(`${difyApiBaseUrl}${path}`, {
-        ...init,
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          ...init.headers,
-        },
-        signal: controller.signal,
-      })
-      clearTimeout(timeout)
+      try {
+        const response = await fetch(`${baseUrl}${path}`, {
+          ...init,
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            ...init.headers,
+          },
+          signal: controller.signal,
+        })
+        clearTimeout(timeout)
 
-      if (response.ok || !transientStatuses.has(response.status) || attempt === retries)
-      { return response }
-      await response.body?.cancel()
-    }
-    catch (error) {
-      clearTimeout(timeout)
-      lastError = error
-      if (attempt === retries)
-      { throw error }
+        if (response.ok || !transientStatuses.has(response.status))
+        { return response }
+        lastError = new Error(`DIFY_TRANSIENT_STATUS:${response.status}`)
+        await response.body?.cancel()
+      }
+      catch (error) {
+        clearTimeout(timeout)
+        lastError = error
+      }
+      finally {
+        init.signal?.removeEventListener('abort', abortFromRequest)
+      }
+
+      if (attempt < retries)
+      { await wait(300 * (attempt + 1)) }
     }
   }
 
-  throw lastError || new Error('DIFY_REQUEST_FAILED')
+  throw lastError instanceof Error ? lastError : new Error('DIFY_REQUEST_FAILED')
 }
 
 export const fetchDifyJson = async <T>(

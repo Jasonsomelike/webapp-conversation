@@ -825,7 +825,7 @@ const Main: FC<IMainProps> = () => {
   if (!APP_ID || !APP_INFO || !promptConfig) { return <Loading type='app' /> }
 
   return (
-    <div className="flex h-full min-h-0 bg-[var(--studio-surface)]">
+    <div data-chat-shell className="flex h-full min-h-0 bg-[var(--studio-surface)]">
       <div className="flex h-full min-h-0 w-full overflow-hidden">
         {/* sidebar */}
         {!isMobile && renderSidebar()}

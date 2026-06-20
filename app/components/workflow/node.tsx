@@ -30,7 +30,7 @@ const NodePanel: FC<Props> = ({ nodeInfo, hideInfo = false }) => {
 
   return (
     <div className={cn('px-4 py-1', hideInfo && '!p-0')}>
-      <div className={cn('group rounded-2xl border border-[#17342b]/[0.08] bg-white shadow-xs transition-all hover:shadow-md', hideInfo && '!rounded-lg')}>
+      <div className={cn('chat-workflow-node group rounded-2xl border border-[#17342b]/[0.08] bg-white shadow-xs transition-all hover:shadow-md', hideInfo && '!rounded-lg')}>
         <div
           className={cn(
             'flex items-center pl-[6px] pr-3',

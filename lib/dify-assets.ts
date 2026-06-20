@@ -3,9 +3,11 @@ const difyPublicOrigin = (
   || 'https://dify.jasonsome.cn:22380'
 ).replace(/\/$/, '')
 
+const difyAssetHosts = new Set(['dify.jasonsome.cn', 'www.jasonsome.cn', 'jasonsome.cn'])
 const imageExtension = /\.(?:avif|gif|jpe?g|png|svg|webp)(?:[?#].*)?$/i
 const downloadableExtension = /\.(?:csv|docx?|md|pdf|pptx?|rtf|txt|xlsx?|zip)(?:[?#].*)?$/i
-const exactDifyAssetUrl = /^(?:(?:https?:\/\/dify\.jasonsome\.cn:22380)?\/(?:files|page-images)\/[^\s<>"')\]]+)$/i
+const exactDifyAssetUrl = /^(?:(?:https?:\/\/(?:dify\.jasonsome\.cn(?::22380)?|www\.jasonsome\.cn|jasonsome\.cn))?\/(?:files|page-images)\/[^\s<>"')\]]+)$/i
+const generatedToolFilePattern = /\/files\/tools\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:\.([a-z0-9]+))?$/i
 
 export const toAbsoluteDifyAssetUrl = (value: string) => {
   const url = value.trim()
@@ -16,30 +18,52 @@ export const toAbsoluteDifyAssetUrl = (value: string) => {
   return url
 }
 
+const generatedFileRoute = (value: string, download: boolean, filename: string) => {
+  try {
+    const target = new URL(toAbsoluteDifyAssetUrl(value))
+    const matched = target.pathname.match(generatedToolFilePattern)
+    if (!matched)
+    { return '' }
+    const fallbackFilename = matched[2] ? `${matched[1]}.${matched[2]}` : matched[1]
+    const params = new URLSearchParams({
+      disposition: download ? 'attachment' : 'inline',
+      filename: filename || fallbackFilename,
+    })
+    return `/api/generated-files/${matched[1]}?${params}`
+  }
+  catch {
+    return ''
+  }
+}
+
 export const toDifyAssetProxyUrl = (value: string, download = false, filename = '') => {
   const url = toAbsoluteDifyAssetUrl(value)
   if (!url)
   { return '' }
+  const durableGeneratedFileUrl = generatedFileRoute(url, download, filename)
+  if (durableGeneratedFileUrl)
+  { return durableGeneratedFileUrl }
+
   try {
     const target = new URL(url)
     if (
       target.protocol !== 'https:'
-      || target.hostname !== 'dify.jasonsome.cn'
-      || (target.port && target.port !== '22380')
+      || !difyAssetHosts.has(target.hostname)
+      || (target.hostname === 'dify.jasonsome.cn' && target.port && target.port !== '22380')
       || (!target.pathname.startsWith('/files/') && !target.pathname.startsWith('/page-images/'))
     )
     { return url }
+
+    const params = new URLSearchParams({ url: target.toString() })
+    if (download)
+    { params.set('download', '1') }
+    if (filename)
+    { params.set('filename', filename) }
+    return `/api/dify/file-proxy?${params}`
   }
   catch {
     return url
   }
-
-  const params = new URLSearchParams({ url })
-  if (download)
-  { params.set('download', '1') }
-  if (filename)
-  { params.set('filename', filename) }
-  return `/api/dify/file-proxy?${params}`
 }
 
 const currentChinaDate = () => new Intl.DateTimeFormat('zh-CN', {

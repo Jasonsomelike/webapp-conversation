@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { Prisma } from '@prisma/client'
-import { db, isDatabaseConfigured } from '@/lib/db'
+import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
 import type { KnowledgeReference, LearningAnalysis, WeakTopic } from '@/lib/learning-types'
 import type { ExtractedReference } from '@/lib/reference-extractor'
 import { extractKnowledgeReferences } from '@/lib/reference-extractor'
@@ -137,7 +137,7 @@ export const persistChatExchange = async ({
   })
 }
 
-export const getUserReferences = async (appUserId: string): Promise<KnowledgeReference[]> => {
+const getUserReferencesOnce = async (appUserId: string): Promise<KnowledgeReference[]> => {
   if (!isDatabaseConfigured())
   { return [] }
 
@@ -255,6 +255,16 @@ export const getUserReferences = async (appUserId: string): Promise<KnowledgeRef
   })
 }
 
+export const getUserReferences = async (appUserId: string): Promise<KnowledgeReference[]> => {
+  try {
+    return await withDatabaseRetry(() => getUserReferencesOnce(appUserId))
+  }
+  catch (error) {
+    console.error('[user-references] database unavailable', { appUserId, error })
+    return []
+  }
+}
+
 const emptyAnalysis: LearningAnalysis = {
   summary: '当前账号还没有足够的学习记录。开始与 AI 学习助手对话后，这里会根据你的会话和知识库引用生成专属分析。',
   currentStage: '等待学习数据',
@@ -276,7 +286,7 @@ const emptyAnalysis: LearningAnalysis = {
   ],
 }
 
-export const getUserAnalysis = async (appUserId: string): Promise<LearningAnalysis> => {
+const getUserAnalysisOnce = async (appUserId: string): Promise<LearningAnalysis> => {
   if (!isDatabaseConfigured())
   { return emptyAnalysis }
 
@@ -369,5 +379,18 @@ export const getUserAnalysis = async (appUserId: string): Promise<LearningAnalys
         tone: index === 0 ? 'primary' : index === 1 ? 'mint' : 'orange',
       }))
       : emptyAnalysis.recommendations,
+  }
+}
+export const getUserAnalysis = async (appUserId: string): Promise<LearningAnalysis> => {
+  try {
+    return await withDatabaseRetry(() => getUserAnalysisOnce(appUserId))
+  }
+  catch (error) {
+    console.error('[user-analysis] database unavailable', { appUserId, error })
+    return {
+      ...emptyAnalysis,
+      summary: '学习数据服务暂时繁忙，页面已安全降级。请稍后刷新查看你的个性化分析。',
+      currentStage: '数据连接恢复中',
+    }
   }
 }

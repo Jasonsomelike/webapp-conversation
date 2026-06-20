@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import ProfileView from '@/app/components/profile/profile-view'
-import { db, isDatabaseConfigured } from '@/lib/db'
+import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
 import { getSession } from '@/lib/session'
 
 export default async function ProfilePage() {
@@ -12,16 +12,21 @@ export default async function ProfilePage() {
   let joinedAt = new Date(session.createdAt).toISOString()
   let stats = { conversations: 0, references: 0, messages: 0 }
   if (isDatabaseConfigured()) {
-    const [user, savedProfile, conversations, references, messages] = await Promise.all([
-      db.appUser.findUnique({ where: { id: session.id }, select: { createdAt: true } }),
-      db.userProfile.findUnique({ where: { appUserId: session.id } }),
-      db.chatConversation.count({ where: { appUserId: session.id } }),
-      db.messageReference.count({ where: { appUserId: session.id } }),
-      db.chatMessage.count({ where: { appUserId: session.id, role: 'user' } }),
-    ])
-    profile = savedProfile
-    joinedAt = user?.createdAt.toISOString() || joinedAt
-    stats = { conversations, references, messages }
+    try {
+      const [user, savedProfile, conversations, references, messages] = await withDatabaseRetry(() => Promise.all([
+        db.appUser.findUnique({ where: { id: session.id }, select: { createdAt: true } }),
+        db.userProfile.findUnique({ where: { appUserId: session.id } }),
+        db.chatConversation.count({ where: { appUserId: session.id, deletedAt: null } }),
+        db.messageReference.count({ where: { appUserId: session.id } }),
+        db.chatMessage.count({ where: { appUserId: session.id, role: 'user' } }),
+      ]))
+      profile = savedProfile
+      joinedAt = user?.createdAt.toISOString() || joinedAt
+      stats = { conversations, references, messages }
+    }
+    catch (error) {
+      console.error('[profile-page] database unavailable', { appUserId: session.id, error })
+    }
   }
 
   return <ProfileView session={session} initialProfile={profile} stats={stats} joinedAt={joinedAt} />

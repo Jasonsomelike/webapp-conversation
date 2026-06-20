@@ -1,15 +1,21 @@
 import base64
+import codecs
 import hashlib
 import hmac
 import json
 import logging
 import os
+import re
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 import psycopg2
-from flask import Flask, Response, request, send_file
+import requests
+from flask import Flask, Response, request, send_file, stream_with_context
 
 app = Flask(__name__)
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -18,6 +24,16 @@ logger = logging.getLogger("library-file-service")
 STORAGE_ROOT = Path(os.getenv("DIFY_STORAGE_ROOT", "/data/storage")).resolve()
 INTERNAL_TOKEN = os.getenv("LIBRARY_FILE_SERVICE_TOKEN", "")
 DATASET_ID = os.getenv("DIFY_DATASET_ID", "")
+USE_X_ACCEL = os.getenv("USE_X_ACCEL_REDIRECT", "false").lower() == "true"
+DIFY_APP_API_KEY = os.getenv("DIFY_APP_API_KEY", "")
+DIFY_CHAT_API_URL = os.getenv(
+    "DIFY_CHAT_API_URL",
+    "http://api:5001/v1/chat-messages",
+)
+CHAT_RELAY_ALLOWED_ORIGIN = os.getenv(
+    "CHAT_RELAY_ALLOWED_ORIGIN",
+    "https://www.bestijason.cn",
+)
 
 
 def error_response(message: str, status: int, request_id: str) -> Response:
@@ -85,6 +101,52 @@ def database_connection():
         connect_timeout=8,
         application_name="dify-library-file-service",
     )
+
+
+def safe_content_disposition(disposition: str, filename: str) -> str:
+    fallback = "".join(
+        character if 32 <= ord(character) < 127 and character not in '\"\\' else "_"
+        for character in filename
+    ) or "download"
+    encoded = quote(filename, safe="")
+    return f"{disposition}; filename=\"{fallback}\"; filename*=UTF-8''{encoded}"
+
+
+def storage_file_response(
+    file_path: Path,
+    storage_key: str,
+    mimetype: str,
+    filename: str,
+    disposition: str,
+    request_id: str,
+    source: str,
+) -> Response:
+    if USE_X_ACCEL:
+        response = Response(status=200)
+        response.headers["X-Accel-Redirect"] = (
+            f"/_protected-storage/{quote(storage_key, safe='/')}"
+        )
+        response.headers["Content-Type"] = mimetype or "application/octet-stream"
+        response.headers["Content-Disposition"] = safe_content_disposition(
+            disposition,
+            filename,
+        )
+    else:
+        response = send_file(
+            file_path,
+            mimetype=mimetype or "application/octet-stream",
+            as_attachment=disposition == "attachment",
+            download_name=filename,
+            conditional=True,
+            etag=True,
+            max_age=300,
+        )
+    response.headers["Cache-Control"] = "private, max-age=300"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Request-Id"] = request_id
+    response.headers["X-Library-File-Source"] = source
+    response.headers["Accept-Ranges"] = "bytes"
+    return response
 
 
 @app.get("/health")
@@ -185,20 +247,15 @@ def document_file(document_id: uuid.UUID):
 
         filename = stored_name or document_name or fallback_filename
         step = "stream-file"
-        response = send_file(
+        return storage_file_response(
             file_path,
-            mimetype=mime_type or "application/octet-stream",
-            as_attachment=disposition == "attachment",
-            download_name=filename,
-            conditional=True,
-            etag=True,
-            max_age=0,
+            storage_key,
+            mime_type or "application/octet-stream",
+            filename,
+            disposition,
+            request_id,
+            "dify-local-storage",
         )
-        response.headers["Cache-Control"] = "private, no-store"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Request-Id"] = request_id
-        response.headers["X-Library-File-Source"] = "dify-local-storage"
-        return response
     except json.JSONDecodeError as error:
         logger.exception(
             "[library-file-service] failed requestId=%s documentId=%s step=parse-source-info",
@@ -219,6 +276,325 @@ def document_file(document_id: uuid.UUID):
             request_id,
         )
 
+
+
+def cors_headers() -> dict[str, str]:
+    return {
+        "Access-Control-Allow-Origin": CHAT_RELAY_ALLOWED_ORIGIN,
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Expose-Headers": "X-Request-Id",
+        "Vary": "Origin",
+    }
+
+
+def chat_error(message: str, status: int, request_id: str) -> Response:
+    return Response(
+        json.dumps({"error": message, "requestId": request_id}, ensure_ascii=False),
+        status=status,
+        content_type="application/json; charset=utf-8",
+        headers={**cors_headers(), "X-Request-Id": request_id},
+    )
+
+
+def chat_ticket_is_valid(raw_body: bytes) -> tuple[bool, str, str, str]:
+    app_user_id = request.args.get("appUserId", "")
+    dify_user_id = request.args.get("difyUserId", "")
+    request_id = request.args.get("requestId", "") or str(uuid.uuid4())
+    body_hash = request.args.get("bodyHash", "")
+    expires = request.args.get("expires", "")
+    signature = request.args.get("signature", "")
+    try:
+        expires_at = int(expires)
+    except ValueError:
+        return False, app_user_id, dify_user_id, request_id
+    now = int(time.time())
+    actual_hash = hashlib.sha256(raw_body).hexdigest()
+    if (
+        not INTERNAL_TOKEN
+        or not app_user_id
+        or not dify_user_id
+        or body_hash != actual_hash
+        or expires_at < now
+        or expires_at > now + 180
+    ):
+        return False, app_user_id, dify_user_id, request_id
+    canonical = (
+        f"{app_user_id}\n{dify_user_id}\n{request_id}\n{body_hash}\n{expires}"
+    )
+    expected = base64.urlsafe_b64encode(
+        hmac.new(
+            INTERNAL_TOKEN.encode(),
+            canonical.encode(),
+            hashlib.sha256,
+        ).digest()
+    ).decode().rstrip("=")
+    return (
+        bool(signature and hmac.compare_digest(signature, expected)),
+        app_user_id,
+        dify_user_id,
+        request_id,
+    )
+
+
+@app.route("/chat-messages", methods=["OPTIONS"])
+def chat_messages_options():
+    return Response(status=204, headers=cors_headers())
+
+
+@app.post("/chat-messages")
+def chat_messages():
+    origin = request.headers.get("Origin", "")
+    if origin and origin != CHAT_RELAY_ALLOWED_ORIGIN:
+        return chat_error("Origin not allowed", 403, str(uuid.uuid4()))
+
+    raw_body = request.get_data(cache=True)
+    valid, app_user_id, dify_user_id, request_id = chat_ticket_is_valid(raw_body)
+    if not valid:
+        return chat_error("Chat ticket is invalid or expired", 401, request_id)
+    if not DIFY_APP_API_KEY:
+        return chat_error("Dify app key is not configured", 503, request_id)
+
+    try:
+        body = json.loads(raw_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return chat_error("Request body is invalid", 400, request_id)
+
+    query = str(body.get("query") or "").strip()
+    if not query:
+        return chat_error("请输入问题后再发送", 400, request_id)
+    current_date = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y年%-m月%-d日")
+    if re.search(r"文档|报告|讲义|总结|导出|word|docx|pdf", query, re.I):
+        body["query"] = (
+            f"{query}\n\n[文档格式要求：落款统一使用“计网Agent”，"
+            f"日期使用当前日期“{current_date}”。]"
+        )
+    body.update({
+        "response_mode": "streaming",
+        "user": dify_user_id,
+        "conversation_id": body.get("conversation_id") or "",
+        "inputs": body.get("inputs") or {},
+        "files": body.get("files") or [],
+    })
+
+    try:
+        upstream = requests.post(
+            DIFY_CHAT_API_URL,
+            headers={
+                "Authorization": f"Bearer {DIFY_APP_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+            stream=True,
+            timeout=(10, 360),
+        )
+    except requests.RequestException as error:
+        logger.exception("[chat-relay] connect failed requestId=%s", request_id)
+        return chat_error(f"Dify connection failed: {type(error).__name__}", 503, request_id)
+
+    if not upstream.ok:
+        detail = upstream.text[:1000]
+        logger.error(
+            "[chat-relay] upstream failed requestId=%s status=%s body=%s",
+            request_id,
+            upstream.status_code,
+            detail,
+        )
+        return chat_error(
+            f"Dify 请求失败（HTTP {upstream.status_code}）",
+            upstream.status_code,
+            request_id,
+        )
+
+    state: dict[str, object] = {
+        "answer": "",
+        "conversationId": str(body.get("conversation_id") or ""),
+        "messageId": "",
+        "metadata": None,
+        "agentLogs": [],
+        "assistantFiles": [],
+        "agentLogBytes": 0,
+        "workflowProcess": None,
+    }
+
+    def read_event_block(block: str):
+        data = "\n".join(
+            line[5:].strip()
+            for line in re.split(r"\r?\n", block)
+            if line.startswith("data:")
+        )
+        if not data or data == "[DONE]":
+            return
+        try:
+            event = json.loads(data)
+        except json.JSONDecodeError:
+            return
+        state["conversationId"] = event.get("conversation_id") or state["conversationId"]
+        state["messageId"] = event.get("message_id") or event.get("id") or state["messageId"]
+        event_name = event.get("event")
+        if event_name in ("message", "agent_message") and isinstance(event.get("answer"), str):
+            state["answer"] = str(state["answer"]) + event["answer"]
+        elif event_name == "message_replace" and isinstance(event.get("answer"), str):
+            state["answer"] = event["answer"]
+        elif event_name == "message_end":
+            state["metadata"] = event.get("metadata") or state["metadata"]
+        elif event_name == "agent_log" and int(state["agentLogBytes"]) < 2_000_000:
+            log = event.get("data") or event
+            serialized = json.dumps(log, ensure_ascii=False)
+            state["agentLogBytes"] = int(state["agentLogBytes"]) + len(serialized)
+            if int(state["agentLogBytes"]) < 2_000_000:
+                state["agentLogs"].append(log)
+        elif event_name == "message_file":
+            state["assistantFiles"].append({
+                **event,
+                "url": event.get("url") or event.get("file_url"),
+                "name": event.get("name") or event.get("filename"),
+            })
+        elif event_name == "workflow_started":
+            state["workflowProcess"] = {"status": "running", "tracing": [], "expand": True}
+        elif event_name in ("node_started", "node_finished") and event.get("data"):
+            workflow = state["workflowProcess"] or {"status": "running", "tracing": [], "expand": True}
+            node = event["data"]
+            tracing = workflow["tracing"]
+            matched = next((i for i, item in enumerate(tracing) if item.get("node_id") == node.get("node_id")), -1)
+            if matched >= 0:
+                tracing[matched] = node
+            else:
+                tracing.append(node)
+            state["workflowProcess"] = workflow
+        elif event_name == "workflow_finished" and event.get("data"):
+            workflow = state["workflowProcess"] or {"tracing": []}
+            workflow["status"] = event["data"].get("status") or "succeeded"
+            state["workflowProcess"] = workflow
+
+    @stream_with_context
+    def generate():
+        decoder = codecs.getincrementaldecoder("utf-8")()
+        event_buffer = ""
+        completed = False
+        try:
+            for chunk in upstream.iter_content(chunk_size=8192):
+                if not chunk:
+                    continue
+                yield chunk
+                event_buffer += decoder.decode(chunk)
+                blocks = re.split(r"\r?\n\r?\n", event_buffer)
+                event_buffer = blocks.pop() or ""
+                for block in blocks:
+                    read_event_block(block)
+            event_buffer += decoder.decode(b"", final=True)
+            if event_buffer:
+                read_event_block(event_buffer)
+            completed = True
+            if completed and state["conversationId"] and state["messageId"]:
+                persist_event = {
+                    "event": "relay_persist",
+                    "data": {
+                        "query": query,
+                        "answer": state["answer"],
+                        "conversationId": state["conversationId"],
+                        "messageId": state["messageId"],
+                        "metadata": state["metadata"],
+                        "workflowProcess": state["workflowProcess"],
+                        "agentLogs": state["agentLogs"],
+                        "assistantFiles": state["assistantFiles"],
+                    },
+                }
+                yield (
+                    "\n\ndata: "
+                    + json.dumps(persist_event, ensure_ascii=False)
+                    + "\n\n"
+                ).encode("utf-8")
+        finally:
+            upstream.close()
+
+    return Response(
+        generate(),
+        status=upstream.status_code,
+        content_type=upstream.headers.get("Content-Type", "text/event-stream; charset=utf-8"),
+        headers={
+            **cors_headers(),
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "X-Request-Id": request_id,
+        },
+    )
+
+@app.get("/generated-files/<uuid:file_id>")
+def generated_file(file_id: uuid.UUID):
+    request_id = (
+        request.headers.get("X-Request-Id")
+        or request.args.get("requestId")
+        or str(uuid.uuid4())
+    )
+    disposition = (
+        "inline" if request.args.get("disposition") == "inline" else "attachment"
+    )
+    fallback_filename = request.args.get("filename") or str(file_id)
+    if not authorize(file_id, disposition, fallback_filename, request_id):
+        return error_response("Unauthorized", 401, request_id)
+
+    step = "query-tool-file"
+    try:
+        with database_connection() as connection:
+            connection.set_session(readonly=True, autocommit=False)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT file_key, mimetype, name, size
+                    FROM tool_files
+                    WHERE id = %s
+                    LIMIT 1
+                    """,
+                    (str(file_id),),
+                )
+                tool_file = cursor.fetchone()
+                if not tool_file:
+                    return error_response("Generated file not found", 404, request_id)
+
+        storage_key, mime_type, stored_name, expected_size = tool_file
+        step = "resolve-path"
+        file_path = (STORAGE_ROOT / storage_key).resolve()
+        try:
+            file_path.relative_to(STORAGE_ROOT)
+        except ValueError:
+            return error_response("Invalid file path", 403, request_id)
+        if not file_path.is_file():
+            return error_response("Generated file missing on disk", 404, request_id)
+
+        actual_size = file_path.stat().st_size
+        if expected_size and actual_size != expected_size:
+            logger.warning(
+                "[library-file-service] generated size mismatch requestId=%s fileId=%s expected=%s actual=%s",
+                request_id,
+                file_id,
+                expected_size,
+                actual_size,
+            )
+
+        filename = fallback_filename or stored_name or str(file_id)
+        return storage_file_response(
+            file_path,
+            storage_key,
+            mime_type or "application/octet-stream",
+            filename,
+            disposition,
+            request_id,
+            "dify-generated-file-storage",
+        )
+    except Exception as error:
+        logger.exception(
+            "[library-file-service] generated file failed requestId=%s fileId=%s step=%s",
+            request_id,
+            file_id,
+            step,
+        )
+        return error_response(
+            f"Generated file service failed: {type(error).__name__}",
+            500,
+            request_id,
+        )
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3011)

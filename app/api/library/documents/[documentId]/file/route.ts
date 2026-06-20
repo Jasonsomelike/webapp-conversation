@@ -191,11 +191,13 @@ const signedLibraryFileRedirect = ({
   disposition,
   filename,
   requestId,
+  page,
 }: {
   documentId: string
   disposition: 'inline' | 'attachment'
   filename: string
   requestId: string
+  page?: number
 }) => {
   const baseUrl = process.env.LIBRARY_FILE_SERVICE_URL?.replace(/\/$/, '')
   const token = process.env.LIBRARY_FILE_SERVICE_TOKEN
@@ -211,6 +213,8 @@ const signedLibraryFileRedirect = ({
   url.searchParams.set('requestId', requestId)
   url.searchParams.set('expires', expires)
   url.searchParams.set('signature', signature)
+  if (page && disposition === 'inline')
+  { url.hash = `page=${page}` }
 
   const headers = new Headers({
     'Cache-Control': 'private, no-store',
@@ -235,6 +239,8 @@ export async function GET(
     : 'inline'
   const filename = (request.nextUrl.searchParams.get('filename') || `${documentId}.pdf`)
     .replace(/["\r\n]/g, '_')
+  const requestedPage = Number(request.nextUrl.searchParams.get('page') || 0)
+  const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : undefined
   const errors: string[] = []
 
   const directRedirect = signedLibraryFileRedirect({
@@ -242,6 +248,7 @@ export async function GET(
     disposition,
     filename,
     requestId,
+    page,
   })
   if (directRedirect)
   { return directRedirect }

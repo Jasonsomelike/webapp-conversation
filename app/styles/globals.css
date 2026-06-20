@@ -500,10 +500,80 @@ a {
 
 :root[data-theme="midnight"] .text-gray-500,
 :root[data-theme="midnight"] .text-gray-700,
-:root[data-theme="midnight"] .text-gray-800 {
+:root[data-theme="midnight"] .text-gray-800,
+:root[data-theme="midnight"] .text-gray-900 {
   color: var(--studio-muted) !important;
 }
 
+:root[data-theme="midnight"] [data-chat-shell] {
+  --studio-chat-surface: #101a28;
+}
+
+:root[data-theme="midnight"] .chat-conversation-sidebar,
+:root[data-theme="midnight"] .chat-conversation-list {
+  background: #0d1623 !important;
+  border-color: rgba(148, 167, 188, 0.15) !important;
+}
+
+:root[data-theme="midnight"] .chat-conversation-active {
+  background: rgba(125, 211, 252, 0.16) !important;
+  color: #dff5ff !important;
+}
+
+:root[data-theme="midnight"] .chat-conversation-item {
+  color: #aebed0 !important;
+}
+
+:root[data-theme="midnight"] .chat-conversation-item:hover {
+  background: rgba(148, 167, 188, 0.1) !important;
+  color: #edf7ff !important;
+}
+
+:root[data-theme="midnight"] .chat-answer-card {
+  background: #152235 !important;
+  border-color: rgba(148, 167, 188, 0.16) !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2) !important;
+}
+
+:root[data-theme="midnight"] .chat-question-card {
+  background: linear-gradient(135deg, #164b6b, #246a91) !important;
+  color: #f3fbff !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+}
+
+:root[data-theme="midnight"] .chat-question-card .streamdown-markdown,
+:root[data-theme="midnight"] .chat-question-card .streamdown-markdown * {
+  color: #f3fbff !important;
+}
+
+:root[data-theme="midnight"] .chat-workflow-card {
+  background: #0f1a29 !important;
+  border-color: rgba(125, 211, 252, 0.16) !important;
+}
+
+:root[data-theme="midnight"] .chat-workflow-card [class*="text-[#46554f]"] {
+  color: #dbeaf6 !important;
+}
+
+:root[data-theme="midnight"] .chat-workflow-node {
+  background: #17263a !important;
+  border-color: rgba(148, 167, 188, 0.16) !important;
+}
+
+:root[data-theme="midnight"] .chat-composer {
+  background: #111e2e !important;
+  border-color: rgba(125, 211, 252, 0.22) !important;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.3) !important;
+}
+
+:root[data-theme="midnight"] .chat-composer textarea {
+  background: transparent !important;
+  color: #edf7ff !important;
+}
+
+:root[data-theme="midnight"] .chat-composer textarea::placeholder {
+  color: rgba(174, 190, 208, 0.62) !important;
+}
 .chat-message-target {
   transition: outline-color 300ms ease, background-color 300ms ease, box-shadow 300ms ease;
 }

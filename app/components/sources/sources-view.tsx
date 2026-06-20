@@ -11,12 +11,10 @@ import {
 import PageCard from '@/app/components/workspace/page-card'
 import type { KnowledgeReference } from '@/lib/learning-types'
 import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
-import ImagePreview from '@/app/components/base/image-uploader/image-preview'
 
 export default function SourcesView({ initialReferences }: { initialReferences: KnowledgeReference[] }) {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState(initialReferences[0]?.id)
-  const [previewUrl, setPreviewUrl] = useState('')
 
   const [imageError, setImageError] = useState(false)
   const filtered = useMemo(() => initialReferences.filter(item =>
@@ -25,11 +23,8 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
   const selected = initialReferences.find(item => item.id === selectedId) || filtered[0]
   const documentCount = new Set(initialReferences.map(item => item.documentName)).size
   const documentPreviewUrl = selected?.documentId
-    ? `/api/library/documents/${selected.documentId}/file?disposition=inline&filename=${encodeURIComponent(selected.documentName)}`
+    ? `/api/library/documents/${selected.documentId}/file?disposition=inline&filename=${encodeURIComponent(selected.documentName)}${selected.pageNumber ? `&page=${selected.pageNumber}` : ''}`
     : ''
-  const sourceHref = selected?.sourceUrl
-    ? toDifyAssetProxyUrl(selected.sourceUrl)
-    : documentPreviewUrl
   const pageImageHref = selected?.pageImageUrl
     ? toDifyAssetProxyUrl(selected.pageImageUrl)
     : ''
@@ -156,9 +151,10 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
                     </div>
                     {pageImageHref && !imageError
                       ? (
-                        <button
-                          type="button"
-                          onClick={() => setPreviewUrl(pageImageHref)}
+                        <a
+                          href={documentPreviewUrl || pageImageHref}
+                          target="_blank"
+                          rel="noreferrer"
                           className="group mt-5 inline-block max-w-full overflow-hidden rounded-2xl border border-black/10 bg-black/[0.025] p-2 text-left shadow-sm sm:max-w-[50%]"
                         >
                           <img
@@ -168,8 +164,8 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
                             onError={() => setImageError(true)}
                             className="max-h-[240px] max-w-full rounded-xl object-contain transition-transform duration-200 group-hover:scale-[1.01]"
                           />
-                          <div className="px-2 pb-1 pt-2 text-[10px] text-black/40">点击放大查看来源页</div>
-                        </button>
+                          <div className="px-2 pb-1 pt-2 text-[10px] text-black/40">点击预览来源 PDF 并定位到当前页</div>
+                        </a>
                       )
                       : (
                         <div className="mt-5 rounded-2xl border border-dashed border-black/10 bg-black/[0.025] px-5 py-10 text-center">
@@ -188,26 +184,15 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
                           {selected.messageId ? '回到原消息' : '回到原对话'} <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
                         </a>
                       )}
-                      {sourceHref
-                        ? (
-                          <a href={sourceHref} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-xs font-semibold">
-                            打开来源 <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
-                          </a>
-                        )
-                        : (
-                          <span title="暂无可打开的来源文件" className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-xs font-semibold opacity-45">
-                            暂无可打开的来源文件
-                          </span>
-                        )}
                       {selected.documentId && (
                         <>
                           <a
-                            href={`/api/library/documents/${selected.documentId}/file?disposition=inline&filename=${encodeURIComponent(selected.documentName)}`}
+                            href={documentPreviewUrl}
                             target="_blank"
                             rel="noreferrer"
                             className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-xs font-semibold"
                           >
-                            预览文档 <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+                            预览来源 PDF <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
                           </a>
                           <a
                             href={`/api/library/documents/${selected.documentId}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`}
@@ -225,7 +210,6 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
             </div>
           )}
       </PageCard>
-      {previewUrl && <ImagePreview url={previewUrl} onCancel={() => setPreviewUrl('')} />}
     </div>
   )
 }

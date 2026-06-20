@@ -65,7 +65,7 @@ const Sidebar: FC<ISidebarProps> = ({
 
   return (
     <div
-      className="flex h-full shrink-0 flex-col overflow-y-auto border-r border-[#183129]/[0.07] bg-[#f7f7f2] pc:w-[236px] tablet:w-[210px] mobile:w-[260px]"
+      className="chat-conversation-sidebar flex h-full shrink-0 flex-col overflow-y-auto border-r border-[#183129]/[0.07] bg-[#f7f7f2] pc:w-[236px] tablet:w-[210px] mobile:w-[260px]"
     >
       {list.length < MAX_CONVERSATION_LENTH && (
         <div className="flex flex-shrink-0 p-4 !pb-0">
@@ -78,7 +78,7 @@ const Sidebar: FC<ISidebarProps> = ({
         </div>
       )}
 
-      <nav className="mt-4 flex-1 space-y-1 bg-white p-4 !pt-0">
+      <nav className="chat-conversation-list mt-4 flex-1 space-y-1 bg-white p-4 !pt-0">
         {list.map((item) => {
           const isCurrent = item.id === currentId
           const ItemIcon
@@ -89,8 +89,8 @@ const Sidebar: FC<ISidebarProps> = ({
               key={item.id}
               className={classNames(
                 isCurrent
-                  ? 'bg-[#e4eee6] text-[#285440]'
-                  : 'text-gray-700 hover:bg-[#eceee9] hover:text-gray-700',
+                  ? 'chat-conversation-active bg-[#e4eee6] text-[#285440]'
+                  : 'chat-conversation-item text-gray-700 hover:bg-[#eceee9] hover:text-gray-700',
                 'group relative flex items-center rounded-xl px-2.5 py-2.5 text-xs font-medium cursor-pointer',
               )}
             >
