@@ -77,6 +77,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
   const [mobileOpen, setMobileOpen] = useState(false)
   const [themeOpen, setThemeOpen] = useState(false)
   const [pendingHref, setPendingHref] = useState('')
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const initialTheme = isThemeId(session.theme) ? session.theme : 'forest'
   const [theme, setTheme] = useState<ThemeId>(initialTheme)
   const chatResponding = useChatRuntime(state => state.isResponding)
@@ -264,10 +265,25 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
               </div>
             )}
           </div>
-          <button className="relative grid h-10 w-10 place-items-center rounded-xl border border-black/10 bg-white text-black/60">
-            <BellIcon className="h-[18px] w-[18px]" />
-            <span className="absolute right-2.5 top-2.5 h-1.5 w-1.5 rounded-full bg-[var(--studio-warm)] ring-2 ring-white" />
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setNotificationsOpen(open => !open)}
+              className="relative grid h-10 w-10 place-items-center rounded-xl border border-black/10 bg-white text-black/60"
+              aria-label="通知中心"
+              title="通知中心"
+            >
+              <BellIcon className="h-[18px] w-[18px]" />
+            </button>
+            {notificationsOpen && (
+              <div className="absolute right-0 top-12 z-40 w-72 rounded-2xl border border-black/10 bg-[var(--studio-surface)] p-4 shadow-xl">
+                <div className="text-sm font-semibold">通知中心</div>
+                <div className="mt-4 rounded-xl border border-dashed border-black/10 bg-black/[0.025] px-4 py-8 text-center">
+                  <BellIcon className="mx-auto h-6 w-6 text-[var(--studio-muted)]" />
+                  <div className="mt-2 text-xs text-[var(--studio-muted)]">暂无新消息</div>
+                </div>
+              </div>
+            )}
+          </div>
         </header>
 
         <main className="min-h-0 flex-1 overflow-auto pb-[72px] lg:pb-0">

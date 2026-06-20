@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server'
+import { randomUUID } from 'node:crypto'
 import { difyApiKey, fetchDify } from '@/lib/dify-server'
 import { getSessionFromRequest } from '@/lib/session'
 import { persistChatExchange } from '@/lib/user-data'
@@ -8,16 +9,39 @@ export const runtime = 'nodejs'
 export const maxDuration = 300
 
 export async function POST(request: NextRequest) {
+  const requestId = randomUUID()
   const session = getSessionFromRequest(request)
-  if (!session)
-  { return Response.json({ error: 'Unauthorized' }, { status: 401 }) }
-  if (!difyApiKey)
-  { return Response.json({ error: 'Dify application API is not configured' }, { status: 503 }) }
+  if (!session) {
+    return Response.json(
+      { error: '登录状态已失效，请重新登录', requestId },
+      { status: 401, headers: { 'X-Request-Id': requestId } },
+    )
+  }
+  if (!difyApiKey) {
+    console.error('[dify-chat] failed', { requestId, status: 503, statusText: 'DIFY_API_KEY missing' })
+    return Response.json(
+      { error: 'Dify 应用服务尚未配置', requestId },
+      { status: 503, headers: { 'X-Request-Id': requestId } },
+    )
+  }
 
-  const body = await request.json()
+  let body: Record<string, any>
+  try {
+    body = await request.json()
+  }
+  catch {
+    return Response.json(
+      { error: '请求内容不是有效的 JSON', requestId },
+      { status: 400, headers: { 'X-Request-Id': requestId } },
+    )
+  }
   const query = typeof body.query === 'string' ? body.query.trim() : ''
-  if (!query)
-  { return Response.json({ error: 'Query is required' }, { status: 400 }) }
+  if (!query) {
+    return Response.json(
+      { error: '请输入问题后再发送', requestId },
+      { status: 400, headers: { 'X-Request-Id': requestId } },
+    )
+  }
 
   const currentDate = new Intl.DateTimeFormat('zh-CN', {
     timeZone: 'Asia/Shanghai',
@@ -47,18 +71,35 @@ export async function POST(request: NextRequest) {
       }),
     }, { connectTimeoutMs: 12_000, retries: 0 })
   }
-  catch {
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('[dify-chat] failed', {
+      requestId,
+      status: 503,
+      statusText: 'Unable to connect to Dify',
+      body: message.slice(0, 1000),
+    })
     return Response.json(
-      { error: 'Dify 服务暂时无法连接，请稍后重试' },
-      { status: 503 },
+      { error: 'Dify 服务暂时无法连接，请稍后重试', detail: message, requestId },
+      { status: 503, headers: { 'X-Request-Id': requestId } },
     )
   }
 
   if (!upstream.ok || !upstream.body) {
     const errorBody = await upstream.text()
-    return new Response(errorBody, {
+    console.error('[dify-chat] failed', {
+      requestId,
       status: upstream.status,
-      headers: { 'Content-Type': upstream.headers.get('content-type') || 'application/json' },
+      statusText: upstream.statusText,
+      body: errorBody.slice(0, 1000),
+    })
+    return Response.json({
+      error: `Dify 请求失败（HTTP ${upstream.status}）`,
+      detail: errorBody.slice(0, 1000),
+      requestId,
+    }, {
+      status: upstream.status || 502,
+      headers: { 'X-Request-Id': requestId },
     })
   }
 
@@ -183,15 +224,21 @@ export async function POST(request: NextRequest) {
               answer,
             }),
             assistantFiles,
-          }).catch(error => console.error('Failed to persist chat exchange', error))
+          }).catch(error => console.error('[dify-chat] persist failed', { requestId, error }))
           if (clientConnected)
           { controller.close() }
         }
         catch (error) {
+          console.error('[dify-chat] stream failed', {
+            requestId,
+            status: 502,
+            statusText: 'Dify stream interrupted',
+            body: error instanceof Error ? error.message.slice(0, 1000) : String(error).slice(0, 1000),
+          })
           if (clientConnected)
           { controller.error(error) }
           else
-          { console.error('Detached Dify stream failed', error) }
+          { console.error('[dify-chat] detached stream failed', { requestId, error }) }
         }
       }
       void pump()
@@ -208,6 +255,7 @@ export async function POST(request: NextRequest) {
       'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
       'X-Accel-Buffering': 'no',
+      'X-Request-Id': requestId,
     },
   })
 }

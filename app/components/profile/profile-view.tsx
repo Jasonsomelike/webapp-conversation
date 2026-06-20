@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   AcademicCapIcon,
   AdjustmentsHorizontalIcon,
@@ -13,6 +13,7 @@ import {
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
 import type { AppSession } from '@/lib/session'
+import Toast from '@/app/components/base/toast'
 
 const stages = ['入门', '系统学习', '复习', '刷题', '备考']
 const styles = ['图示讲解', '公式推导', '例题驱动', '简洁回答']
@@ -29,20 +30,70 @@ export default function ProfileView({
   stats: { conversations: number, references: number, messages: number }
   joinedAt: string
 }) {
-  const [stage, setStage] = useState(initialProfile?.learningStage || '系统学习')
-  const [style, setStyle] = useState(initialProfile?.preferredStyle || '图示讲解')
-  const [target, setTarget] = useState(initialProfile?.target || '自学提升')
-  const [saved, setSaved] = useState(false)
+  const initialStage = initialProfile?.learningStage || '系统学习'
+  const initialStyle = initialProfile?.preferredStyle || '图示讲解'
+  const initialTarget = initialProfile?.target || '自学提升'
+  const [stage, setStage] = useState(initialStage)
+  const [style, setStyle] = useState(initialStyle)
+  const [target, setTarget] = useState(initialTarget)
+  const [savedProfile, setSavedProfile] = useState({ stage: initialStage, style: initialStyle, target: initialTarget })
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const { notify } = Toast
+  const dirty = stage !== savedProfile.stage || style !== savedProfile.style || target !== savedProfile.target
+
+  useEffect(() => {
+    if (!editing || !dirty)
+    { return }
+
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    const interceptNavigation = (event: MouseEvent) => {
+      const anchor = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>('a[href]')
+      if (!anchor?.href || anchor.target === '_blank')
+      { return }
+      // eslint-disable-next-line no-alert
+      if (!globalThis.confirm('你有未保存的画像修改，确定离开吗？')) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+    }
+    globalThis.addEventListener('beforeunload', beforeUnload)
+    document.addEventListener('click', interceptNavigation, true)
+    return () => {
+      globalThis.removeEventListener('beforeunload', beforeUnload)
+      document.removeEventListener('click', interceptNavigation, true)
+    }
+  }, [dirty, editing])
+
+  const cancel = () => {
+    setStage(savedProfile.stage)
+    setStyle(savedProfile.style)
+    setTarget(savedProfile.target)
+    setEditing(false)
+  }
 
   const save = async () => {
-    const response = await fetch('/api/profile', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ learningStage: stage, preferredStyle: style, target }),
-    })
-    if (response.ok) {
-      setSaved(true)
-      setTimeout(() => setSaved(false), 1800)
+    setSaving(true)
+    try {
+      const response = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ learningStage: stage, preferredStyle: style, target }),
+      })
+      if (!response.ok)
+      { throw new Error(`PROFILE_SAVE_FAILED:${response.status}`) }
+      setSavedProfile({ stage, style, target })
+      setEditing(false)
+      notify({ type: 'success', message: '画像已更新' })
+    }
+    catch {
+      notify({ type: 'error', message: '保存失败，请稍后重试' })
+    }
+    finally {
+      setSaving(false)
     }
   }
 
@@ -55,8 +106,13 @@ export default function ProfileView({
             <div className="relative">
               <div className="flex items-center justify-between">
                 <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--studio-accent)]">Learner profile</div>
-                <button className="grid h-8 w-8 place-items-center rounded-xl bg-white/10">
-                  <PencilSquareIcon className="h-4 w-4" />
+                <button
+                  onClick={() => setEditing(true)}
+                  disabled={editing}
+                  className="flex h-8 items-center gap-1.5 rounded-xl bg-white/10 px-3 text-[10px] font-semibold transition hover:bg-white/15 disabled:cursor-default"
+                >
+                  {editing ? <CheckIcon className="h-3.5 w-3.5" /> : <PencilSquareIcon className="h-3.5 w-3.5" />}
+                  {editing ? '编辑中' : '编辑'}
                 </button>
               </div>
               <div className="mt-7 flex items-center gap-4">
@@ -128,12 +184,13 @@ export default function ProfileView({
                     {(options as string[]).map(option => (
                       <button
                         key={option}
+                        disabled={!editing || saving}
                         onClick={() => (setter as (value: string) => void)(option)}
                         className={`rounded-xl border px-4 py-2.5 text-xs transition ${
                           option === value
                             ? 'border-[#17342b] bg-[#17342b] font-semibold text-white'
-                            : 'border-[#183129]/10 bg-[#fafaf6] text-[#69766f] hover:bg-white'
-                        }`}
+                            : 'border-[#183129]/10 bg-[var(--studio-surface)] text-[var(--studio-muted)] hover:border-[var(--studio-accent-strong)]/30'
+                        } ${!editing ? 'cursor-default opacity-70' : ''}`}
                       >
                         {option}
                       </button>
@@ -143,12 +200,24 @@ export default function ProfileView({
               ))}
             </div>
 
-            <div className="mt-8 flex justify-end">
-              <button onClick={save} className="flex h-11 items-center gap-2 rounded-xl bg-[var(--studio-accent)] px-5 text-xs font-semibold text-[var(--studio-deep)] shadow-[0_10px_24px_rgba(132,153,58,.15)]">
-                {saved ? <CheckIcon className="h-4 w-4" /> : null}
-                {saved ? '已保存' : '保存偏好'}
-              </button>
-            </div>
+            {editing && (
+              <div className="mt-8 flex justify-end gap-3">
+                <button
+                  onClick={cancel}
+                  disabled={saving}
+                  className="h-11 rounded-xl border border-black/10 px-5 text-xs font-semibold disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={save}
+                  disabled={saving || !dirty}
+                  className="flex h-11 items-center gap-2 rounded-xl bg-[var(--studio-accent)] px-5 text-xs font-semibold text-[var(--studio-deep)] shadow-[0_10px_24px_rgba(132,153,58,.15)] disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  {saving ? '保存中...' : '保存'}
+                </button>
+              </div>
+            )}
           </PageCard>
 
           <div className="grid gap-5 md:grid-cols-2">

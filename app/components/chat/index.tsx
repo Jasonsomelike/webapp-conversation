@@ -12,7 +12,6 @@ import type { ChatItem, VisionFile, VisionSettings } from '@/types/app'
 import { TransferMethod } from '@/types/app'
 import Tooltip from '@/app/components/base/tooltip'
 import Toast from '@/app/components/base/toast'
-import ChatImageUploader from '@/app/components/base/image-uploader/chat-image-uploader'
 import ImageList from '@/app/components/base/image-uploader/image-list'
 import { useImageFiles } from '@/app/components/base/image-uploader/hooks'
 import FileUploaderInAttachmentWrapper from '@/app/components/base/file-uploader-in-attachment'
@@ -86,7 +85,6 @@ const Chat: FC<IChatProps> = ({
   }, [controlClearQuery])
   const {
     files,
-    onUpload,
     onRemove,
     onReUpload,
     onImageLinkLoadError,
@@ -177,46 +175,33 @@ const Chat: FC<IChatProps> = ({
       </div>
       {
         !isHideSendInput && (
-          <div className='sticky z-10 bottom-0 mx-auto w-full max-w-[860px] bg-gradient-to-t from-[#fffefa] via-[#fffefa] to-transparent px-3.5 pb-5 pt-8'>
+          <div className='sticky z-10 bottom-0 mx-auto w-full max-w-[860px] bg-gradient-to-t from-[var(--studio-chat-surface)] via-[var(--studio-chat-surface)] to-transparent px-3.5 pb-5 pt-8'>
             <div className='relative max-h-[170px] overflow-y-auto rounded-2xl border border-[#17342b]/15 bg-white p-[7px] shadow-[0_18px_45px_rgba(35,55,47,.12)]'>
-              {
-                visionConfig?.enabled && (
-                  <>
-                    <div className='absolute bottom-2 left-2 flex items-center'>
-                      <ChatImageUploader
-                        settings={visionConfig}
-                        onUpload={onUpload}
-                        disabled={files.length >= visionConfig.number_limits}
-                      />
-                      <div className='mx-1 w-[1px] h-4 bg-black/5' />
-                    </div>
-                    <div className='pl-[52px]'>
-                      <ImageList
-                        list={files}
-                        onRemove={onRemove}
-                        onReUpload={onReUpload}
-                        onImageLinkLoadSuccess={onImageLinkLoadSuccess}
-                        onImageLinkLoadError={onImageLinkLoadError}
-                      />
-                    </div>
-                  </>
-                )
-              }
-              {
-                fileConfig?.enabled && (
-                  <div className={`${visionConfig?.enabled ? 'pl-[52px]' : ''} mb-1`}>
-                    <FileUploaderInAttachmentWrapper
-                      fileConfig={fileConfig}
-                      value={attachmentFiles}
-                      onChange={setAttachmentFiles}
-                    />
-                  </div>
-                )
-              }
+              {fileConfig?.enabled && (
+                <div className='mb-1'>
+                  <FileUploaderInAttachmentWrapper
+                    fileConfig={fileConfig}
+                    value={attachmentFiles}
+                    onChange={setAttachmentFiles}
+                    compact
+                  />
+                </div>
+              )}
+              {visionConfig?.enabled && files.length > 0 && (
+                <div className='pl-10'>
+                  <ImageList
+                    list={files}
+                    onRemove={onRemove}
+                    onReUpload={onReUpload}
+                    onImageLinkLoadSuccess={onImageLinkLoadSuccess}
+                    onImageLinkLoadError={onImageLinkLoadError}
+                  />
+                </div>
+              )}
               <Textarea
                 className={`
-                  block w-full px-2 pr-[118px] py-[7px] leading-5 max-h-none text-base text-gray-700 outline-none appearance-none resize-none
-                  ${visionConfig?.enabled && 'pl-12'}
+                  block w-full px-2 pr-[118px] py-[7px] leading-5 max-h-none text-base text-[var(--studio-ink)] outline-none appearance-none resize-none
+                  ${(visionConfig?.enabled || fileConfig?.enabled) && 'pl-12'}
                 `}
                 value={query}
                 onChange={handleContentChange}

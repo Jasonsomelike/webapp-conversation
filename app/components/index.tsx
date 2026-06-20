@@ -733,7 +733,7 @@ const Main: FC<IMainProps> = () => {
   if (!APP_ID || !APP_INFO || !promptConfig) { return <Loading type='app' /> }
 
   return (
-    <div className="flex h-full min-h-0 bg-white">
+    <div className="flex h-full min-h-0 bg-[var(--studio-surface)]">
       <div className="flex h-full min-h-0 w-full overflow-hidden">
         {/* sidebar */}
         {!isMobile && renderSidebar()}
@@ -745,8 +745,8 @@ const Main: FC<IMainProps> = () => {
           </div>
         )}
         {/* main */}
-        <div className='relative flex min-h-0 flex-grow flex-col overflow-y-auto bg-[#fffefa]'>
-          <div className="sticky top-0 z-20 flex h-12 shrink-0 items-center justify-between border-b border-[#183129]/[0.07] bg-[#fffefa]/90 px-4 backdrop-blur lg:hidden">
+        <div className='relative flex min-h-0 flex-grow flex-col overflow-y-auto bg-[var(--studio-chat-surface)]'>
+          <div className="sticky top-0 z-20 flex h-12 shrink-0 items-center justify-between border-b border-black/[0.07] bg-[var(--studio-chat-surface)]/90 px-4 backdrop-blur lg:hidden">
             <button onClick={showSidebar} className="rounded-lg bg-[#f0f2ed] px-3 py-1.5 text-xs font-medium text-[#526159]">会话</button>
             <button onClick={() => handleConversationIdChange('-1')} className="rounded-lg bg-[#17342b] px-3 py-1.5 text-xs font-medium text-white">新对话</button>
           </div>

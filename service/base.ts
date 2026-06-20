@@ -389,15 +389,21 @@ export const ssePost = (
   if (body) { options.body = JSON.stringify(body) }
 
   globalThis.fetch(urlWithPrefix, options)
-    .then((res: any) => {
-      if (!/^(2|3)\d{2}$/.test(res.status)) {
-        // eslint-disable-next-line no-new
-        new Promise(() => {
-          res.json().then((data: any) => {
-            Toast.notify({ type: 'error', message: data.message || 'Server Error' })
-          })
-        })
-        onError?.('Server Error')
+    .then(async (res: Response) => {
+      if (!/^(2|3)\d{2}$/.test(String(res.status))) {
+        const text = await res.text().catch(() => '')
+        let data: Record<string, any> = {}
+        try {
+          data = text ? JSON.parse(text) : {}
+        }
+        catch {
+          // Preserve non-JSON diagnostics returned by an upstream proxy.
+        }
+        const requestId = data.requestId || res.headers.get('X-Request-Id')
+        const baseMessage = data.error || data.message || text || `请求失败（HTTP ${res.status}）`
+        const message = requestId ? `${baseMessage}（请求 ID：${requestId}）` : baseMessage
+        Toast.notify({ type: 'error', message })
+        onError?.(message, data.code)
         return
       }
       return handleStream(res, (str: string, isFirstMessage: boolean, moreInfo: IOnDataMoreInfo) => {
@@ -411,8 +417,9 @@ export const ssePost = (
       }, onThought, onMessageEnd, onMessageReplace, onFile, onWorkflowStarted, onWorkflowFinished, onNodeStarted, onNodeFinished)
     })
     .catch((e) => {
-      Toast.notify({ type: 'error', message: e })
-      onError?.(e)
+      const message = e instanceof Error ? e.message : String(e)
+      Toast.notify({ type: 'error', message })
+      onError?.(message)
     })
 }
 

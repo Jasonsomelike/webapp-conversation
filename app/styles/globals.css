@@ -43,6 +43,7 @@
   --studio-sidebar: #12221e;
   --studio-paper: #f3f1eb;
   --studio-surface: #faf9f5;
+  --studio-chat-surface: var(--studio-surface);
   --studio-accent: #dff67a;
   --studio-accent-strong: #47705e;
   --studio-muted: #668074;
@@ -399,4 +400,106 @@ a {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   text-fill-color: transparent;
+
+.streamdown-markdown .markdown-file-card {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  width: min(100%, 560px);
+  margin: 0.85rem 0;
+  border: 1px solid color-mix(in srgb, var(--studio-accent-strong) 24%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--studio-accent) 15%, var(--studio-surface));
+  padding: 0.8rem;
+  color: var(--studio-ink);
+  text-decoration: none;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.streamdown-markdown .markdown-file-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--studio-accent-strong) 45%, transparent);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--studio-deep) 12%, transparent);
+}
+
+.streamdown-markdown .markdown-file-icon {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--studio-accent);
+  color: var(--studio-deep);
+}
+
+.streamdown-markdown .markdown-file-icon svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.streamdown-markdown .markdown-file-name,
+.streamdown-markdown .markdown-file-type {
+  display: block;
+}
+
+.streamdown-markdown .markdown-file-name {
+  overflow: hidden;
+  font-size: 0.84rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.streamdown-markdown .markdown-file-type {
+  margin-top: 0.15rem;
+  color: var(--studio-muted);
+  font-size: 0.68rem;
+}
+
+.streamdown-markdown .markdown-file-download {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--studio-accent-strong);
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
+.streamdown-markdown .markdown-file-download svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.streamdown-markdown .markdown-media-error {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin: 0.8rem 0;
+  border: 1px dashed color-mix(in srgb, var(--studio-ink) 18%, transparent);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  color: var(--studio-muted);
+  font-size: 0.78rem;
+}
+
+.streamdown-markdown .markdown-media-error a {
+  color: var(--studio-accent-strong);
+  text-decoration: underline;
+}
+
+:root[data-theme="midnight"] input,
+:root[data-theme="midnight"] textarea,
+:root[data-theme="midnight"] select,
+:root[data-theme="midnight"] option {
+  color: var(--studio-ink) !important;
+  background-color: color-mix(in srgb, var(--studio-surface) 88%, black) !important;
+}
+
+:root[data-theme="midnight"] .text-gray-500,
+:root[data-theme="midnight"] .text-gray-700,
+:root[data-theme="midnight"] .text-gray-800 {
+  color: var(--studio-muted) !important;
+}
 }

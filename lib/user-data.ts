@@ -5,6 +5,7 @@ import { db, isDatabaseConfigured } from '@/lib/db'
 import type { KnowledgeReference, LearningAnalysis, WeakTopic } from '@/lib/learning-types'
 import type { ExtractedReference } from '@/lib/reference-extractor'
 import { extractKnowledgeReferences } from '@/lib/reference-extractor'
+import { listKnowledgeDocuments } from '@/lib/dify-dataset'
 
 interface RetrieverResource extends ExtractedReference {
   content?: string
@@ -210,24 +211,37 @@ export const getUserReferences = async (appUserId: string): Promise<KnowledgeRef
     take: 300,
   })
 
-  return references.map(reference => ({
-    ...(reference.rawPayload && typeof reference.rawPayload === 'object' && !Array.isArray(reference.rawPayload)
-      ? { documentId: (reference.rawPayload as Record<string, any>).document_id as string | undefined }
-      : {}),
-    id: reference.id,
-    conversationId: reference.difyConversationId || '',
-    messageId: reference.difyMessageId || undefined,
-    documentName: reference.documentName || '未命名文档',
-    datasetName: reference.datasetName || undefined,
-    pageNumber: reference.pageNumber || undefined,
-    originalPageNumber: reference.originalPageNumber || undefined,
-    quote: reference.quote || undefined,
-    score: reference.score ? Number(reference.score) : undefined,
-    pageImageUrl: reference.pageImageUrl || undefined,
-    sourceUrl: reference.sourceUrl || undefined,
-    topic: '知识库引用',
-    createdAt: reference.createdAt.toISOString(),
-  }))
+  const documentIdsByName = new Map<string, string>()
+  try {
+    const documents = await listKnowledgeDocuments({ page: 1, limit: 100 })
+    documents.data.forEach(document => documentIdsByName.set(document.name, document.id))
+  }
+  catch {
+    // References remain usable even when the document catalog is temporarily unavailable.
+  }
+
+  return references.map((reference) => {
+    const documentName = reference.documentName || '未命名文档'
+    const rawDocumentId = reference.rawPayload && typeof reference.rawPayload === 'object' && !Array.isArray(reference.rawPayload)
+      ? (reference.rawPayload as Record<string, any>).document_id as string | undefined
+      : undefined
+    return {
+      id: reference.id,
+      conversationId: reference.difyConversationId || '',
+      messageId: reference.difyMessageId || undefined,
+      documentId: rawDocumentId || documentIdsByName.get(documentName),
+      documentName,
+      datasetName: reference.datasetName || undefined,
+      pageNumber: reference.pageNumber || undefined,
+      originalPageNumber: reference.originalPageNumber || undefined,
+      quote: reference.quote || undefined,
+      score: reference.score ? Number(reference.score) : undefined,
+      pageImageUrl: reference.pageImageUrl || undefined,
+      sourceUrl: reference.sourceUrl || undefined,
+      topic: '知识库引用',
+      createdAt: reference.createdAt.toISOString(),
+    }
+  })
 }
 
 const emptyAnalysis: LearningAnalysis = {

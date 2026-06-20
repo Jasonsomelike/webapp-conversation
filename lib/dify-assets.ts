@@ -5,12 +5,13 @@ const difyPublicOrigin = (
 
 const imageExtension = /\.(?:avif|gif|jpe?g|png|svg|webp)(?:[?#].*)?$/i
 const downloadableExtension = /\.(?:csv|docx?|md|pdf|pptx?|rtf|txt|xlsx?|zip)(?:[?#].*)?$/i
+const exactDifyAssetUrl = /^(?:(?:https?:\/\/dify\.jasonsome\.cn:22380)?\/(?:files|page-images)\/[^\s<>"')\]]+)$/i
 
 export const toAbsoluteDifyAssetUrl = (value: string) => {
   const url = value.trim()
   if (!url)
   { return '' }
-  if (url.startsWith('/files/'))
+  if (url.startsWith('/files/') || url.startsWith('/page-images/'))
   { return `${difyPublicOrigin}${url}` }
   return url
 }
@@ -21,7 +22,12 @@ export const toDifyAssetProxyUrl = (value: string, download = false, filename = 
   { return '' }
   try {
     const target = new URL(url)
-    if (target.hostname !== 'dify.jasonsome.cn')
+    if (
+      target.protocol !== 'https:'
+      || target.hostname !== 'dify.jasonsome.cn'
+      || (target.port && target.port !== '22380')
+      || (!target.pathname.startsWith('/files/') && !target.pathname.startsWith('/page-images/'))
+    )
     { return url }
   }
   catch {
@@ -51,15 +57,27 @@ export const normalizeAssistantMarkdown = (content: string) => {
       `$1${currentChinaDate()}`,
     )
 
-  const withImages = normalizedSignature.replace(
-    /(?<!\]\()(?<!\()((?:https?:\/\/dify\.jasonsome\.cn:22380)?\/files\/[^\s<>"')\]]+\.(?:avif|gif|jpe?g|png|svg|webp)(?:\?[^\s<>"')\]]*)?)/gi,
-    '\n\n![AI 生成图片]($1)\n\n',
-  )
-
-  return withImages.replace(
-    /(?<!\]\()(?<!\()((?:https?:\/\/dify\.jasonsome\.cn:22380)?\/files\/[^\s<>"')\]]+\.(?:csv|docx?|md|pdf|pptx?|rtf|txt|xlsx?|zip)(?:\?[^\s<>"')\]]*)?)/gi,
-    '\n\n[下载生成文件]($1)\n\n',
-  )
+  return normalizedSignature
+    .split('\n')
+    .map((line) => {
+      const value = line.trim()
+      if (!exactDifyAssetUrl.test(value))
+      { return line }
+      if (isImageAsset(value))
+      { return `![AI 生成图片](${value})` }
+      if (isDownloadableAsset(value)) {
+        let filename = '下载生成文件'
+        try {
+          filename = decodeURIComponent(new URL(toAbsoluteDifyAssetUrl(value)).pathname.split('/').pop() || filename)
+        }
+        catch {
+          // Keep a readable fallback label for malformed model output.
+        }
+        return `[${filename}](${value})`
+      }
+      return line
+    })
+    .join('\n')
 }
 
 export const isImageAsset = (value: string) => imageExtension.test(value)

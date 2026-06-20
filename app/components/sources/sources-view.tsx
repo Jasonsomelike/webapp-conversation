@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowDownTrayIcon,
   ArrowTopRightOnSquareIcon,
@@ -18,11 +18,25 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
   const [selectedId, setSelectedId] = useState(initialReferences[0]?.id)
   const [previewUrl, setPreviewUrl] = useState('')
 
+  const [imageError, setImageError] = useState(false)
   const filtered = useMemo(() => initialReferences.filter(item =>
     `${item.documentName} ${item.topic} ${item.quote}`.toLowerCase().includes(query.toLowerCase()),
   ), [query, initialReferences])
   const selected = initialReferences.find(item => item.id === selectedId) || filtered[0]
   const documentCount = new Set(initialReferences.map(item => item.documentName)).size
+  const documentPreviewUrl = selected?.documentId
+    ? `/api/library/documents/${selected.documentId}/file?disposition=inline&filename=${encodeURIComponent(selected.documentName)}`
+    : ''
+  const sourceHref = selected?.sourceUrl
+    ? toDifyAssetProxyUrl(selected.sourceUrl)
+    : documentPreviewUrl
+  const pageImageHref = selected?.pageImageUrl
+    ? toDifyAssetProxyUrl(selected.pageImageUrl)
+    : ''
+
+  useEffect(() => {
+    setImageError(false)
+  }, [selected?.id])
   const averageScore = initialReferences.length
     ? Math.round(initialReferences.reduce((sum, item) => sum + (item.score || 0), 0) / initialReferences.length * 100)
     : 0
@@ -140,31 +154,47 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
                       <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.16em] text-black/40">Dify 命中片段</div>
                       <blockquote className="border-l-2 border-[var(--studio-accent-strong)]/50 pl-4 text-sm leading-8 text-black/70">{selected.quote}</blockquote>
                     </div>
-                    {selected.pageImageUrl && (
-                      <button
-                        type="button"
-                        onClick={() => setPreviewUrl(toDifyAssetProxyUrl(selected.pageImageUrl!))}
-                        className="group mt-5 overflow-hidden rounded-2xl border border-black/10 bg-black/[0.025] p-2 text-left shadow-sm"
-                      >
-                        <img
-                          src={toDifyAssetProxyUrl(selected.pageImageUrl)}
-                          alt={`${selected.documentName} 来源页`}
-                          className="max-h-[430px] max-w-full rounded-xl object-contain transition-transform duration-200 group-hover:scale-[1.01]"
-                        />
-                        <div className="px-2 pb-1 pt-2 text-[10px] text-black/40">点击放大查看来源页</div>
-                      </button>
-                    )}
+                    {pageImageHref && !imageError
+                      ? (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewUrl(pageImageHref)}
+                          className="group mt-5 overflow-hidden rounded-2xl border border-black/10 bg-black/[0.025] p-2 text-left shadow-sm"
+                        >
+                          <img
+                            src={pageImageHref}
+                            alt={`${selected.documentName} 来源页`}
+                            loading="lazy"
+                            onError={() => setImageError(true)}
+                            className="max-h-[430px] max-w-full rounded-xl object-contain transition-transform duration-200 group-hover:scale-[1.01]"
+                          />
+                          <div className="px-2 pb-1 pt-2 text-[10px] text-black/40">点击放大查看来源页</div>
+                        </button>
+                      )
+                      : (
+                        <div className="mt-5 rounded-2xl border border-dashed border-black/10 bg-black/[0.025] px-5 py-10 text-center">
+                          <DocumentMagnifyingGlassIcon className="mx-auto h-7 w-7 text-[var(--studio-muted)]" />
+                          <div className="mt-2 text-xs font-semibold">{imageError ? '来源页图片加载失败' : '该引用暂无来源页图片'}</div>
+                          <div className="mt-1 text-[10px] text-[var(--studio-muted)]">可尝试打开或下载对应文档。</div>
+                        </div>
+                      )}
                     <div className="mt-5 flex flex-wrap gap-3">
                       {selected.conversationId && (
                         <a href={`/chat?conversation=${selected.conversationId}`} className="inline-flex items-center gap-2 rounded-xl bg-[var(--studio-deep)] px-4 py-2.5 text-xs font-semibold text-white">
                           回到原对话 <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
                         </a>
                       )}
-                      {selected.sourceUrl && (
-                        <a href={toDifyAssetProxyUrl(selected.sourceUrl)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-xs font-semibold">
-                          打开来源 <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
-                        </a>
-                      )}
+                      {sourceHref
+                        ? (
+                          <a href={sourceHref} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-xs font-semibold">
+                            打开来源 <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+                          </a>
+                        )
+                        : (
+                          <span title="暂无可打开的来源文件" className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-xs font-semibold opacity-45">
+                            暂无可打开的来源文件
+                          </span>
+                        )}
                       {selected.documentId && (
                         <>
                           <a
