@@ -15,6 +15,18 @@ export async function POST(request: NextRequest, { params }: {
   const { session, user } = getInfo(request)
   if (!session || !user)
   { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  if (isDatabaseConfigured()) {
+    const ownedConversation = await db.chatConversation.findFirst({
+      where: {
+        appUserId: session.id,
+        difyConversationId: conversationId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    })
+    if (!ownedConversation)
+    { return NextResponse.json({ error: 'Conversation not found' }, { status: 404 }) }
+  }
   if (!isDifyConfigured)
   { return NextResponse.json({ name: name || '网络学习会话' }) }
 

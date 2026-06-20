@@ -1,7 +1,7 @@
 .item {
   width: auto;
   max-width: 100%;
-  max-height: 420px;
+  max-height: 210px;
   margin-right: 8px;
   margin-bottom: 8px;
   object-fit: contain;
@@ -20,7 +20,7 @@
 
 .img-1 .item {
   width: auto !important;
-  max-width: min(100%, 660px) !important;
+  max-width: min(100%, 330px) !important;
   height: auto;
 }
 

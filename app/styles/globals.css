@@ -309,8 +309,8 @@ a {
   display: block;
   width: auto;
   height: auto;
-  max-width: min(100%, 680px);
-  max-height: 460px;
+  max-width: min(100%, 340px);
+  max-height: 230px;
   object-fit: contain;
 }
 
@@ -400,12 +400,13 @@ a {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   text-fill-color: transparent;
+}
 
 .streamdown-markdown .markdown-file-card {
   display: flex;
   align-items: center;
   gap: 0.8rem;
-  width: min(100%, 560px);
+  width: min(100%, 440px);
   margin: 0.85rem 0;
   border: 1px solid color-mix(in srgb, var(--studio-accent-strong) 24%, transparent);
   border-radius: 14px;
@@ -502,4 +503,13 @@ a {
 :root[data-theme="midnight"] .text-gray-800 {
   color: var(--studio-muted) !important;
 }
+
+.chat-message-target {
+  transition: outline-color 300ms ease, background-color 300ms ease, box-shadow 300ms ease;
+}
+
+.chat-message-target.message-highlight {
+  outline: 2px solid color-mix(in srgb, var(--studio-accent-strong) 75%, #38bdf8);
+  background: color-mix(in srgb, var(--studio-accent) 32%, transparent);
+  box-shadow: 0 0 0 7px color-mix(in srgb, var(--studio-accent) 16%, transparent);
 }

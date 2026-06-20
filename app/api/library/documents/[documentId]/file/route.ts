@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHmac, randomUUID } from 'node:crypto'
 import type { NextRequest } from 'next/server'
 import {
   getKnowledgeDocumentDownloadUrl,
@@ -14,6 +14,37 @@ export const maxDuration = 300
 const dispositionHeader = (mode: 'inline' | 'attachment', filename: string) =>
   `${mode}; filename*=UTF-8''${encodeURIComponent(filename.replace(/["\r\n]/g, '_'))}`
 
+const copyHeader = (source: Headers, target: Headers, name: string) => {
+  const value = source.get(name)
+  if (value)
+  { target.set(name, value) }
+}
+
+const streamedResponse = (
+  upstream: Response,
+  disposition: 'inline' | 'attachment',
+  filename: string,
+  requestId: string,
+  source: string,
+) => {
+  const headers = new Headers({
+    'Content-Type': upstream.headers.get('Content-Type') || 'application/octet-stream',
+    'Content-Disposition': upstream.headers.get('Content-Disposition') || dispositionHeader(disposition, filename),
+    'Cache-Control': 'private, no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Request-Id': requestId,
+    'X-Library-File-Source': source,
+  })
+  ;['Accept-Ranges', 'Content-Length', 'Content-Range', 'ETag', 'Last-Modified'].forEach(name =>
+    copyHeader(upstream.headers, headers, name),
+  )
+
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers,
+  })
+}
+
 const byteResponse = (
   request: NextRequest,
   bytes: Uint8Array,
@@ -21,6 +52,7 @@ const byteResponse = (
   disposition: 'inline' | 'attachment',
   filename: string,
   fallback: string,
+  requestId: string,
 ) => {
   const buffer = Buffer.from(bytes)
   const range = request.headers.get('range')
@@ -30,6 +62,8 @@ const byteResponse = (
     'Cache-Control': 'private, no-store',
     'X-Content-Type-Options': 'nosniff',
     'X-Dify-Document-Fallback': fallback,
+    'X-Library-File-Source': fallback,
+    'X-Request-Id': requestId,
     'Accept-Ranges': 'bytes',
   }
 
@@ -57,6 +91,136 @@ const byteResponse = (
   })
 }
 
+const escapeHtml = (value: string) =>
+  value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    '\'': '&#039;',
+  })[character] || character)
+
+const documentErrorResponse = (
+  request: NextRequest,
+  message: string,
+  status: number,
+  requestId: string,
+) => {
+  const headers = { 'X-Request-Id': requestId }
+  const wantsHtml = request.headers.get('accept')?.includes('text/html')
+    && request.nextUrl.searchParams.get('disposition') !== 'attachment'
+  if (!wantsHtml)
+  { return new Response(`${message}. requestId=${requestId}`, { status, headers }) }
+
+  const safeMessage = escapeHtml(message)
+  const safeRequestId = escapeHtml(requestId)
+  return new Response(`<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>文档打开失败</title>
+  <style>
+    body{margin:0;background:#f4f6f3;color:#17342b;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+    main{max-width:680px;margin:12vh auto;padding:32px;border:1px solid #17342b1a;border-radius:24px;background:#fff;box-shadow:0 24px 70px #17342b14}
+    h1{font-size:24px;margin:0 0 14px}p{line-height:1.8;color:#526159}.code{padding:12px 14px;border-radius:12px;background:#f2f5f2;font:13px ui-monospace,monospace;word-break:break-all}
+    .actions{display:flex;gap:10px;margin-top:24px;flex-wrap:wrap}a,button{border:0;border-radius:12px;padding:10px 16px;font-weight:650;cursor:pointer;text-decoration:none}
+    a{background:#17342b;color:#fff}button{background:#e8efe9;color:#17342b}
+  </style>
+</head>
+<body><main>
+  <h1>文档打开失败</h1>
+  <p>${safeMessage}</p>
+  <div class="code">请求编号：${safeRequestId}</div>
+  <p>可能原因：文件映射不存在、服务器只读文件路由不可用，或上游 Dify 暂时无法访问。</p>
+  <div class="actions">
+    <a href="/library">返回知识库</a>
+    <button onclick="navigator.clipboard.writeText(document.querySelector('.code').textContent)">复制错误信息</button>
+  </div>
+</main></body></html>`, {
+    status,
+    headers: {
+      ...headers,
+      'Content-Type': 'text/html; charset=utf-8',
+    },
+  })
+}
+
+const fetchLibraryFileService = async ({
+  documentId,
+  disposition,
+  filename,
+  requestId,
+  range,
+}: {
+  documentId: string
+  disposition: 'inline' | 'attachment'
+  filename: string
+  requestId: string
+  range: string | null
+}) => {
+  const baseUrl = process.env.LIBRARY_FILE_SERVICE_URL?.replace(/\/$/, '')
+  const token = process.env.LIBRARY_FILE_SERVICE_TOKEN
+  if (!baseUrl || !token)
+  { throw new Error('LIBRARY_FILE_SERVICE_NOT_CONFIGURED') }
+
+  const url = new URL(`${baseUrl}/library/documents/${encodeURIComponent(documentId)}/file`)
+  url.searchParams.set('disposition', disposition)
+  url.searchParams.set('filename', filename)
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(new Error('LIBRARY_FILE_SERVICE_TIMEOUT')), 30_000)
+  try {
+    return await fetch(url, {
+      cache: 'no-store',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'X-Internal-Token': token,
+        'X-Request-Id': requestId,
+        ...(range ? { Range: range } : {}),
+      },
+    })
+  }
+  finally {
+    clearTimeout(timeout)
+  }
+}
+
+const signedLibraryFileRedirect = ({
+  documentId,
+  disposition,
+  filename,
+  requestId,
+}: {
+  documentId: string
+  disposition: 'inline' | 'attachment'
+  filename: string
+  requestId: string
+}) => {
+  const baseUrl = process.env.LIBRARY_FILE_SERVICE_URL?.replace(/\/$/, '')
+  const token = process.env.LIBRARY_FILE_SERVICE_TOKEN
+  if (!baseUrl || !token)
+  { return null }
+
+  const expires = String(Math.floor(Date.now() / 1000) + 300)
+  const canonical = `${documentId}\n${disposition}\n${filename}\n${requestId}\n${expires}`
+  const signature = createHmac('sha256', token).update(canonical).digest('base64url')
+  const url = new URL(`${baseUrl}/library/documents/${encodeURIComponent(documentId)}/file`)
+  url.searchParams.set('disposition', disposition)
+  url.searchParams.set('filename', filename)
+  url.searchParams.set('requestId', requestId)
+  url.searchParams.set('expires', expires)
+  url.searchParams.set('signature', signature)
+
+  const headers = new Headers({
+    'Cache-Control': 'private, no-store',
+    'X-Request-Id': requestId,
+    'X-Library-File-Source': 'signed-browser-redirect',
+  })
+  headers.set('Location', url.toString())
+  return new Response(null, { status: 307, headers })
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ documentId: string }> },
@@ -71,7 +235,34 @@ export async function GET(
     : 'inline'
   const filename = (request.nextUrl.searchParams.get('filename') || `${documentId}.pdf`)
     .replace(/["\r\n]/g, '_')
-  let originalFileError = ''
+  const errors: string[] = []
+
+  const directRedirect = signedLibraryFileRedirect({
+    documentId,
+    disposition,
+    filename,
+    requestId,
+  })
+  if (directRedirect)
+  { return directRedirect }
+
+  try {
+    const serviceResponse = await fetchLibraryFileService({
+      documentId,
+      disposition,
+      filename,
+      requestId,
+      range: request.headers.get('range'),
+    })
+    if (serviceResponse.ok && serviceResponse.body)
+    { return streamedResponse(serviceResponse, disposition, filename, requestId, 'server-file-service') }
+
+    const body = await serviceResponse.text().catch(() => '')
+    errors.push(`file-service:${serviceResponse.status}:${body.slice(0, 300)}`)
+  }
+  catch (error) {
+    errors.push(`file-service:${error instanceof Error ? error.message : String(error)}`)
+  }
 
   try {
     const signedUrl = await getKnowledgeDocumentDownloadUrl(documentId)
@@ -83,22 +274,10 @@ export async function GET(
     if (!upstream.ok || !upstream.body)
     { throw new Error(`DIFY_DOCUMENT_FILE_UNAVAILABLE:${upstream.status}`) }
 
-    return new Response(upstream.body, {
-      status: upstream.status,
-      headers: {
-        'Content-Type': upstream.headers.get('Content-Type') || 'application/octet-stream',
-        'Content-Disposition': dispositionHeader(disposition, filename),
-        'Cache-Control': 'private, no-store',
-        'X-Content-Type-Options': 'nosniff',
-        'Accept-Ranges': upstream.headers.get('Accept-Ranges') || 'bytes',
-        'X-Request-Id': requestId,
-        ...(upstream.headers.get('Content-Length') ? { 'Content-Length': upstream.headers.get('Content-Length')! } : {}),
-        ...(upstream.headers.get('Content-Range') ? { 'Content-Range': upstream.headers.get('Content-Range')! } : {}),
-      },
-    })
+    return streamedResponse(upstream, disposition, filename, requestId, 'dify-signed-url')
   }
   catch (error) {
-    originalFileError = error instanceof Error ? error.message : String(error)
+    errors.push(`dify-download:${error instanceof Error ? error.message : String(error)}`)
   }
 
   try {
@@ -106,7 +285,7 @@ export async function GET(
       const pageImages = await getKnowledgeDocumentPageImages(documentId)
       if (pageImages.length) {
         const pdf = await buildKnowledgeDocumentPdf(filename, pageImages)
-        return byteResponse(request, pdf, 'application/pdf', disposition, filename, 'page-images-pdf')
+        return byteResponse(request, pdf, 'application/pdf', disposition, filename, 'page-images-pdf', requestId)
       }
     }
 
@@ -114,7 +293,7 @@ export async function GET(
     const fallbackFilename = `${filename.replace(/\.[^.]+$/, '') || 'document'}-索引文本.txt`
     const body = [
       `文档：${filename}`,
-      '说明：当前 Dify 版本未开放原文件下载接口，以下内容为知识库已索引文本。',
+      '说明：原文件服务和 Dify 下载接口均不可用，以下内容为知识库已索引文本。',
       '',
       indexedText,
     ].join('\n')
@@ -125,22 +304,30 @@ export async function GET(
         'Cache-Control': 'private, no-store',
         'X-Content-Type-Options': 'nosniff',
         'X-Dify-Document-Fallback': 'indexed-text',
+        'X-Library-File-Source': 'indexed-text',
         'X-Request-Id': requestId,
       },
     })
   }
   catch (error) {
-    const fallbackError = error instanceof Error ? error.message : String(error)
-    console.error('[library-file] failed', {
+    errors.push(`fallback:${error instanceof Error ? error.message : String(error)}`)
+    console.error('[library-document-file] failed', {
       requestId,
       documentId,
-      originalFileError,
-      fallbackError,
+      disposition,
+      filename,
+      upstreamUrl: process.env.LIBRARY_FILE_SERVICE_URL || 'not-configured',
+      errors,
     })
-    const notFound = /:404|NOT_FOUND/i.test(`${originalFileError} ${fallbackError}`)
-    return new Response(
-      `Unable to open document: ${fallbackError}. requestId=${requestId}`,
-      { status: notFound ? 404 : 502, headers: { 'X-Request-Id': requestId } },
+    const combinedError = errors.join(' | ')
+    const notFound = /:404|NOT_FOUND|not found/i.test(combinedError)
+    return documentErrorResponse(
+      request,
+      `Unable to open document: ${combinedError}`,
+      notFound ? 404 : 502,
+      requestId,
     )
   }
 }
+
+export const HEAD = GET

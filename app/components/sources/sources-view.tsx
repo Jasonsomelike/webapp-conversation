@@ -159,14 +159,14 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
                         <button
                           type="button"
                           onClick={() => setPreviewUrl(pageImageHref)}
-                          className="group mt-5 overflow-hidden rounded-2xl border border-black/10 bg-black/[0.025] p-2 text-left shadow-sm"
+                          className="group mt-5 inline-block max-w-full overflow-hidden rounded-2xl border border-black/10 bg-black/[0.025] p-2 text-left shadow-sm sm:max-w-[50%]"
                         >
                           <img
                             src={pageImageHref}
                             alt={`${selected.documentName} 来源页`}
                             loading="lazy"
                             onError={() => setImageError(true)}
-                            className="max-h-[430px] max-w-full rounded-xl object-contain transition-transform duration-200 group-hover:scale-[1.01]"
+                            className="max-h-[240px] max-w-full rounded-xl object-contain transition-transform duration-200 group-hover:scale-[1.01]"
                           />
                           <div className="px-2 pb-1 pt-2 text-[10px] text-black/40">点击放大查看来源页</div>
                         </button>
@@ -180,8 +180,12 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
                       )}
                     <div className="mt-5 flex flex-wrap gap-3">
                       {selected.conversationId && (
-                        <a href={`/chat?conversation=${selected.conversationId}`} className="inline-flex items-center gap-2 rounded-xl bg-[var(--studio-deep)] px-4 py-2.5 text-xs font-semibold text-white">
-                          回到原对话 <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+                        <a
+                          href={`/chat?conversationId=${encodeURIComponent(selected.conversationId)}${selected.messageId ? `&messageId=${encodeURIComponent(selected.messageId)}` : ''}`}
+                          title={selected.messageId ? '回到产生该引用的回答' : '该引用缺少消息定位信息，仅能回到会话'}
+                          className="inline-flex items-center gap-2 rounded-xl bg-[var(--studio-deep)] px-4 py-2.5 text-xs font-semibold text-white"
+                        >
+                          {selected.messageId ? '回到原消息' : '回到原对话'} <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
                         </a>
                       )}
                       {sourceHref

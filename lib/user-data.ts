@@ -141,11 +141,19 @@ export const getUserReferences = async (appUserId: string): Promise<KnowledgeRef
   if (!isDatabaseConfigured())
   { return [] }
 
+  const activeConversationIds = (await db.chatConversation.findMany({
+    where: { appUserId, deletedAt: null },
+    select: { difyConversationId: true },
+  })).map(item => item.difyConversationId)
+  if (!activeConversationIds.length)
+  { return [] }
+
   const storedMessages = await db.chatMessage.findMany({
     where: {
       appUserId,
       role: 'assistant',
       difyMessageId: { not: null },
+      difyConversationId: { in: activeConversationIds },
     },
     orderBy: { createdAt: 'desc' },
     take: 80,
@@ -206,7 +214,10 @@ export const getUserReferences = async (appUserId: string): Promise<KnowledgeRef
   }
 
   const references = await db.messageReference.findMany({
-    where: { appUserId },
+    where: {
+      appUserId,
+      difyConversationId: { in: activeConversationIds },
+    },
     orderBy: { createdAt: 'desc' },
     take: 300,
   })
@@ -273,15 +284,34 @@ export const getUserAnalysis = async (appUserId: string): Promise<LearningAnalys
   start.setHours(0, 0, 0, 0)
   start.setDate(start.getDate() - 6)
 
+  const activeConversationIds = (await db.chatConversation.findMany({
+    where: { appUserId, deletedAt: null },
+    select: { difyConversationId: true },
+  })).map(item => item.difyConversationId)
+
   const [conversationCount, referenceCount, messages, references, profile] = await Promise.all([
-    db.chatConversation.count({ where: { appUserId } }),
-    db.messageReference.count({ where: { appUserId } }),
+    Promise.resolve(activeConversationIds.length),
+    activeConversationIds.length
+      ? db.messageReference.count({
+        where: {
+          appUserId,
+          difyConversationId: { in: activeConversationIds },
+        },
+      })
+      : Promise.resolve(0),
     db.chatMessage.findMany({
-      where: { appUserId, createdAt: { gte: start } },
+      where: {
+        appUserId,
+        createdAt: { gte: start },
+        difyConversationId: { in: activeConversationIds },
+      },
       select: { createdAt: true, role: true },
     }),
     db.messageReference.findMany({
-      where: { appUserId },
+      where: {
+        appUserId,
+        difyConversationId: { in: activeConversationIds },
+      },
       orderBy: { createdAt: 'desc' },
       take: 100,
       select: { documentName: true },

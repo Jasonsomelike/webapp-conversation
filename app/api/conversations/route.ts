@@ -10,7 +10,10 @@ export async function GET(request: NextRequest) {
 
   const conversations = isDatabaseConfigured()
     ? await db.chatConversation.findMany({
-      where: { appUserId: session.id },
+      where: {
+        appUserId: session.id,
+        deletedAt: null,
+      },
       orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
       take: 100,
     })

@@ -13,6 +13,19 @@ export async function GET(request: NextRequest) {
   if (!conversationId)
   { return NextResponse.json({ data: [] }, { headers: setSession(sessionId) }) }
 
+  const activeConversation = isDatabaseConfigured()
+    ? await db.chatConversation.findFirst({
+      where: {
+        appUserId: session.id,
+        difyConversationId: conversationId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    })
+    : null
+  if (isDatabaseConfigured() && !activeConversation)
+  { return NextResponse.json({ error: 'Conversation not found' }, { status: 404 }) }
+
   const messages = isDatabaseConfigured()
     ? await db.chatMessage.findMany({
       where: {

@@ -211,7 +211,12 @@ const Answer: FC<IAnswerProps> = ({
   )
 
   return (
-    <div key={id}>
+    <div
+      key={id}
+      id={`message-${id}`}
+      data-message-id={id}
+      className="chat-message-target rounded-2xl"
+    >
       <div className="flex items-start">
         <div className={`${s.answerIcon} w-10 h-10 shrink-0`}>
           {isResponding

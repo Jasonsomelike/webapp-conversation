@@ -1,0 +1,47 @@
+services:
+  library-file-service:
+    image: langgenius/dify-api:1.14.2
+    container_name: dify-library-file-service
+    restart: unless-stopped
+    entrypoint:
+      - gunicorn
+    command:
+      - --bind
+      - 0.0.0.0:3011
+      - --workers
+      - "2"
+      - --threads
+      - "4"
+      - --timeout
+      - "120"
+      - --access-logfile
+      - "-"
+      - --error-logfile
+      - "-"
+      - server:app
+    working_dir: /srv
+    env_file:
+      - /opt/dify/.env
+      - ./.env
+    environment:
+      DIFY_STORAGE_ROOT: /data/storage
+      HOME: /tmp
+    volumes:
+      - ./server.py:/srv/server.py:ro
+      - /opt/dify/volumes/app/storage:/data/storage:ro
+    ports:
+      - 127.0.0.1:3011:3011
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dify
+
+networks:
+  dify:
+    external: true
+    name: dify_default

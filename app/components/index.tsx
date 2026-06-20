@@ -8,7 +8,7 @@ import useConversation from '@/hooks/use-conversation'
 import Toast from '@/app/components/base/toast'
 import Sidebar from '@/app/components/sidebar'
 import ConfigSence from '@/app/components/config-scence'
-import { fetchAppParams, fetchChatList, fetchConversations, generationConversationName, sendChatMessage, updateFeedback } from '@/service'
+import { deleteConversation as deleteConversationRequest, fetchAppParams, fetchChatList, fetchConversations, generationConversationName, sendChatMessage, updateFeedback } from '@/service'
 import type { ChatItem, ConversationItem, Feedbacktype, PromptConfig, VisionFile, VisionSettings } from '@/types/app'
 import type { FileUpload } from '@/app/components/base/file-uploader-in-attachment/types'
 import { Resolution, TransferMethod, WorkflowRunningStatus } from '@/types/app'
@@ -40,6 +40,9 @@ const Main: FC<IMainProps> = () => {
   const [isUnknownReason, setIsUnknownReason] = useState<boolean>(false)
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null)
   const [inited, setInited] = useState<boolean>(false)
+  const [targetMessageId, setTargetMessageId] = useState('')
+  const targetConversationIdRef = useRef('')
+  const highlightedMessageRef = useRef('')
   // in mobile, show sidebar by click button
   const [isShowSidebar, { setTrue: showSidebar, setFalse: hideSidebar }] = useBoolean(false)
   const [visionConfig, setVisionConfig] = useState<VisionSettings | undefined>({
@@ -161,6 +164,8 @@ const Main: FC<IMainProps> = () => {
   useEffect(handleConversationSwitch, [currConversationId, inited])
 
   const handleConversationIdChange = (id: string) => {
+    setTargetMessageId('')
+    targetConversationIdRef.current = ''
     if (id === '-1') {
       createNewChat()
       setConversationIdChangeBecauseOfNew(true)
@@ -217,6 +222,43 @@ const Main: FC<IMainProps> = () => {
     }, 50)
     return () => clearTimeout(timer)
   }, [chatList, currConversationId])
+
+  useEffect(() => {
+    if (
+      !targetMessageId
+      || targetConversationIdRef.current !== currConversationId
+      || highlightedMessageRef.current === targetMessageId
+    )
+    { return }
+
+    followOutputRef.current = false
+    let highlightedElement: HTMLElement | null = null
+    let highlightTimer: ReturnType<typeof globalThis.setTimeout> | undefined
+    const scrollTimer = globalThis.setTimeout(() => {
+      const element = document.getElementById(`message-${targetMessageId}`)
+      if (!element)
+      { return }
+
+      highlightedElement = element
+      highlightedMessageRef.current = targetMessageId
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      element.classList.add('message-highlight')
+      highlightTimer = globalThis.setTimeout(() => {
+        element.classList.remove('message-highlight')
+        setTargetMessageId('')
+        const url = new URL(globalThis.location.href)
+        url.searchParams.delete('messageId')
+        globalThis.history.replaceState({}, '', `${url.pathname}${url.search}`)
+      }, 3000)
+    }, 250)
+
+    return () => {
+      globalThis.clearTimeout(scrollTimer)
+      if (highlightTimer)
+      { globalThis.clearTimeout(highlightTimer) }
+      highlightedElement?.classList.remove('message-highlight')
+    }
+  }, [chatList, currConversationId, targetMessageId])
   // user can not edit inputs if user had send message
   const canEditInputs = !chatList.some(item => item.isAnswer === false) && isNewConversation
   const createNewChat = () => {
@@ -269,9 +311,18 @@ const Main: FC<IMainProps> = () => {
           throw new Error(error)
           return
         }
-        const _conversationId = getConversationIdFromStorage(APP_ID)
+        const urlParams = new URLSearchParams(globalThis.location.search)
+        const requestedConversationId = urlParams.get('conversationId') || urlParams.get('conversation') || ''
+        const requestedMessageId = urlParams.get('messageId') || ''
+        const requestedConversation = conversations.find(item => item.id === requestedConversationId)
+        const _conversationId = requestedConversation?.id || getConversationIdFromStorage(APP_ID)
         const currentConversation = conversations.find(item => item.id === _conversationId)
         const isNotNewConversation = !!currentConversation
+        if (requestedConversation) {
+          targetConversationIdRef.current = requestedConversation.id
+          setTargetMessageId(requestedMessageId)
+          followOutputRef.current = !requestedMessageId
+        }
 
         // fetch new conversation info
         const { user_input_form, opening_statement: introduction, file_upload, system_parameters, suggested_questions = [] }: any = appParams
@@ -359,6 +410,46 @@ const Main: FC<IMainProps> = () => {
   const [hasStopResponded, setHasStopResponded, getHasStopResponded] = useGetState(false)
   const [isRespondingConIsCurrCon, setIsRespondingConCurrCon, getIsRespondingConIsCurrCon] = useGetState(true)
   const [userQuery, setUserQuery] = useState('')
+
+  const handleDeleteConversation = async (conversationId: string) => {
+    if (conversationId === currConversationId && isResponding) {
+      notify({ type: 'warning', message: '当前对话仍在生成，请完成后再删除' })
+      return
+    }
+
+    try {
+      await deleteConversationRequest(conversationId)
+      const remaining = conversationList.filter(item => item.id !== conversationId)
+      if (conversationId !== currConversationId) {
+        setConversationList(remaining)
+        notify({ type: 'success', message: '对话已删除' })
+        return
+      }
+
+      let nextList = remaining
+      let nextId = remaining.find(item => item.id !== '-1')?.id || '-1'
+      if (!nextList.length) {
+        nextList = [{
+          id: '-1',
+          name: t('app.chat.newChatDefaultName'),
+          inputs: newConversationInputs,
+          introduction: conversationIntroduction,
+          suggested_questions: suggestedQuestions,
+        }]
+        nextId = '-1'
+      }
+
+      setConversationList(nextList)
+      setConversationIdChangeBecauseOfNew(nextId === '-1')
+      setChatNotStarted()
+      setChatList(nextId === '-1' ? generateNewChatListWithOpenStatement() : [])
+      setCurrConversationId(nextId, APP_ID)
+      notify({ type: 'success', message: '对话已删除' })
+    }
+    catch {
+      notify({ type: 'error', message: '删除对话失败，请稍后重试' })
+    }
+  }
 
   const updateCurrentQA = ({
     responseItem,
@@ -722,6 +813,7 @@ const Main: FC<IMainProps> = () => {
       <Sidebar
         list={conversationList}
         onCurrentIdChange={handleConversationIdChange}
+        onDeleteConversation={handleDeleteConversation}
         currentId={currConversationId}
         copyRight={APP_INFO.copyright || APP_INFO.title}
       />
