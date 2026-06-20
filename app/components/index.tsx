@@ -164,6 +164,8 @@ const Main: FC<IMainProps> = () => {
   useEffect(handleConversationSwitch, [currConversationId, inited])
 
   const handleConversationIdChange = (id: string) => {
+    userPausedFollowRef.current = false
+    followOutputRef.current = true
     setTargetMessageId('')
     targetConversationIdRef.current = ''
     if (id === '-1') {
@@ -186,9 +188,11 @@ const Main: FC<IMainProps> = () => {
   const getChatList = () => getChatRuntime().chatList
   const chatListDomRef = useRef<HTMLDivElement>(null)
   const followOutputRef = useRef(true)
+  const userPausedFollowRef = useRef(false)
   const lastScrollTopRef = useRef(0)
   const programmaticScrollRef = useRef(false)
   const touchYRef = useRef<number | null>(null)
+  const autoScrollTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null)
 
   const findScrollParent = (element: HTMLElement | null) => {
     let current = element?.parentElement || null
@@ -206,20 +210,33 @@ const Main: FC<IMainProps> = () => {
     if (!scrollParent)
     { return }
 
+    const pauseFollowing = () => {
+      userPausedFollowRef.current = true
+      followOutputRef.current = false
+      if (autoScrollTimerRef.current) {
+        globalThis.clearTimeout(autoScrollTimerRef.current)
+        autoScrollTimerRef.current = null
+      }
+    }
+
     const handleScroll = () => {
       const currentTop = scrollParent.scrollTop
       const distanceToBottom = scrollParent.scrollHeight - currentTop - scrollParent.clientHeight
       if (!programmaticScrollRef.current) {
-        if (currentTop < lastScrollTopRef.current - 2)
-        { followOutputRef.current = false }
-        else if (distanceToBottom < 70)
-        { followOutputRef.current = true }
+        const movedUp = currentTop < lastScrollTopRef.current - 1
+        const returnedToBottom = !movedUp && distanceToBottom < 24
+        if (movedUp)
+        { pauseFollowing() }
+        else if (returnedToBottom) {
+          userPausedFollowRef.current = false
+          followOutputRef.current = true
+        }
       }
       lastScrollTopRef.current = currentTop
     }
     const handleWheel = (event: WheelEvent) => {
       if (event.deltaY < 0)
-      { followOutputRef.current = false }
+      { pauseFollowing() }
     }
     const handleTouchStart = (event: TouchEvent) => {
       touchYRef.current = event.touches[0]?.clientY ?? null
@@ -227,26 +244,34 @@ const Main: FC<IMainProps> = () => {
     const handleTouchMove = (event: TouchEvent) => {
       const currentY = event.touches[0]?.clientY
       if (currentY !== undefined && touchYRef.current !== null && currentY > touchYRef.current + 3)
-      { followOutputRef.current = false }
+      { pauseFollowing() }
       touchYRef.current = currentY ?? null
     }
     scrollParent.addEventListener('scroll', handleScroll, { passive: true })
-    scrollParent.addEventListener('wheel', handleWheel, { passive: true })
+    scrollParent.addEventListener('wheel', handleWheel, { passive: true, capture: true })
     scrollParent.addEventListener('touchstart', handleTouchStart, { passive: true })
-    scrollParent.addEventListener('touchmove', handleTouchMove, { passive: true })
+    scrollParent.addEventListener('touchmove', handleTouchMove, { passive: true, capture: true })
+    lastScrollTopRef.current = scrollParent.scrollTop
     handleScroll()
     return () => {
       scrollParent.removeEventListener('scroll', handleScroll)
-      scrollParent.removeEventListener('wheel', handleWheel)
+      scrollParent.removeEventListener('wheel', handleWheel, { capture: true })
       scrollParent.removeEventListener('touchstart', handleTouchStart)
-      scrollParent.removeEventListener('touchmove', handleTouchMove)
+      scrollParent.removeEventListener('touchmove', handleTouchMove, { capture: true })
+      if (autoScrollTimerRef.current) {
+        globalThis.clearTimeout(autoScrollTimerRef.current)
+        autoScrollTimerRef.current = null
+      }
     }
   }, [currConversationId])
 
   useEffect(() => {
-    if (!followOutputRef.current)
+    if (!followOutputRef.current || userPausedFollowRef.current)
     { return }
-    const timer = setTimeout(() => {
+    autoScrollTimerRef.current = globalThis.setTimeout(() => {
+      autoScrollTimerRef.current = null
+      if (!followOutputRef.current || userPausedFollowRef.current)
+      { return }
       const scrollParent = findScrollParent(chatListDomRef.current)
       if (scrollParent) {
         programmaticScrollRef.current = true
@@ -255,7 +280,12 @@ const Main: FC<IMainProps> = () => {
         requestAnimationFrame(() => { programmaticScrollRef.current = false })
       }
     }, 50)
-    return () => clearTimeout(timer)
+    return () => {
+      if (autoScrollTimerRef.current) {
+        globalThis.clearTimeout(autoScrollTimerRef.current)
+        autoScrollTimerRef.current = null
+      }
+    }
   }, [chatList, currConversationId])
 
   useEffect(() => {
@@ -477,6 +507,8 @@ const Main: FC<IMainProps> = () => {
       setConversationList(nextList)
       setConversationIdChangeBecauseOfNew(nextId === '-1')
       setChatNotStarted()
+      userPausedFollowRef.current = false
+      followOutputRef.current = true
       setChatList(nextId === '-1' ? generateNewChatListWithOpenStatement() : [])
       setCurrConversationId(nextId, APP_ID)
       notify({ type: 'success', message: '对话已删除' })
@@ -616,6 +648,7 @@ const Main: FC<IMainProps> = () => {
       message_files: [],
       isAnswer: true,
     }
+    userPausedFollowRef.current = false
     followOutputRef.current = true
     const responseTempId = responseItem.id
     let hasSetResponseId = false

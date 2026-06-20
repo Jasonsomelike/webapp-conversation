@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowsPointingOutIcon,
   BookOpenIcon,
@@ -30,18 +30,19 @@ export default function KnowledgeGraphView({ nodes, edges }: { nodes: KnowledgeG
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const dragRef = useRef({ active: false, x: 0, y: 0, panX: 0, panY: 0 })
+  const viewportRef = useRef<HTMLElement>(null)
   const selectedNode = nodes.find(node => node.id === selected) || nodes[0]!
 
   const related = useMemo(() => edges.filter(edge => edge.source === selected || edge.target === selected), [edges, selected])
 
-  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+  const handlePointerDown = (event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0 || (event.target as HTMLElement).closest('button, a'))
     { return }
     event.currentTarget.setPointerCapture(event.pointerId)
     dragRef.current = { active: true, x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y }
     setIsDragging(true)
   }
-  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+  const handlePointerMove = (event: React.PointerEvent<HTMLElement>) => {
     if (!dragRef.current.active)
     { return }
     setPan({
@@ -49,7 +50,7 @@ export default function KnowledgeGraphView({ nodes, edges }: { nodes: KnowledgeG
       y: dragRef.current.panY + event.clientY - dragRef.current.y,
     })
   }
-  const finishDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+  const finishDrag = (event: React.PointerEvent<HTMLElement>) => {
     if (!dragRef.current.active)
     { return }
     dragRef.current.active = false
@@ -57,12 +58,22 @@ export default function KnowledgeGraphView({ nodes, edges }: { nodes: KnowledgeG
     if (event.currentTarget.hasPointerCapture(event.pointerId))
     { event.currentTarget.releasePointerCapture(event.pointerId) }
   }
-  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    if (!event.ctrlKey)
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport)
     { return }
-    event.preventDefault()
-    setZoom(value => Math.min(2, Math.max(0.5, value + (event.deltaY < 0 ? 0.1 : -0.1))))
-  }
+    const isolateGraphZoom = (event: WheelEvent) => {
+      if (!event.ctrlKey)
+      { return }
+      event.preventDefault()
+      event.stopPropagation()
+      setZoom(value => Math.min(2, Math.max(0.5, value + (event.deltaY < 0 ? 0.1 : -0.1))))
+    }
+    viewport.addEventListener('wheel', isolateGraphZoom, { passive: false, capture: true })
+    return () => viewport.removeEventListener('wheel', isolateGraphZoom, { capture: true })
+  }, [])
+
   const resetViewport = () => {
     setZoom(1)
     setPan({ x: 0, y: 0 })
@@ -96,13 +107,13 @@ export default function KnowledgeGraphView({ nodes, edges }: { nodes: KnowledgeG
 
       <div className="grid gap-5 xl:grid-cols-[1fr_320px]">
         <PageCard
-          className={`relative min-h-[680px] overflow-hidden bg-[#f8f8f3] ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
-          style={{ touchAction: 'none' }}
+          ref={viewportRef}
+          className={`relative min-h-[680px] overflow-hidden overscroll-contain bg-[#f8f8f3] ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
+          style={{ touchAction: 'none', isolation: 'isolate' }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={finishDrag}
           onPointerCancel={finishDrag}
-          onWheel={handleWheel}
         >
           <div className="absolute left-5 top-5 z-20 rounded-xl border border-[#183129]/10 bg-white/90 px-3 py-2 text-[10px] text-[#728078] shadow-sm backdrop-blur">
             <CursorArrowRaysIcon className="mr-1.5 inline h-3.5 w-3.5" />
