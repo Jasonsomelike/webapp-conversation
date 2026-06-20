@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
         response_mode: 'streaming',
         user: session.difyUserId,
       }),
-    }, { connectTimeoutMs: 12_000, retries: 0 })
+    }, { connectTimeoutMs: 30_000, retries: 0 })
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error)
