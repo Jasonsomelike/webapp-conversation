@@ -244,7 +244,14 @@ export const refreshKnowledgeDocuments = async ({
       where: { id: 'default' },
       data: { refreshError: message, failedAt: new Date() },
     }))
-    const catalog = await readCatalogRow()
+    let catalog
+    try {
+      catalog = await readCatalogRow()
+    }
+    catch {
+      console.error('[library-catalog] initial refresh failed', { error })
+      throw error
+    }
     const documents = Array.isArray(catalog.documents)
       ? catalog.documents as unknown as DifyKnowledgeDocument[]
       : []

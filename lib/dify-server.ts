@@ -12,6 +12,9 @@ const transientStatuses = new Set([408, 425, 429, 500, 502, 503, 504])
 const difyApiBaseUrls = [...new Set([
   difyApiBaseUrl,
   ...(process.env.DIFY_API_FALLBACK_URLS || '').split(',').map(value => value.trim()).filter(Boolean),
+  'https://www.jasonsome.cn/v1',
+  'https://jasonsome.cn/v1',
+  'https://dify.jasonsome.cn:22380/v1',
 ].map(value => value.replace(/\/$/, '')))]
 
 const wait = (milliseconds: number) =>
