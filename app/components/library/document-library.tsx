@@ -88,7 +88,7 @@ export default function DocumentLibrary({
   const summaryCards = [
     { label: '知识库文档', value: result.total, unit: '份', icon: CircleStackIcon },
     { label: '本页索引完成', value: completed, unit: '份', icon: CheckCircleIcon },
-    { label: '本页总字数', value: totalWords.toLocaleString('zh-CN'), unit: '字', icon: DocumentTextIcon },
+    { label: '本页总字符数', value: totalWords.toLocaleString('zh-CN'), unit: '字符', icon: DocumentTextIcon },
   ]
   const buildHref = (page: number) => {
     const params = new URLSearchParams()
@@ -194,7 +194,10 @@ export default function DocumentLibrary({
                           </div>
                         </div>
                         <div className="text-xs">
-                          <div className="font-semibold">{(document.word_count || 0).toLocaleString('zh-CN')}</div>
+                          <div className="font-semibold">
+                            {(document.word_count || 0).toLocaleString('zh-CN')}
+                            <span className="ml-1 text-[10px] font-normal text-black/35">字符</span>
+                          </div>
                           {Boolean(document.tokens && document.tokens > 0) && (
                             <div className="mt-1 text-[10px] text-black/35">{document.tokens!.toLocaleString('zh-CN')} tokens</div>
                           )}
