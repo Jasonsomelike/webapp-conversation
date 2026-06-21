@@ -28,9 +28,9 @@ export default async function LibraryPage({
     })
   }
   catch (caught) {
-    error = caught instanceof Error && caught.message === 'DIFY_DATASET_NOT_CONFIGURED'
-      ? '知识库 API 尚未配置，请在部署环境设置服务端密钥和知识库 ID。'
-      : '暂时无法读取 Dify 知识库，请稍后重试。'
+    error = caught instanceof Error && caught.message === 'LIBRARY_CATALOG_EMPTY'
+      ? '知识库目录缓存尚未初始化，请点击“刷新”获取最新目录。'
+      : '暂时无法读取服务端知识库目录，请稍后重试。'
   }
 
   return (

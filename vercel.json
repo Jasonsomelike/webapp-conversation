@@ -11,5 +11,11 @@
         "hkg1"
       ]
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/library-documents",
+      "schedule": "*/30 * * * *"
+    }
+  ]
 }

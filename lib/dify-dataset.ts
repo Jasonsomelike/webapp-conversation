@@ -1,6 +1,7 @@
 import 'server-only'
 
-import { unstable_cache } from 'next/cache'
+import type { Prisma } from '@prisma/client'
+import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
 import { fetchDify } from '@/lib/dify-server'
 
 export interface DifyKnowledgeDocument {
@@ -39,6 +40,9 @@ export interface DifyDocumentList {
   limit: number
   total: number
   page: number
+  refreshed_at?: string
+  stale?: boolean
+  refresh_error?: string
 }
 
 interface DifyDocumentSegment {
@@ -51,6 +55,27 @@ interface DifyDocumentSegmentList {
   data: DifyDocumentSegment[]
   has_more?: boolean
   total?: number
+}
+
+let catalogTablePromise: Promise<unknown> | undefined
+
+const ensureKnowledgeDocumentCatalogTable = async () => {
+  catalogTablePromise ||= withDatabaseRetry(() => db.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "knowledge_document_catalog" (
+      "id" VARCHAR(32) NOT NULL DEFAULT 'default',
+      "documents" JSONB NOT NULL,
+      "total" INTEGER NOT NULL,
+      "refreshed_at" TIMESTAMPTZ NOT NULL,
+      "refresh_error" TEXT,
+      "failed_at" TIMESTAMPTZ,
+      "updated_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "knowledge_document_catalog_pkey" PRIMARY KEY ("id")
+    )
+  `)).catch((error) => {
+    catalogTablePromise = undefined
+    throw error
+  })
+  await catalogTablePromise
 }
 
 const fetchKnowledgeDocuments = async ({
@@ -88,14 +113,70 @@ const fetchKnowledgeDocuments = async ({
   return response.json()
 }
 
-const cachedKnowledgeDocuments = unstable_cache(
-  async (page: number, limit: number, keyword: string, status: string) =>
-    fetchKnowledgeDocuments({ page, limit, keyword, status }),
-  ['dify-knowledge-documents-v2'],
-  { revalidate: 300 },
-)
+const fetchCompleteKnowledgeCatalog = async () => {
+  const documents: DifyKnowledgeDocument[] = []
+  let page = 1
+  let hasMore = true
+  while (hasMore && page <= 100) {
+    const result = await fetchKnowledgeDocuments({ page, limit: 100 })
+    documents.push(...result.data)
+    hasMore = result.has_more && result.data.length > 0
+    page += 1
+  }
+  return documents
+}
 
-export const listKnowledgeDocuments = ({
+const filterCatalog = ({
+  documents,
+  page = 1,
+  limit = 20,
+  keyword = '',
+  status = '',
+  refreshedAt,
+  refreshError,
+}: {
+  documents: DifyKnowledgeDocument[]
+  page?: number
+  limit?: number
+  keyword?: string
+  status?: string
+  refreshedAt: Date
+  refreshError?: string | null
+}): DifyDocumentList => {
+  const safePage = Math.max(1, page)
+  const safeLimit = Math.min(100, Math.max(1, limit))
+  const normalizedKeyword = keyword.trim().toLowerCase()
+  const filtered = documents.filter((document) => {
+    const matchesKeyword = !normalizedKeyword || document.name.toLowerCase().includes(normalizedKeyword)
+    const currentStatus = document.indexing_status || document.display_status || ''
+    return matchesKeyword && (!status || currentStatus === status)
+  })
+  const start = (safePage - 1) * safeLimit
+  return {
+    data: filtered.slice(start, start + safeLimit),
+    has_more: start + safeLimit < filtered.length,
+    limit: safeLimit,
+    total: filtered.length,
+    page: safePage,
+    refreshed_at: refreshedAt.toISOString(),
+    stale: Boolean(refreshError),
+    refresh_error: refreshError || undefined,
+  }
+}
+
+const readCatalogRow = async () => {
+  if (!isDatabaseConfigured())
+  { throw new Error('LIBRARY_CATALOG_DATABASE_NOT_CONFIGURED') }
+  await ensureKnowledgeDocumentCatalogTable()
+  const catalog = await withDatabaseRetry(() => db.knowledgeDocumentCatalog.findUnique({
+    where: { id: 'default' },
+  }))
+  if (!catalog)
+  { throw new Error('LIBRARY_CATALOG_EMPTY') }
+  return catalog
+}
+
+export const listKnowledgeDocuments = async ({
   page = 1,
   limit = 20,
   keyword = '',
@@ -105,9 +186,79 @@ export const listKnowledgeDocuments = ({
   limit?: number
   keyword?: string
   status?: string
-} = {}) => cachedKnowledgeDocuments(page, limit, keyword, status)
+} = {}) => {
+  const catalog = await readCatalogRow()
+  const documents = Array.isArray(catalog.documents)
+    ? catalog.documents as unknown as DifyKnowledgeDocument[]
+    : []
+  return filterCatalog({
+    documents,
+    page,
+    limit,
+    keyword,
+    status,
+    refreshedAt: catalog.refreshedAt,
+    refreshError: catalog.refreshError,
+  })
+}
 
-export const refreshKnowledgeDocuments = fetchKnowledgeDocuments
+export const refreshKnowledgeDocuments = async ({
+  page = 1,
+  limit = 20,
+  keyword = '',
+  status = '',
+}: {
+  page?: number
+  limit?: number
+  keyword?: string
+  status?: string
+} = {}) => {
+  if (!isDatabaseConfigured())
+  { throw new Error('LIBRARY_CATALOG_DATABASE_NOT_CONFIGURED') }
+  await ensureKnowledgeDocumentCatalogTable()
+
+  try {
+    const documents = await fetchCompleteKnowledgeCatalog()
+    const refreshedAt = new Date()
+    await withDatabaseRetry(() => db.knowledgeDocumentCatalog.upsert({
+      where: { id: 'default' },
+      create: {
+        id: 'default',
+        documents: documents as unknown as Prisma.InputJsonValue,
+        total: documents.length,
+        refreshedAt,
+      },
+      update: {
+        documents: documents as unknown as Prisma.InputJsonValue,
+        total: documents.length,
+        refreshedAt,
+        refreshError: null,
+        failedAt: null,
+      },
+    }))
+    return filterCatalog({ documents, page, limit, keyword, status, refreshedAt })
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : 'DIFY_DATASET_REQUEST_FAILED'
+    await withDatabaseRetry(() => db.knowledgeDocumentCatalog.updateMany({
+      where: { id: 'default' },
+      data: { refreshError: message, failedAt: new Date() },
+    }))
+    const catalog = await readCatalogRow()
+    const documents = Array.isArray(catalog.documents)
+      ? catalog.documents as unknown as DifyKnowledgeDocument[]
+      : []
+    return filterCatalog({
+      documents,
+      page,
+      limit,
+      keyword,
+      status,
+      refreshedAt: catalog.refreshedAt,
+      refreshError: message,
+    })
+  }
+}
 
 export const getKnowledgeDocumentDownloadUrl = async (documentId: string) => {
   const apiKey = process.env.DIFY_DATASET_API_KEY

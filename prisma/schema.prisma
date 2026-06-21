@@ -170,3 +170,15 @@ model ParsedUpload {
   @@index([appUserId, createdAt])
   @@map("parsed_uploads")
 }
+
+model KnowledgeDocumentCatalog {
+  id           String    @id @default("default") @db.VarChar(32)
+  documents    Json
+  total        Int
+  refreshedAt  DateTime  @map("refreshed_at") @db.Timestamptz
+  refreshError String?   @map("refresh_error")
+  failedAt     DateTime? @map("failed_at") @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("knowledge_document_catalog")
+}

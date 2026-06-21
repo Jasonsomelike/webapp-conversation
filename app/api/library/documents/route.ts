@@ -20,9 +20,7 @@ export async function GET(request: Request) {
     })
     return NextResponse.json(data, {
       headers: {
-        'Cache-Control': params.get('refresh') === '1'
-          ? 'private, no-store, no-cache, must-revalidate'
-          : 'private, max-age=60, stale-while-revalidate=240',
+        'Cache-Control': 'private, no-store, no-cache, must-revalidate',
       },
     })
   }

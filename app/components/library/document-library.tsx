@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ArrowPathIcon,
   CheckCircleIcon,
@@ -45,15 +45,10 @@ export default function DocumentLibrary({
   const [result, setResult] = useState(initialResult)
   const [error, setError] = useState(initialError)
   const [refreshing, setRefreshing] = useState(false)
-  const [lastUpdatedAt, setLastUpdatedAt] = useState(() => Date.now())
-  const lastUpdatedAtRef = useRef(lastUpdatedAt)
 
   useEffect(() => {
     setResult(initialResult)
     setError(initialError)
-    const updatedAt = Date.now()
-    setLastUpdatedAt(updatedAt)
-    lastUpdatedAtRef.current = updatedAt
   }, [initialError, initialResult])
 
   const refreshDocuments = useCallback(async (showLoading = false) => {
@@ -77,9 +72,6 @@ export default function DocumentLibrary({
       { throw new Error(`LIBRARY_REFRESH_FAILED:${response.status}`) }
       setResult(await response.json())
       setError('')
-      const updatedAt = Date.now()
-      setLastUpdatedAt(updatedAt)
-      lastUpdatedAtRef.current = updatedAt
     }
     catch {
       if (showLoading)
@@ -90,27 +82,6 @@ export default function DocumentLibrary({
       { setRefreshing(false) }
     }
   }, [initialResult.page, keyword, status])
-
-  useEffect(() => {
-    const timer = globalThis.setInterval(() => {
-      if (document.visibilityState === 'visible')
-      { void refreshDocuments() }
-    }, 300_000)
-    const refreshWhenVisible = () => {
-      if (
-        document.visibilityState === 'visible'
-        && Date.now() - lastUpdatedAtRef.current >= 300_000
-      )
-      { void refreshDocuments() }
-    }
-    globalThis.addEventListener('focus', refreshWhenVisible)
-    document.addEventListener('visibilitychange', refreshWhenVisible)
-    return () => {
-      globalThis.clearInterval(timer)
-      globalThis.removeEventListener('focus', refreshWhenVisible)
-      document.removeEventListener('visibilitychange', refreshWhenVisible)
-    }
-  }, [refreshDocuments])
 
   const completed = result.data.filter(item => ['completed', 'available'].includes(item.indexing_status || item.display_status || '')).length
   const totalWords = result.data.reduce((sum, item) => sum + (item.word_count || 0), 0)
@@ -171,9 +142,16 @@ export default function DocumentLibrary({
         </form>
 
         <div className="flex items-center justify-end border-b border-black/[0.05] px-5 py-2 text-[10px] text-black/40">
-          <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          热更新已开启 · 每 5 分钟同步 · {new Date(lastUpdatedAt).toLocaleTimeString('zh-CN', { hour12: false })}
+          <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${result.stale ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+          服务端每 30 分钟同步
+          {result.refreshed_at && ` · 最近更新 ${new Date(result.refreshed_at).toLocaleString('zh-CN', { hour12: false })}`}
         </div>
+
+        {result.stale && result.data.length > 0 && (
+          <div className="border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-xs text-amber-800">
+            本次同步暂时失败，当前展示最近一次成功更新的数据。
+          </div>
+        )}
 
         {error
           ? <div className="p-10 text-center text-sm text-red-600">{error}</div>
