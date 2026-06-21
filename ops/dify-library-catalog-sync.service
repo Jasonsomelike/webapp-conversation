@@ -1,0 +1,10 @@
+[Unit]
+Description=Synchronize Dify knowledge document catalog to the webapp
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec dify-library-file-service python /srv/sync_catalog.py
+TimeoutStartSec=180

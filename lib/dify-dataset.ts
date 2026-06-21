@@ -126,6 +126,21 @@ const fetchCompleteKnowledgeCatalog = async () => {
   return documents
 }
 
+const normalizeCatalogDocuments = (value: unknown): DifyKnowledgeDocument[] => {
+  if (!Array.isArray(value))
+  { throw new Error('LIBRARY_CATALOG_INVALID_PAYLOAD') }
+  if (value.length > 10_000)
+  { throw new Error('LIBRARY_CATALOG_TOO_LARGE') }
+  return value.map((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item))
+    { throw new Error('LIBRARY_CATALOG_INVALID_DOCUMENT') }
+    const document = item as Record<string, unknown>
+    if (typeof document.id !== 'string' || typeof document.name !== 'string')
+    { throw new Error('LIBRARY_CATALOG_INVALID_DOCUMENT') }
+    return document as unknown as DifyKnowledgeDocument
+  })
+}
+
 const filterCatalog = ({
   documents,
   page = 1,
@@ -176,6 +191,31 @@ const readCatalogRow = async () => {
   return catalog
 }
 
+export const storeKnowledgeDocumentCatalog = async (value: unknown) => {
+  if (!isDatabaseConfigured())
+  { throw new Error('LIBRARY_CATALOG_DATABASE_NOT_CONFIGURED') }
+  await ensureKnowledgeDocumentCatalogTable()
+  const documents = normalizeCatalogDocuments(value)
+  const refreshedAt = new Date()
+  await withDatabaseRetry(() => db.knowledgeDocumentCatalog.upsert({
+    where: { id: 'default' },
+    create: {
+      id: 'default',
+      documents: documents as unknown as Prisma.InputJsonValue,
+      total: documents.length,
+      refreshedAt,
+    },
+    update: {
+      documents: documents as unknown as Prisma.InputJsonValue,
+      total: documents.length,
+      refreshedAt,
+      refreshError: null,
+      failedAt: null,
+    },
+  }))
+  return { total: documents.length, refreshedAt }
+}
+
 export const listKnowledgeDocuments = async ({
   page = 1,
   limit = 20,
@@ -207,11 +247,13 @@ export const refreshKnowledgeDocuments = async ({
   limit = 20,
   keyword = '',
   status = '',
+  recordFailure = true,
 }: {
   page?: number
   limit?: number
   keyword?: string
   status?: string
+  recordFailure?: boolean
 } = {}) => {
   if (!isDatabaseConfigured())
   { throw new Error('LIBRARY_CATALOG_DATABASE_NOT_CONFIGURED') }
@@ -219,31 +261,17 @@ export const refreshKnowledgeDocuments = async ({
 
   try {
     const documents = await fetchCompleteKnowledgeCatalog()
-    const refreshedAt = new Date()
-    await withDatabaseRetry(() => db.knowledgeDocumentCatalog.upsert({
-      where: { id: 'default' },
-      create: {
-        id: 'default',
-        documents: documents as unknown as Prisma.InputJsonValue,
-        total: documents.length,
-        refreshedAt,
-      },
-      update: {
-        documents: documents as unknown as Prisma.InputJsonValue,
-        total: documents.length,
-        refreshedAt,
-        refreshError: null,
-        failedAt: null,
-      },
-    }))
+    const { refreshedAt } = await storeKnowledgeDocumentCatalog(documents)
     return filterCatalog({ documents, page, limit, keyword, status, refreshedAt })
   }
   catch (error) {
     const message = error instanceof Error ? error.message : 'DIFY_DATASET_REQUEST_FAILED'
-    await withDatabaseRetry(() => db.knowledgeDocumentCatalog.updateMany({
-      where: { id: 'default' },
-      data: { refreshError: message, failedAt: new Date() },
-    }))
+    if (recordFailure) {
+      await withDatabaseRetry(() => db.knowledgeDocumentCatalog.updateMany({
+        where: { id: 'default' },
+        data: { refreshError: message, failedAt: new Date() },
+      }))
+    }
     let catalog
     try {
       catalog = await readCatalogRow()
@@ -262,7 +290,7 @@ export const refreshKnowledgeDocuments = async ({
       keyword,
       status,
       refreshedAt: catalog.refreshedAt,
-      refreshError: message,
+      refreshError: recordFailure ? message : catalog.refreshError,
     })
   }
 }

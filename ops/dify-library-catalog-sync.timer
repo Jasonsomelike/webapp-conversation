@@ -1,0 +1,11 @@
+[Unit]
+Description=Synchronize Dify knowledge document catalog every 30 minutes
+
+[Timer]
+OnCalendar=*:0/30
+Persistent=true
+RandomizedDelaySec=30
+Unit=dify-library-catalog-sync.service
+
+[Install]
+WantedBy=timers.target
