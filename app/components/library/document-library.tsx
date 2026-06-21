@@ -195,7 +195,9 @@ export default function DocumentLibrary({
                         </div>
                         <div className="text-xs">
                           <div className="font-semibold">{(document.word_count || 0).toLocaleString('zh-CN')}</div>
-                          <div className="mt-1 text-[10px] text-black/35">{(document.tokens || 0).toLocaleString('zh-CN')} tokens</div>
+                          {Boolean(document.tokens && document.tokens > 0) && (
+                            <div className="mt-1 text-[10px] text-black/35">{document.tokens!.toLocaleString('zh-CN')} tokens</div>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 text-[10px] text-black/40">
                           <ClockIcon className="h-4 w-4" />
