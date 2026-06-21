@@ -190,8 +190,8 @@ const Main: FC<IMainProps> = () => {
   const followOutputRef = useRef(true)
   const userPausedFollowRef = useRef(false)
   const lastScrollTopRef = useRef(0)
-  const programmaticScrollRef = useRef(false)
   const touchYRef = useRef<number | null>(null)
+  const userScrollIntentUntilRef = useRef(0)
   const autoScrollTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null)
 
   const findScrollParent = (element: HTMLElement | null) => {
@@ -219,45 +219,75 @@ const Main: FC<IMainProps> = () => {
       }
     }
 
+    const markUserScrollIntent = () => {
+      userScrollIntentUntilRef.current = Date.now() + 500
+    }
+
+    const isMainChatScrollTarget = (target: EventTarget | null) =>
+      target instanceof Node
+      && scrollParent.contains(target)
+      && !(target instanceof Element && target.closest('.chat-composer'))
+
     const handleScroll = () => {
       const currentTop = scrollParent.scrollTop
       const distanceToBottom = scrollParent.scrollHeight - currentTop - scrollParent.clientHeight
-      if (!programmaticScrollRef.current) {
-        const movedUp = currentTop < lastScrollTopRef.current - 1
-        const returnedToBottom = !movedUp && distanceToBottom < 24
-        if (movedUp)
-        { pauseFollowing() }
-        else if (returnedToBottom) {
-          userPausedFollowRef.current = false
-          followOutputRef.current = true
-        }
+      const movedUp = currentTop < lastScrollTopRef.current - 1
+      const returnedToBottom = distanceToBottom < 24
+        && Date.now() <= userScrollIntentUntilRef.current
+      if (movedUp)
+      { pauseFollowing() }
+      else if (returnedToBottom) {
+        userPausedFollowRef.current = false
+        followOutputRef.current = true
       }
       lastScrollTopRef.current = currentTop
     }
     const handleWheel = (event: WheelEvent) => {
+      if (!isMainChatScrollTarget(event.target))
+      { return }
+      markUserScrollIntent()
       if (event.deltaY < 0)
       { pauseFollowing() }
     }
     const handleTouchStart = (event: TouchEvent) => {
+      if (!isMainChatScrollTarget(event.target))
+      { return }
+      markUserScrollIntent()
       touchYRef.current = event.touches[0]?.clientY ?? null
     }
     const handleTouchMove = (event: TouchEvent) => {
+      if (!isMainChatScrollTarget(event.target))
+      { return }
+      markUserScrollIntent()
       const currentY = event.touches[0]?.clientY
       if (currentY !== undefined && touchYRef.current !== null && currentY > touchYRef.current + 3)
       { pauseFollowing() }
       touchYRef.current = currentY ?? null
     }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]'))
+      { return }
+      if (['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey)) {
+        markUserScrollIntent()
+        pauseFollowing()
+      }
+      else if (['ArrowDown', 'PageDown', 'End', ' '].includes(event.key))
+      { markUserScrollIntent() }
+    }
     scrollParent.addEventListener('scroll', handleScroll, { passive: true })
-    scrollParent.addEventListener('wheel', handleWheel, { passive: true, capture: true })
-    scrollParent.addEventListener('touchstart', handleTouchStart, { passive: true })
-    scrollParent.addEventListener('touchmove', handleTouchMove, { passive: true, capture: true })
+    globalThis.addEventListener('wheel', handleWheel, { passive: true, capture: true })
+    globalThis.addEventListener('touchstart', handleTouchStart, { passive: true, capture: true })
+    globalThis.addEventListener('touchmove', handleTouchMove, { passive: true, capture: true })
+    globalThis.addEventListener('keydown', handleKeyDown, { capture: true })
     lastScrollTopRef.current = scrollParent.scrollTop
     handleScroll()
     return () => {
       scrollParent.removeEventListener('scroll', handleScroll)
-      scrollParent.removeEventListener('wheel', handleWheel, { capture: true })
-      scrollParent.removeEventListener('touchstart', handleTouchStart)
-      scrollParent.removeEventListener('touchmove', handleTouchMove, { capture: true })
+      globalThis.removeEventListener('wheel', handleWheel, { capture: true })
+      globalThis.removeEventListener('touchstart', handleTouchStart, { capture: true })
+      globalThis.removeEventListener('touchmove', handleTouchMove, { capture: true })
+      globalThis.removeEventListener('keydown', handleKeyDown, { capture: true })
       if (autoScrollTimerRef.current) {
         globalThis.clearTimeout(autoScrollTimerRef.current)
         autoScrollTimerRef.current = null
@@ -274,10 +304,8 @@ const Main: FC<IMainProps> = () => {
       { return }
       const scrollParent = findScrollParent(chatListDomRef.current)
       if (scrollParent) {
-        programmaticScrollRef.current = true
         scrollParent.scrollTop = scrollParent.scrollHeight
         lastScrollTopRef.current = scrollParent.scrollTop
-        requestAnimationFrame(() => { programmaticScrollRef.current = false })
       }
     }, 50)
     return () => {

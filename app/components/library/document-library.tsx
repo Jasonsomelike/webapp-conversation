@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowPathIcon,
   CheckCircleIcon,
@@ -46,11 +46,14 @@ export default function DocumentLibrary({
   const [error, setError] = useState(initialError)
   const [refreshing, setRefreshing] = useState(false)
   const [lastUpdatedAt, setLastUpdatedAt] = useState(() => Date.now())
+  const lastUpdatedAtRef = useRef(lastUpdatedAt)
 
   useEffect(() => {
     setResult(initialResult)
     setError(initialError)
-    setLastUpdatedAt(Date.now())
+    const updatedAt = Date.now()
+    setLastUpdatedAt(updatedAt)
+    lastUpdatedAtRef.current = updatedAt
   }, [initialError, initialResult])
 
   const refreshDocuments = useCallback(async (showLoading = false) => {
@@ -65,7 +68,7 @@ export default function DocumentLibrary({
       { params.set('keyword', keyword) }
       if (status)
       { params.set('status', status) }
-      params.set('_', String(Date.now()))
+      params.set('refresh', '1')
       const response = await fetch(`/api/library/documents?${params}`, {
         credentials: 'include',
         cache: 'no-store',
@@ -74,7 +77,9 @@ export default function DocumentLibrary({
       { throw new Error(`LIBRARY_REFRESH_FAILED:${response.status}`) }
       setResult(await response.json())
       setError('')
-      setLastUpdatedAt(Date.now())
+      const updatedAt = Date.now()
+      setLastUpdatedAt(updatedAt)
+      lastUpdatedAtRef.current = updatedAt
     }
     catch {
       if (showLoading)
@@ -87,13 +92,15 @@ export default function DocumentLibrary({
   }, [initialResult.page, keyword, status])
 
   useEffect(() => {
-    void refreshDocuments()
     const timer = globalThis.setInterval(() => {
       if (document.visibilityState === 'visible')
       { void refreshDocuments() }
-    }, 10_000)
+    }, 300_000)
     const refreshWhenVisible = () => {
-      if (document.visibilityState === 'visible')
+      if (
+        document.visibilityState === 'visible'
+        && Date.now() - lastUpdatedAtRef.current >= 300_000
+      )
       { void refreshDocuments() }
     }
     globalThis.addEventListener('focus', refreshWhenVisible)
@@ -165,7 +172,7 @@ export default function DocumentLibrary({
 
         <div className="flex items-center justify-end border-b border-black/[0.05] px-5 py-2 text-[10px] text-black/40">
           <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          热更新已开启 · 每 10 秒同步 · {new Date(lastUpdatedAt).toLocaleTimeString('zh-CN', { hour12: false })}
+          热更新已开启 · 每 5 分钟同步 · {new Date(lastUpdatedAt).toLocaleTimeString('zh-CN', { hour12: false })}
         </div>
 
         {error

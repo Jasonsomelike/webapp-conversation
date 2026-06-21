@@ -132,7 +132,6 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
             return (
               <Link
                 href={item.href}
-                prefetch={false}
                 key={item.href}
                 onClick={() => {
                   setMobileOpen(false)
@@ -175,7 +174,6 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
       <div className="flex items-center gap-1 border-t border-white/10 p-3">
         <Link
           href="/profile"
-          prefetch={false}
           onClick={() => {
             setMobileOpen(false)
             if (pathname !== '/profile')

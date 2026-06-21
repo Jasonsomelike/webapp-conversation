@@ -29,34 +29,143 @@ export default function KnowledgeGraphView({ nodes, edges }: { nodes: KnowledgeG
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
-  const dragRef = useRef({ active: false, x: 0, y: 0, panX: 0, panY: 0 })
+  const zoomRef = useRef(1)
+  const panRef = useRef({ x: 0, y: 0 })
+  const pointersRef = useRef(new Map<number, { x: number, y: number }>())
+  const gestureRef = useRef<{
+    mode: 'idle' | 'drag' | 'pinch'
+    startX: number
+    startY: number
+    startPanX: number
+    startPanY: number
+    startDistance: number
+    graphCenterX: number
+    graphCenterY: number
+  }>({
+    mode: 'idle',
+    startX: 0,
+    startY: 0,
+    startPanX: 0,
+    startPanY: 0,
+    startDistance: 0,
+    graphCenterX: 0,
+    graphCenterY: 0,
+  })
   const viewportRef = useRef<HTMLElement>(null)
   const selectedNode = nodes.find(node => node.id === selected) || nodes[0]!
 
   const related = useMemo(() => edges.filter(edge => edge.source === selected || edge.target === selected), [edges, selected])
 
+  const updatePan = (nextPan: { x: number, y: number }) => {
+    panRef.current = nextPan
+    setPan(nextPan)
+  }
+
+  const updateZoom = (nextZoom: number) => {
+    const clamped = Math.min(2.5, Math.max(0.45, nextZoom))
+    zoomRef.current = clamped
+    setZoom(clamped)
+    return clamped
+  }
+
+  const pointerPair = () => [...pointersRef.current.values()].slice(0, 2)
+  const pointerDistance = (pair: Array<{ x: number, y: number }>) =>
+    Math.hypot(pair[1].x - pair[0].x, pair[1].y - pair[0].y)
+  const pointerCenter = (pair: Array<{ x: number, y: number }>) => ({
+    x: (pair[0].x + pair[1].x) / 2,
+    y: (pair[0].y + pair[1].y) / 2,
+  })
+
+  const startPinch = (element: HTMLElement) => {
+    const pair = pointerPair()
+    if (pair.length < 2)
+    { return }
+    const rect = element.getBoundingClientRect()
+    const center = pointerCenter(pair)
+    const localCenter = { x: center.x - rect.left, y: center.y - rect.top }
+    gestureRef.current = {
+      mode: 'pinch',
+      startX: 0,
+      startY: 0,
+      startPanX: panRef.current.x,
+      startPanY: panRef.current.y,
+      startDistance: Math.max(1, pointerDistance(pair)),
+      graphCenterX: (localCenter.x - panRef.current.x) / zoomRef.current,
+      graphCenterY: (localCenter.y - panRef.current.y) / zoomRef.current,
+    }
+  }
+
   const handlePointerDown = (event: React.PointerEvent<HTMLElement>) => {
-    if (event.button !== 0 || (event.target as HTMLElement).closest('button, a'))
+    if (
+      (event.pointerType === 'mouse' && event.button !== 0)
+      || (event.target as HTMLElement).closest('[data-graph-control]')
+      || (event.pointerType === 'mouse' && (event.target as HTMLElement).closest('button, a'))
+    )
     { return }
     event.currentTarget.setPointerCapture(event.pointerId)
-    dragRef.current = { active: true, x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y }
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    if (pointersRef.current.size >= 2)
+    { startPinch(event.currentTarget) }
+    else {
+      gestureRef.current = {
+        ...gestureRef.current,
+        mode: 'drag',
+        startX: event.clientX,
+        startY: event.clientY,
+        startPanX: panRef.current.x,
+        startPanY: panRef.current.y,
+      }
+    }
     setIsDragging(true)
   }
   const handlePointerMove = (event: React.PointerEvent<HTMLElement>) => {
-    if (!dragRef.current.active)
+    if (!pointersRef.current.has(event.pointerId))
     { return }
-    setPan({
-      x: dragRef.current.panX + event.clientX - dragRef.current.x,
-      y: dragRef.current.panY + event.clientY - dragRef.current.y,
-    })
+    event.preventDefault()
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    if (pointersRef.current.size >= 2) {
+      if (gestureRef.current.mode !== 'pinch')
+      { startPinch(event.currentTarget) }
+      const pair = pointerPair()
+      const rect = event.currentTarget.getBoundingClientRect()
+      const center = pointerCenter(pair)
+      const localCenter = { x: center.x - rect.left, y: center.y - rect.top }
+      const nextZoom = updateZoom(
+        zoomRef.current * pointerDistance(pair) / Math.max(1, gestureRef.current.startDistance),
+      )
+      gestureRef.current.startDistance = pointerDistance(pair)
+      updatePan({
+        x: localCenter.x - gestureRef.current.graphCenterX * nextZoom,
+        y: localCenter.y - gestureRef.current.graphCenterY * nextZoom,
+      })
+      return
+    }
+    if (gestureRef.current.mode === 'drag') {
+      updatePan({
+        x: gestureRef.current.startPanX + event.clientX - gestureRef.current.startX,
+        y: gestureRef.current.startPanY + event.clientY - gestureRef.current.startY,
+      })
+    }
   }
   const finishDrag = (event: React.PointerEvent<HTMLElement>) => {
-    if (!dragRef.current.active)
-    { return }
-    dragRef.current.active = false
-    setIsDragging(false)
+    pointersRef.current.delete(event.pointerId)
     if (event.currentTarget.hasPointerCapture(event.pointerId))
     { event.currentTarget.releasePointerCapture(event.pointerId) }
+    const remaining = [...pointersRef.current.values()][0]
+    if (remaining) {
+      gestureRef.current = {
+        ...gestureRef.current,
+        mode: 'drag',
+        startX: remaining.x,
+        startY: remaining.y,
+        startPanX: panRef.current.x,
+        startPanY: panRef.current.y,
+      }
+    }
+    else {
+      gestureRef.current.mode = 'idle'
+      setIsDragging(false)
+    }
   }
 
   useEffect(() => {
@@ -68,15 +177,49 @@ export default function KnowledgeGraphView({ nodes, edges }: { nodes: KnowledgeG
       { return }
       event.preventDefault()
       event.stopPropagation()
-      setZoom(value => Math.min(2, Math.max(0.5, value + (event.deltaY < 0 ? 0.1 : -0.1))))
+      const rect = viewport.getBoundingClientRect()
+      const point = { x: event.clientX - rect.left, y: event.clientY - rect.top }
+      const graphPoint = {
+        x: (point.x - panRef.current.x) / zoomRef.current,
+        y: (point.y - panRef.current.y) / zoomRef.current,
+      }
+      const nextZoom = updateZoom(zoomRef.current * (event.deltaY < 0 ? 1.1 : 0.9))
+      updatePan({
+        x: point.x - graphPoint.x * nextZoom,
+        y: point.y - graphPoint.y * nextZoom,
+      })
+    }
+    const isolateTouchMove = (event: TouchEvent) => {
+      if (event.touches.length)
+      { event.preventDefault() }
     }
     viewport.addEventListener('wheel', isolateGraphZoom, { passive: false, capture: true })
-    return () => viewport.removeEventListener('wheel', isolateGraphZoom, { capture: true })
+    viewport.addEventListener('touchmove', isolateTouchMove, { passive: false, capture: true })
+    return () => {
+      viewport.removeEventListener('wheel', isolateGraphZoom, { capture: true })
+      viewport.removeEventListener('touchmove', isolateTouchMove, { capture: true })
+    }
   }, [])
 
   const resetViewport = () => {
-    setZoom(1)
-    setPan({ x: 0, y: 0 })
+    updateZoom(1)
+    updatePan({ x: 0, y: 0 })
+  }
+
+  const zoomFromCenter = (factor: number) => {
+    const viewport = viewportRef.current
+    if (!viewport)
+    { return }
+    const point = { x: viewport.clientWidth / 2, y: viewport.clientHeight / 2 }
+    const graphPoint = {
+      x: (point.x - panRef.current.x) / zoomRef.current,
+      y: (point.y - panRef.current.y) / zoomRef.current,
+    }
+    const nextZoom = updateZoom(zoomRef.current * factor)
+    updatePan({
+      x: point.x - graphPoint.x * nextZoom,
+      y: point.y - graphPoint.y * nextZoom,
+    })
   }
 
   return (
@@ -108,7 +251,7 @@ export default function KnowledgeGraphView({ nodes, edges }: { nodes: KnowledgeG
       <div className="grid gap-5 xl:grid-cols-[1fr_320px]">
         <PageCard
           ref={viewportRef}
-          className={`relative min-h-[680px] overflow-hidden overscroll-contain bg-[#f8f8f3] ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
+          className={`relative h-[62dvh] min-h-[460px] overflow-hidden overscroll-none bg-[#f8f8f3] sm:h-auto sm:min-h-[680px] ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
           style={{ touchAction: 'none', isolation: 'isolate' }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -117,13 +260,14 @@ export default function KnowledgeGraphView({ nodes, edges }: { nodes: KnowledgeG
         >
           <div className="absolute left-5 top-5 z-20 rounded-xl border border-[#183129]/10 bg-white/90 px-3 py-2 text-[10px] text-[#728078] shadow-sm backdrop-blur">
             <CursorArrowRaysIcon className="mr-1.5 inline h-3.5 w-3.5" />
-            拖动画布 · Ctrl + 滚轮缩放 · 点击节点查看证据
+            <span className="sm:hidden">单指拖动 · 双指缩放 · 点击节点</span>
+            <span className="hidden sm:inline">拖动画布 · Ctrl + 滚轮缩放 · 点击节点查看证据</span>
           </div>
-          <div className="absolute bottom-5 right-5 z-20 flex overflow-hidden rounded-xl border border-[#183129]/10 bg-white shadow-sm">
-            <button onClick={() => setZoom(value => Math.min(2, value + 0.1))} className="grid h-9 w-9 place-items-center border-r border-[#183129]/10">
+          <div data-graph-control className="absolute bottom-5 right-5 z-20 flex overflow-hidden rounded-xl border border-[#183129]/10 bg-white shadow-sm">
+            <button onClick={() => zoomFromCenter(1.15)} className="grid h-11 w-11 place-items-center border-r border-[#183129]/10 sm:h-9 sm:w-9">
               <MagnifyingGlassPlusIcon className="h-4 w-4" />
             </button>
-            <button onClick={() => setZoom(value => Math.max(0.5, value - 0.1))} className="grid h-9 w-9 place-items-center">
+            <button onClick={() => zoomFromCenter(0.85)} className="grid h-11 w-11 place-items-center sm:h-9 sm:w-9">
               <MagnifyingGlassMinusIcon className="h-4 w-4" />
             </button>
           </div>
@@ -132,6 +276,7 @@ export default function KnowledgeGraphView({ nodes, edges }: { nodes: KnowledgeG
             className={`absolute inset-0 origin-center ${isDragging ? '' : 'transition-transform duration-200'}`}
             style={{
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: '0 0',
               backgroundImage: 'radial-gradient(rgba(57,80,69,.12) 1px, transparent 1px)',
               backgroundSize: '22px 22px',
             }}

@@ -5,7 +5,6 @@ import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
 import type { KnowledgeReference, LearningAnalysis, WeakTopic } from '@/lib/learning-types'
 import type { ExtractedReference } from '@/lib/reference-extractor'
 import { cleanReferenceDocumentName, extractKnowledgeReferences } from '@/lib/reference-extractor'
-import { listKnowledgeDocuments } from '@/lib/dify-dataset'
 
 interface RetrieverResource extends ExtractedReference {
   content?: string
@@ -148,72 +147,7 @@ const getUserReferencesOnce = async (appUserId: string): Promise<KnowledgeRefere
   if (!activeConversationIds.length)
   { return [] }
 
-  const storedMessages = await db.chatMessage.findMany({
-    where: {
-      appUserId,
-      role: 'assistant',
-      difyMessageId: { not: null },
-      difyConversationId: { in: activeConversationIds },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 80,
-    select: {
-      content: true,
-      createdAt: true,
-      difyConversationId: true,
-      difyMessageId: true,
-      rawPayload: true,
-    },
-  })
-  const recoveredReferences = storedMessages.flatMap((message) => {
-    const metadata = message.rawPayload && typeof message.rawPayload === 'object' && !Array.isArray(message.rawPayload)
-      ? message.rawPayload as Record<string, any>
-      : undefined
-    return extractKnowledgeReferences({
-      metadata,
-      agentLogs: [],
-      answer: message.content,
-    }).map((resource, index) => {
-      const documentName = resource.document_name || '未命名文档'
-      const pageNumber = resource.segment_position || resource.page || resource.page_number
-      return {
-        appUserId,
-        difyConversationId: message.difyConversationId,
-        difyMessageId: message.difyMessageId,
-        documentName,
-        datasetName: resource.dataset_name,
-        segmentId: resource.segment_id || `${message.difyMessageId || message.createdAt.getTime()}-recovered-${index}`,
-        pageNumber,
-        originalPageNumber: resource.original_page_number || pageFromDocumentName(documentName, pageNumber),
-        quote: resource.content,
-        score: resource.score,
-        pageImageUrl: resource.page_image_url,
-        sourceUrl: resource.url,
-        rawPayload: toJson(resource),
-        createdAt: message.createdAt,
-      }
-    })
-  })
-  if (recoveredReferences.length)
-  {
-    await db.messageReference.createMany({ data: recoveredReferences, skipDuplicates: true })
-    await Promise.all(recoveredReferences
-      .filter(reference => reference.pageImageUrl || reference.sourceUrl)
-      .map(reference => db.messageReference.updateMany({
-        where: {
-          appUserId,
-          difyMessageId: reference.difyMessageId,
-          segmentId: reference.segmentId,
-        },
-        data: {
-          pageImageUrl: reference.pageImageUrl,
-          sourceUrl: reference.sourceUrl,
-          rawPayload: reference.rawPayload,
-        },
-      })))
-  }
-
-  const references = await db.messageReference.findMany({
+  let references = await db.messageReference.findMany({
     where: {
       appUserId,
       difyConversationId: { in: activeConversationIds },
@@ -222,24 +156,70 @@ const getUserReferencesOnce = async (appUserId: string): Promise<KnowledgeRefere
     take: 300,
   })
 
-  const normalizeDocumentName = (value: string) =>
-    cleanReferenceDocumentName(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
-  const documentIdsByName = new Map<string, string>()
-  try {
-    const documents = await listKnowledgeDocuments({ page: 1, limit: 100 })
-    documents.data.forEach(document => documentIdsByName.set(normalizeDocumentName(document.name), document.id))
-  }
-  catch {
-    // References remain usable even when the document catalog is temporarily unavailable.
+  // Old conversations may predate reference persistence. Recover them only when
+  // the account has no saved references instead of rescanning on every visit.
+  if (!references.length) {
+    const storedMessages = await db.chatMessage.findMany({
+      where: {
+        appUserId,
+        role: 'assistant',
+        difyMessageId: { not: null },
+        difyConversationId: { in: activeConversationIds },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 80,
+      select: {
+        content: true,
+        createdAt: true,
+        difyConversationId: true,
+        difyMessageId: true,
+        rawPayload: true,
+      },
+    })
+    const recoveredReferences = storedMessages.flatMap((message) => {
+      const metadata = message.rawPayload && typeof message.rawPayload === 'object' && !Array.isArray(message.rawPayload)
+        ? message.rawPayload as Record<string, any>
+        : undefined
+      return extractKnowledgeReferences({
+        metadata,
+        agentLogs: [],
+        answer: message.content,
+      }).map((resource, index) => {
+        const documentName = resource.document_name || '未命名文档'
+        const pageNumber = resource.segment_position || resource.page || resource.page_number
+        return {
+          appUserId,
+          difyConversationId: message.difyConversationId,
+          difyMessageId: message.difyMessageId,
+          documentName,
+          datasetName: resource.dataset_name,
+          segmentId: resource.segment_id || `${message.difyMessageId || message.createdAt.getTime()}-recovered-${index}`,
+          pageNumber,
+          originalPageNumber: resource.original_page_number || pageFromDocumentName(documentName, pageNumber),
+          quote: resource.content,
+          score: resource.score,
+          pageImageUrl: resource.page_image_url,
+          sourceUrl: resource.url,
+          rawPayload: toJson(resource),
+          createdAt: message.createdAt,
+        }
+      })
+    })
+    if (recoveredReferences.length) {
+      await db.messageReference.createMany({ data: recoveredReferences, skipDuplicates: true })
+      references = await db.messageReference.findMany({
+        where: {
+          appUserId,
+          difyConversationId: { in: activeConversationIds },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 300,
+      })
+    }
   }
 
   return references.map((reference) => {
     const documentName = cleanReferenceDocumentName(reference.documentName || '未命名文档')
-    const normalizedName = normalizeDocumentName(documentName)
-    const matchedDocumentId = documentIdsByName.get(normalizedName)
-      || [...documentIdsByName.entries()]
-        .filter(([candidate]) => candidate.length > 5 && (normalizedName.includes(candidate) || candidate.includes(normalizedName)))
-        .sort(([left], [right]) => right.length - left.length)[0]?.[1]
     const inferredPage = Number(reference.pageImageUrl?.match(/\/page_(\d+)\./i)?.[1] || 0) || undefined
     const rawDocumentId = reference.rawPayload && typeof reference.rawPayload === 'object' && !Array.isArray(reference.rawPayload)
       ? (reference.rawPayload as Record<string, any>).document_id as string | undefined
@@ -248,7 +228,7 @@ const getUserReferencesOnce = async (appUserId: string): Promise<KnowledgeRefere
       id: reference.id,
       conversationId: reference.difyConversationId || '',
       messageId: reference.difyMessageId || undefined,
-      documentId: rawDocumentId || matchedDocumentId,
+      documentId: rawDocumentId,
       documentName,
       datasetName: reference.datasetName || undefined,
       pageNumber: reference.pageNumber || inferredPage,

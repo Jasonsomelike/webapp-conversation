@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { listKnowledgeDocuments } from '@/lib/dify-dataset'
+import { listKnowledgeDocuments, refreshKnowledgeDocuments } from '@/lib/dify-dataset'
 import { getSession } from '@/lib/session'
 
 export async function GET(request: Request) {
@@ -9,7 +9,10 @@ export async function GET(request: Request) {
 
   const params = new URL(request.url).searchParams
   try {
-    const data = await listKnowledgeDocuments({
+    const loadDocuments = params.get('refresh') === '1'
+      ? refreshKnowledgeDocuments
+      : listKnowledgeDocuments
+    const data = await loadDocuments({
       page: Number(params.get('page') || 1),
       limit: Number(params.get('limit') || 20),
       keyword: params.get('keyword') || '',
@@ -17,7 +20,9 @@ export async function GET(request: Request) {
     })
     return NextResponse.json(data, {
       headers: {
-        'Cache-Control': 'private, no-store, no-cache, must-revalidate',
+        'Cache-Control': params.get('refresh') === '1'
+          ? 'private, no-store, no-cache, must-revalidate'
+          : 'private, max-age=60, stale-while-revalidate=240',
       },
     })
   }
