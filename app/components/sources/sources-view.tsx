@@ -25,7 +25,7 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
   const selected = initialReferences.find(item => item.id === selectedId) || filtered[0]
   const documentCount = new Set(initialReferences.map(item => item.documentName)).size
   const documentPreviewUrl = selected
-    ? `/api/sources/${selected.id}/file?disposition=inline&filename=${encodeURIComponent(selected.documentName)}`
+    ? `/sources/preview/${selected.id}?page=${selected.pageNumber || 1}&filename=${encodeURIComponent(selected.documentName)}`
     : ''
   const documentDownloadUrl = selected
     ? `/api/sources/${selected.id}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`

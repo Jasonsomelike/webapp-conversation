@@ -331,16 +331,36 @@ const Main: FC<IMainProps> = () => {
     followOutputRef.current = false
     let highlightedElement: HTMLElement | null = null
     let highlightTimer: ReturnType<typeof globalThis.setTimeout> | undefined
+    const settleTimers: Array<ReturnType<typeof globalThis.setTimeout>> = []
+    let resizeObserver: ResizeObserver | undefined
     const scrollTimer = globalThis.setTimeout(() => {
       const element = document.getElementById(`message-${targetMessageId}`)
       if (!element)
       { return }
+      const scrollParent = findScrollParent(chatListDomRef.current)
+      if (!scrollParent)
+      { return }
 
       highlightedElement = element
       highlightedMessageRef.current = targetMessageId
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      const alignMessage = (behavior: ScrollBehavior = 'auto') => {
+        const parentRect = scrollParent.getBoundingClientRect()
+        const elementRect = element.getBoundingClientRect()
+        const topPadding = 14
+        const nextTop = scrollParent.scrollTop + elementRect.top - parentRect.top - topPadding
+        scrollParent.scrollTo({
+          top: Math.max(0, nextTop),
+          behavior,
+        })
+        lastScrollTopRef.current = Math.max(0, nextTop)
+      }
+      alignMessage('smooth')
+      ;[240, 700, 1400].forEach(delay => settleTimers.push(globalThis.setTimeout(() => alignMessage(), delay)))
+      resizeObserver = new ResizeObserver(() => alignMessage())
+      resizeObserver.observe(element)
       element.classList.add('message-highlight')
       highlightTimer = globalThis.setTimeout(() => {
+        resizeObserver?.disconnect()
         element.classList.remove('message-highlight')
         setTargetMessageId('')
         const url = new URL(globalThis.location.href)
@@ -351,6 +371,8 @@ const Main: FC<IMainProps> = () => {
 
     return () => {
       globalThis.clearTimeout(scrollTimer)
+      settleTimers.forEach(timer => globalThis.clearTimeout(timer))
+      resizeObserver?.disconnect()
       if (highlightTimer)
       { globalThis.clearTimeout(highlightTimer) }
       highlightedElement?.classList.remove('message-highlight')

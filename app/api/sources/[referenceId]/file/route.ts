@@ -48,6 +48,58 @@ const signedReferenceFileRedirect = ({
   })
 }
 
+const proxiedReferenceFile = async ({
+  documentName,
+  filename,
+  requestId,
+  range,
+}: {
+  documentName: string
+  filename: string
+  requestId: string
+  range: string | null
+}) => {
+  const baseUrl = process.env.LIBRARY_FILE_SERVICE_URL?.replace(/\/$/, '')
+  const token = process.env.LIBRARY_FILE_SERVICE_TOKEN
+  if (!baseUrl || !token)
+  { return null }
+
+  const expires = String(Math.floor(Date.now() / 1000) + 300)
+  const canonical = `${documentName}\ninline\n${filename}\n${requestId}\n${expires}`
+  const signature = createHmac('sha256', token).update(canonical).digest('base64url')
+  const url = new URL(`${baseUrl}/library/documents/by-name/file`)
+  url.searchParams.set('name', documentName)
+  url.searchParams.set('disposition', 'inline')
+  url.searchParams.set('filename', filename)
+  url.searchParams.set('requestId', requestId)
+  url.searchParams.set('expires', expires)
+  url.searchParams.set('signature', signature)
+
+  const upstream = await fetch(url, {
+    cache: 'no-store',
+    redirect: 'follow',
+    headers: range ? { Range: range } : undefined,
+  })
+  if (!upstream.ok || !upstream.body)
+  { return new Response(`Unable to proxy reference file. status=${upstream.status}`, { status: upstream.status || 502 }) }
+
+  const headers = new Headers({
+    'Content-Type': upstream.headers.get('Content-Type') || 'application/pdf',
+    'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    'Cache-Control': 'private, no-store',
+    'Accept-Ranges': upstream.headers.get('Accept-Ranges') || 'bytes',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Request-Id': requestId,
+    'X-Library-File-Source': 'proxied-reference-name-file',
+  })
+  ;['Content-Length', 'Content-Range', 'ETag', 'Last-Modified'].forEach((name) => {
+    const value = upstream.headers.get(name)
+    if (value)
+    { headers.set(name, value) }
+  })
+  return new Response(upstream.body, { status: upstream.status, headers })
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ referenceId: string }> },
@@ -79,6 +131,18 @@ export async function GET(
     .replace(/["\r\n]/g, '_')
   const inferredPage = Number(reference.pageImageUrl?.match(/\/page_(\d+)\./i)?.[1] || 0) || undefined
   const page = reference.pageNumber || inferredPage
+
+  if (disposition === 'inline' && request.nextUrl.searchParams.get('proxy') === '1') {
+    return await proxiedReferenceFile({
+      documentName,
+      filename,
+      requestId,
+      range: request.headers.get('range'),
+    }) || new Response('Reference file service is not configured', {
+      status: 503,
+      headers: { 'X-Request-Id': requestId },
+    })
+  }
 
   return signedReferenceFileRedirect({
     documentName,
