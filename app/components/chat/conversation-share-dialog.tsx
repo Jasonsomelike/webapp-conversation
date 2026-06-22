@@ -131,7 +131,7 @@ export default function ConversationShareDialog({
       })
       context.fillStyle = '#66736c'
       context.font = '22px sans-serif'
-      context.fillText('www.bestijason.cn · 内容由 AI 生成，请仔细甄别', 80, canvas.height - 55)
+      context.fillText('www.jasonsome.cn · 内容由 AI 生成，请仔细甄别', 80, canvas.height - 55)
 
       const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png', 0.94))
       if (!blob)

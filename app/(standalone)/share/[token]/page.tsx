@@ -96,7 +96,7 @@ export default async function SharedConversationPage({
         </div>
 
         <footer className="py-8 text-center text-xs text-black/35">
-          本页为用户主动分享的只读对话，链接 30 天内有效 · www.bestijason.cn
+          本页为用户主动分享的只读对话，链接 30 天内有效 · www.jasonsome.cn
         </footer>
       </div>
     </main>

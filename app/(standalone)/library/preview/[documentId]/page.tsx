@@ -24,7 +24,7 @@ export default async function LibraryPdfPreviewPage({
     <PdfReferenceViewer
       filename={filename}
       initialPage={page}
-      sourceUrl={`/api/library/documents/${encodedId}/file?disposition=inline&proxy=1&filename=${encodedFilename}`}
+      sourceUrl={`/api/library/documents/${encodedId}/file?disposition=inline&filename=${encodedFilename}`}
       downloadUrl={`/api/library/documents/${encodedId}/file?disposition=attachment&filename=${encodedFilename}`}
     />
   )

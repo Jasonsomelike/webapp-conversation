@@ -32,8 +32,35 @@ DIFY_CHAT_API_URL = os.getenv(
 )
 CHAT_RELAY_ALLOWED_ORIGIN = os.getenv(
     "CHAT_RELAY_ALLOWED_ORIGIN",
-    "https://www.bestijason.cn",
+    "https://www.jasonsome.cn",
 )
+APP_ALLOWED_ORIGINS = {
+    value.strip()
+    for value in os.getenv(
+        "APP_ALLOWED_ORIGINS",
+        CHAT_RELAY_ALLOWED_ORIGIN,
+    ).split(",")
+    if value.strip()
+}
+
+
+@app.after_request
+def add_file_cors_headers(response: Response) -> Response:
+    origin = request.headers.get("Origin", "")
+    if (
+        origin in APP_ALLOWED_ORIGINS
+        and request.path.startswith(("/library/", "/page-images/", "/generated-files/"))
+    ):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Range, Content-Type"
+        response.headers["Access-Control-Expose-Headers"] = (
+            "Accept-Ranges, Content-Length, Content-Range, Content-Disposition, "
+            "ETag, Last-Modified, X-Request-Id, X-Library-File-Source"
+        )
+        response.headers["Vary"] = "Origin"
+    return response
 
 
 def error_response(message: str, status: int, request_id: str) -> Response:
@@ -420,8 +447,10 @@ def document_file(document_id: uuid.UUID):
 
 
 def cors_headers() -> dict[str, str]:
+    origin = request.headers.get("Origin", "")
+    allowed_origin = origin if origin in APP_ALLOWED_ORIGINS else CHAT_RELAY_ALLOWED_ORIGIN
     return {
-        "Access-Control-Allow-Origin": CHAT_RELAY_ALLOWED_ORIGIN,
+        "Access-Control-Allow-Origin": allowed_origin,
         "Access-Control-Allow-Credentials": "true",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type",
@@ -487,7 +516,7 @@ def chat_messages_options():
 @app.post("/chat-messages")
 def chat_messages():
     origin = request.headers.get("Origin", "")
-    if origin and origin != CHAT_RELAY_ALLOWED_ORIGIN:
+    if origin and origin not in APP_ALLOWED_ORIGINS:
         return chat_error("Origin not allowed", 403, str(uuid.uuid4()))
 
     raw_body = request.get_data(cache=True)

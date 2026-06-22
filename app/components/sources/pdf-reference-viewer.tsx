@@ -32,7 +32,11 @@ export default function PdfReferenceViewer({
   const [scale, setScale] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const sourceUrl = explicitSourceUrl || `/api/sources/${encodeURIComponent(referenceId || '')}/file?disposition=inline&proxy=1&filename=${encodeURIComponent(filename)}`
+  // This authenticated same-origin route issues a short-lived signed redirect
+  // to the file service. The browser then downloads the PDF directly instead
+  // of making Vercel relay a large byte-range stream through a non-standard
+  // upstream port.
+  const sourceUrl = explicitSourceUrl || `/api/sources/${encodeURIComponent(referenceId || '')}/file?disposition=inline&filename=${encodeURIComponent(filename)}`
   const downloadUrl = explicitDownloadUrl || `/api/sources/${encodeURIComponent(referenceId || '')}/file?disposition=attachment&filename=${encodeURIComponent(filename)}`
 
   useEffect(() => {

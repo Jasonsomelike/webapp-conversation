@@ -35,8 +35,8 @@ export default function AboutPage() {
               <p className="mt-1 text-xs leading-6 text-[var(--studio-muted)]">按账号隔离会话、引用、记忆和分析结果。</p>
             </div>
           </div>
-          <Link href="https://www.bestijason.cn" className="flex items-center justify-between rounded-2xl border border-black/10 px-4 py-3 text-sm font-semibold">
-            www.bestijason.cn
+          <Link href="https://www.jasonsome.cn" className="flex items-center justify-between rounded-2xl border border-black/10 px-4 py-3 text-sm font-semibold">
+            www.jasonsome.cn
             <ArrowTopRightOnSquareIcon className="h-4 w-4" />
           </Link>
           <div className="text-center text-[11px] text-black/35">© 2026 知行网络学堂</div>
