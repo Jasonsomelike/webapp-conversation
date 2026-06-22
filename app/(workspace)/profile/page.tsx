@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import ProfileView from '@/app/components/profile/profile-view'
 import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
 import { getSession } from '@/lib/session'
+import { isAdminSession } from '@/lib/admin'
 
 export default async function ProfilePage() {
   const session = await getSession()
@@ -10,11 +11,12 @@ export default async function ProfilePage() {
 
   let profile = null
   let joinedAt = new Date(session.createdAt).toISOString()
+  let currentDisplayName = session.name
   let stats = { conversations: 0, references: 0, messages: 0 }
   if (isDatabaseConfigured()) {
     try {
       const [user, savedProfile, conversations, references, messages] = await withDatabaseRetry(() => Promise.all([
-        db.appUser.findUnique({ where: { id: session.id }, select: { createdAt: true } }),
+        db.appUser.findUnique({ where: { id: session.id }, select: { createdAt: true, displayName: true } }),
         db.userProfile.findUnique({ where: { appUserId: session.id } }),
         db.chatConversation.count({ where: { appUserId: session.id, deletedAt: null } }),
         db.messageReference.count({ where: { appUserId: session.id } }),
@@ -22,6 +24,7 @@ export default async function ProfilePage() {
       ]))
       profile = savedProfile
       joinedAt = user?.createdAt.toISOString() || joinedAt
+      currentDisplayName = user?.displayName || currentDisplayName
       stats = { conversations, references, messages }
     }
     catch (error) {
@@ -29,5 +32,13 @@ export default async function ProfilePage() {
     }
   }
 
-  return <ProfileView session={session} initialProfile={profile} stats={stats} joinedAt={joinedAt} />
+  return (
+    <ProfileView
+      session={{ ...session, name: currentDisplayName }}
+      initialProfile={profile}
+      stats={stats}
+      joinedAt={joinedAt}
+      isAdmin={isAdminSession(session)}
+    />
+  )
 }

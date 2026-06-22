@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import produce from 'immer'
 import { useGetState } from 'ahooks'
-import { ChevronLeftIcon } from '@heroicons/react/24/outline'
+import { ChevronLeftIcon, ShareIcon } from '@heroicons/react/24/outline'
 import useConversation from '@/hooks/use-conversation'
 import Toast from '@/app/components/base/toast'
 import Sidebar from '@/app/components/sidebar'
@@ -24,6 +24,7 @@ import AppUnavailable from '@/app/components/app-unavailable'
 import { APP_ID, APP_INFO, isShowPrompt, promptTemplate } from '@/config'
 import type { Annotation as AnnotationType } from '@/types/log'
 import { addFileInfos, sortAgentSorts } from '@/utils/tools'
+import ConversationShareDialog from '@/app/components/chat/conversation-share-dialog'
 
 export interface IMainProps {
   params: any
@@ -52,6 +53,7 @@ const Main: FC<IMainProps> = () => {
   const targetConversationIdRef = useRef('')
   const highlightedMessageRef = useRef('')
   const [showMobileConversationList, setShowMobileConversationList] = useState(true)
+  const [shareOpen, setShareOpen] = useState(false)
   const [visionConfig, setVisionConfig] = useState<VisionSettings | undefined>({
     enabled: false,
     number_limits: 2,
@@ -1000,8 +1002,25 @@ const Main: FC<IMainProps> = () => {
                   <ChevronLeftIcon className="h-4 w-4 shrink-0" />
                   <span className="max-w-[180px] truncate">{isNewConversation ? '对话记录' : conversationName}</span>
                 </button>
-                <button onClick={() => handleConversationIdChange('-1')} className="rounded-lg bg-[#17342b] px-3 py-1.5 text-xs font-medium text-white">新对话</button>
+                <div className="flex items-center gap-2">
+                  {!isNewConversation && (
+                    <button onClick={() => setShareOpen(true)} className="grid h-8 w-8 place-items-center rounded-lg border border-black/10 bg-white" aria-label="分享对话">
+                      <ShareIcon className="h-4 w-4" />
+                    </button>
+                  )}
+                  <button onClick={() => handleConversationIdChange('-1')} className="rounded-lg bg-[#17342b] px-3 py-1.5 text-xs font-medium text-white">新对话</button>
+                </div>
               </div>
+              {!isMobile && (
+                <div className="flex h-12 shrink-0 items-center justify-between border-b border-black/[0.06] px-5">
+                  <div className="truncate text-xs font-semibold text-[var(--studio-muted)]">{conversationName}</div>
+                  {!isNewConversation && (
+                    <button onClick={() => setShareOpen(true)} className="flex items-center gap-2 rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-semibold">
+                      <ShareIcon className="h-4 w-4" />分享
+                    </button>
+                  )}
+                </div>
+              )}
               {(!isMobile || !hasSetInputs) && (
                 <ConfigSence
                   conversationName={conversationName}
@@ -1033,6 +1052,13 @@ const Main: FC<IMainProps> = () => {
               }
             </div>
           )}
+        <ConversationShareDialog
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          conversationId={currConversationId}
+          title={conversationName}
+          chatList={chatList}
+        />
       </div>
     </div>
   )

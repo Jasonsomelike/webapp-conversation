@@ -6,7 +6,10 @@ import {
   AdjustmentsHorizontalIcon,
   CalendarDaysIcon,
   CheckIcon,
+  ChevronRightIcon,
+  Cog6ToothIcon,
   FingerPrintIcon,
+  InformationCircleIcon,
   PencilSquareIcon,
   ShieldCheckIcon,
   SparklesIcon,
@@ -14,6 +17,8 @@ import {
 import PageCard from '@/app/components/workspace/page-card'
 import type { AppSession } from '@/lib/session'
 import Toast from '@/app/components/base/toast'
+import Link from 'next/link'
+import { isNetworkStudyApp } from '@/lib/native-app'
 
 const stages = ['入门', '系统学习', '复习', '刷题', '备考']
 const styles = ['图示讲解', '公式推导', '例题驱动', '简洁回答']
@@ -24,11 +29,13 @@ export default function ProfileView({
   initialProfile,
   stats,
   joinedAt,
+  isAdmin,
 }: {
   session: AppSession
   initialProfile: { learningStage?: string | null, preferredStyle?: string | null, target?: string | null } | null
   stats: { conversations: number, references: number, messages: number }
   joinedAt: string
+  isAdmin: boolean
 }) {
   const initialStage = initialProfile?.learningStage || '系统学习'
   const initialStyle = initialProfile?.preferredStyle || '图示讲解'
@@ -36,11 +43,17 @@ export default function ProfileView({
   const [stage, setStage] = useState(initialStage)
   const [style, setStyle] = useState(initialStyle)
   const [target, setTarget] = useState(initialTarget)
-  const [savedProfile, setSavedProfile] = useState({ stage: initialStage, style: initialStyle, target: initialTarget })
+  const [displayName, setDisplayName] = useState(session.name)
+  const [savedProfile, setSavedProfile] = useState({ stage: initialStage, style: initialStyle, target: initialTarget, displayName: session.name })
+  const [nativeApp, setNativeApp] = useState(false)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const { notify } = Toast
-  const dirty = stage !== savedProfile.stage || style !== savedProfile.style || target !== savedProfile.target
+  const dirty = stage !== savedProfile.stage || style !== savedProfile.style || target !== savedProfile.target || displayName !== savedProfile.displayName
+
+  useEffect(() => {
+    setNativeApp(isNetworkStudyApp())
+  }, [])
 
   useEffect(() => {
     if (!editing || !dirty)
@@ -72,6 +85,7 @@ export default function ProfileView({
     setStage(savedProfile.stage)
     setStyle(savedProfile.style)
     setTarget(savedProfile.target)
+    setDisplayName(savedProfile.displayName)
     setEditing(false)
   }
 
@@ -81,13 +95,14 @@ export default function ProfileView({
       const response = await fetch('/api/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ learningStage: stage, preferredStyle: style, target }),
+        body: JSON.stringify({ displayName, learningStage: stage, preferredStyle: style, target }),
       })
       if (!response.ok)
       { throw new Error(`PROFILE_SAVE_FAILED:${response.status}`) }
-      setSavedProfile({ stage, style, target })
+      setSavedProfile({ stage, style, target, displayName })
       setEditing(false)
       notify({ type: 'success', message: '画像已更新' })
+      globalThis.setTimeout(() => globalThis.location.reload(), 350)
     }
     catch {
       notify({ type: 'error', message: '保存失败，请稍后重试' })
@@ -118,7 +133,17 @@ export default function ProfileView({
               <div className="mt-7 flex items-center gap-4">
                 <div className="grid h-16 w-16 place-items-center rounded-2xl bg-[var(--studio-accent)] text-2xl font-semibold text-[var(--studio-deep)]">{session.name.slice(0, 1)}</div>
                 <div>
-                  <h2 className="text-xl font-semibold">{session.name}</h2>
+                  {editing
+                    ? (
+                      <input
+                        value={displayName}
+                        onChange={event => setDisplayName(event.target.value)}
+                        maxLength={64}
+                        className="h-10 w-full rounded-xl border border-white/20 bg-white/10 px-3 text-base font-semibold text-white outline-none placeholder:text-white/35"
+                        placeholder="输入显示名称"
+                      />
+                    )
+                    : <h2 className="text-xl font-semibold">{savedProfile.displayName}</h2>}
                   <div className="mt-1 text-xs text-white/45">@{session.username} · 账号密码用户</div>
                 </div>
               </div>
@@ -265,6 +290,31 @@ export default function ProfileView({
               </div>
             </div>
           </div>
+
+          <PageCard className="overflow-hidden">
+            <div className="px-5 pb-2 pt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#748179]">
+              更多
+            </div>
+            {nativeApp && (
+              <Link href="/app-settings" className="flex items-center gap-3 border-b border-black/[0.06] px-5 py-4 transition hover:bg-black/[0.02]">
+                <Cog6ToothIcon className="h-5 w-5 text-[var(--studio-accent-strong)]" />
+                <span className="flex-1 text-sm font-semibold">App 设置</span>
+                <ChevronRightIcon className="h-4 w-4 text-black/30" />
+              </Link>
+            )}
+            {isAdmin && (
+              <Link href="/admin" className="flex items-center gap-3 border-b border-black/[0.06] px-5 py-4 transition hover:bg-black/[0.02]">
+                <ShieldCheckIcon className="h-5 w-5 text-[var(--studio-accent-strong)]" />
+                <span className="flex-1 text-sm font-semibold">用户管理后台</span>
+                <ChevronRightIcon className="h-4 w-4 text-black/30" />
+              </Link>
+            )}
+            <Link href="/about" className="flex items-center gap-3 px-5 py-4 transition hover:bg-black/[0.02]">
+              <InformationCircleIcon className="h-5 w-5 text-[var(--studio-accent-strong)]" />
+              <span className="flex-1 text-sm font-semibold">关于知行网络学堂</span>
+              <ChevronRightIcon className="h-4 w-4 text-black/30" />
+            </Link>
+          </PageCard>
         </div>
       </div>
     </div>

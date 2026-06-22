@@ -29,7 +29,9 @@ const streamedResponse = (
 ) => {
   const headers = new Headers({
     'Content-Type': upstream.headers.get('Content-Type') || 'application/octet-stream',
-    'Content-Disposition': upstream.headers.get('Content-Disposition') || dispositionHeader(disposition, filename),
+    // Respect the action selected in our UI. Some upstream services always
+    // return "attachment", which made Android WebView download a preview.
+    'Content-Disposition': dispositionHeader(disposition, filename),
     'Cache-Control': 'private, no-store',
     'X-Content-Type-Options': 'nosniff',
     'X-Request-Id': requestId,
@@ -243,15 +245,17 @@ export async function GET(
   const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : undefined
   const errors: string[] = []
 
-  const directRedirect = signedLibraryFileRedirect({
-    documentId,
-    disposition,
-    filename,
-    requestId,
-    page,
-  })
-  if (directRedirect)
-  { return directRedirect }
+  if (request.nextUrl.searchParams.get('proxy') !== '1') {
+    const directRedirect = signedLibraryFileRedirect({
+      documentId,
+      disposition,
+      filename,
+      requestId,
+      page,
+    })
+    if (directRedirect)
+    { return directRedirect }
+  }
 
   try {
     const serviceResponse = await fetchLibraryFileService({

@@ -11,12 +11,20 @@ import {
 } from '@heroicons/react/24/outline'
 
 interface PdfReferenceViewerProps {
-  referenceId: string
+  referenceId?: string
   filename: string
   initialPage: number
+  sourceUrl?: string
+  downloadUrl?: string
 }
 
-export default function PdfReferenceViewer({ referenceId, filename, initialPage }: PdfReferenceViewerProps) {
+export default function PdfReferenceViewer({
+  referenceId,
+  filename,
+  initialPage,
+  sourceUrl: explicitSourceUrl,
+  downloadUrl: explicitDownloadUrl,
+}: PdfReferenceViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const renderTaskRef = useRef<{ cancel: () => void }>()
   const [pdf, setPdf] = useState<any>()
@@ -24,8 +32,8 @@ export default function PdfReferenceViewer({ referenceId, filename, initialPage 
   const [scale, setScale] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const sourceUrl = `/api/sources/${encodeURIComponent(referenceId)}/file?disposition=inline&proxy=1&filename=${encodeURIComponent(filename)}`
-  const downloadUrl = `/api/sources/${encodeURIComponent(referenceId)}/file?disposition=attachment&filename=${encodeURIComponent(filename)}`
+  const sourceUrl = explicitSourceUrl || `/api/sources/${encodeURIComponent(referenceId || '')}/file?disposition=inline&proxy=1&filename=${encodeURIComponent(filename)}`
+  const downloadUrl = explicitDownloadUrl || `/api/sources/${encodeURIComponent(referenceId || '')}/file?disposition=attachment&filename=${encodeURIComponent(filename)}`
 
   useEffect(() => {
     let disposed = false

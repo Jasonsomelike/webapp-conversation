@@ -18,11 +18,13 @@ import {
   ShareIcon,
   SparklesIcon,
   UserCircleIcon,
+  UsersIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import type { AppSession } from '@/lib/session'
 import { isThemeId, themes, type ThemeId } from '@/lib/themes'
 import { resetChatRuntime, useChatRuntime } from '@/app/components/chat/runtime-store'
+import { isAdminSession } from '@/lib/admin'
 
 const navItems = [
   { href: '/chat', label: 'AI 学习助手', shortLabel: '对话', icon: ChatBubbleLeftRightIcon },
@@ -32,6 +34,7 @@ const navItems = [
   { href: '/analysis', label: '个性化分析', shortLabel: '分析', icon: ChartBarSquareIcon },
   { href: '/profile', label: '我的画像', shortLabel: '我的', icon: UserCircleIcon },
 ]
+const adminNavItem = { href: '/admin', label: '用户管理', shortLabel: '管理', icon: UsersIcon }
 
 const routeMeta: Record<string, { eyebrow: string, title: string, description: string }> = {
   '/chat': {
@@ -64,6 +67,21 @@ const routeMeta: Record<string, { eyebrow: string, title: string, description: s
     title: '我的学习画像',
     description: '管理学习阶段、回答偏好、长期目标和界面配色',
   },
+  '/about': {
+    eyebrow: '产品信息',
+    title: '关于',
+    description: '了解知行网络学堂的版本、能力与数据保护方式',
+  },
+  '/app-settings': {
+    eyebrow: 'Android 专属',
+    title: 'App 设置',
+    description: '管理文件下载位置与原生应用行为',
+  },
+  '/admin': {
+    eyebrow: '系统管理',
+    title: '用户管理后台',
+    description: '查看和维护知行网络学堂用户信息',
+  },
 }
 
 interface WorkspaceShellProps {
@@ -82,6 +100,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
   const [theme, setTheme] = useState<ThemeId>(initialTheme)
   const chatResponding = useChatRuntime(state => state.isResponding)
   const current = routeMeta[pathname] || routeMeta['/chat']
+  const sidebarNavItems = isAdminSession(session) ? [...navItems, adminNavItem] : navItems
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -126,7 +145,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
       <nav className="flex-1 overflow-y-auto px-3 py-5">
         <div className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/35">学习空间</div>
         <div className="space-y-1">
-          {navItems.map((item) => {
+          {sidebarNavItems.map((item) => {
             const active = pathname === item.href
             const Icon = item.icon
             return (

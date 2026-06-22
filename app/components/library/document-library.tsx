@@ -208,7 +208,7 @@ export default function DocumentLibrary({
                         </div>
                         <div className="flex items-center justify-end gap-2">
                           <a
-                            href={`/api/library/documents/${document.id}/file?disposition=inline&filename=${encodeURIComponent(document.name)}`}
+                            href={`/library/preview/${document.id}?filename=${encodeURIComponent(document.name)}`}
                             target="_blank"
                             rel="noreferrer"
                             className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 bg-white px-2.5 py-2 text-[10px] font-semibold transition hover:-translate-y-0.5 hover:shadow-md"

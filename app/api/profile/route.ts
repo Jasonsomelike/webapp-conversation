@@ -2,8 +2,10 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db, isDatabaseConfigured } from '@/lib/db'
 import { getSession } from '@/lib/session'
+import { setSessionCookie } from '@/lib/session'
 
 const profileSchema = z.object({
+  displayName: z.string().trim().min(1, '显示名称不能为空').max(64, '显示名称不能超过 64 个字符'),
   learningStage: z.string().trim().min(1).max(64),
   preferredStyle: z.string().trim().min(1).max(64),
   target: z.string().trim().min(1).max(128),
@@ -31,10 +33,20 @@ export async function PUT(request: Request) {
   if (!parsed.success)
   { return NextResponse.json({ error: '学习偏好信息不完整' }, { status: 400 }) }
 
-  const profile = await db.userProfile.upsert({
-    where: { appUserId: session.id },
-    update: parsed.data,
-    create: { appUserId: session.id, ...parsed.data },
-  })
-  return NextResponse.json({ profile })
+  const { displayName, ...profileData } = parsed.data
+  const [profile, user] = await db.$transaction([
+    db.userProfile.upsert({
+      where: { appUserId: session.id },
+      update: profileData,
+      create: { appUserId: session.id, ...profileData },
+    }),
+    db.appUser.update({
+      where: { id: session.id },
+      data: { displayName },
+      select: { displayName: true },
+    }),
+  ])
+  const response = NextResponse.json({ profile, displayName: user.displayName })
+  setSessionCookie(response, { ...session, name: user.displayName, createdAt: Date.now() })
+  return response
 }

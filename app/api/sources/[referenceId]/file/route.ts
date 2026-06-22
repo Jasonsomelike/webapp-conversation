@@ -1,10 +1,12 @@
 import { createHmac, randomUUID } from 'node:crypto'
 import type { NextRequest } from 'next/server'
 import { db, withDatabaseRetry } from '@/lib/db'
+import { getKnowledgeDocumentDownloadUrl } from '@/lib/dify-dataset'
 import { cleanReferenceDocumentName } from '@/lib/reference-extractor'
 import { getSessionFromRequest } from '@/lib/session'
 
 export const runtime = 'nodejs'
+export const maxDuration = 300
 
 const signedReferenceFileRedirect = ({
   documentName,
@@ -49,11 +51,13 @@ const signedReferenceFileRedirect = ({
 }
 
 const proxiedReferenceFile = async ({
+  documentId,
   documentName,
   filename,
   requestId,
   range,
 }: {
+  documentId?: string
   documentName: string
   filename: string
   requestId: string
@@ -75,13 +79,80 @@ const proxiedReferenceFile = async ({
   url.searchParams.set('expires', expires)
   url.searchParams.set('signature', signature)
 
-  const upstream = await fetch(url, {
-    cache: 'no-store',
-    redirect: 'follow',
-    headers: range ? { Range: range } : undefined,
-  })
-  if (!upstream.ok || !upstream.body)
-  { return new Response(`Unable to proxy reference file. status=${upstream.status}`, { status: upstream.status || 502 }) }
+  const errors: string[] = []
+  let upstream: Response | undefined
+  try {
+    const response = await fetch(url, {
+      cache: 'no-store',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(30_000),
+      headers: range ? { Range: range } : undefined,
+    })
+    if (response.ok && response.body)
+    { upstream = response }
+    else
+    { errors.push(`name-service:${response.status}`) }
+  }
+  catch (error) {
+    errors.push(`name-service:${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  if (!upstream && documentId) {
+    try {
+      const directUrl = new URL(`${baseUrl}/library/documents/${encodeURIComponent(documentId)}/file`)
+      directUrl.searchParams.set('disposition', 'inline')
+      directUrl.searchParams.set('filename', filename)
+      const response = await fetch(directUrl, {
+        cache: 'no-store',
+        redirect: 'follow',
+        signal: AbortSignal.timeout(30_000),
+        headers: {
+          'X-Internal-Token': token,
+          'X-Request-Id': requestId,
+          ...(range ? { Range: range } : {}),
+        },
+      })
+      if (response.ok && response.body)
+      { upstream = response }
+      else
+      { errors.push(`id-service:${response.status}`) }
+    }
+    catch (error) {
+      errors.push(`id-service:${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  if (!upstream && documentId) {
+    try {
+      const signedUrl = await getKnowledgeDocumentDownloadUrl(documentId)
+      const response = await fetch(signedUrl, {
+        cache: 'no-store',
+        redirect: 'follow',
+        signal: AbortSignal.timeout(30_000),
+        headers: range ? { Range: range } : undefined,
+      })
+      if (response.ok && response.body)
+      { upstream = response }
+      else
+      { errors.push(`dify-download:${response.status}`) }
+    }
+    catch (error) {
+      errors.push(`dify-download:${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  if (!upstream?.body) {
+    console.error('[reference-file] all proxy sources failed', {
+      requestId,
+      documentId,
+      documentName,
+      errors,
+    })
+    return new Response(`Unable to proxy reference file. ${errors.join(' | ')}`, {
+      status: 502,
+      headers: { 'X-Request-Id': requestId },
+    })
+  }
 
   const headers = new Headers({
     'Content-Type': upstream.headers.get('Content-Type') || 'application/pdf',
@@ -112,7 +183,7 @@ export async function GET(
   const { referenceId } = await params
   const reference = await withDatabaseRetry(() => db.messageReference.findFirst({
     where: { id: referenceId, appUserId: session.id },
-    select: { documentName: true, pageNumber: true, pageImageUrl: true },
+    select: { documentName: true, pageNumber: true, pageImageUrl: true, rawPayload: true },
   })).catch((error) => {
     console.error('[reference-file] ownership lookup failed', { requestId, referenceId, error })
     return null
@@ -131,9 +202,24 @@ export async function GET(
     .replace(/["\r\n]/g, '_')
   const inferredPage = Number(reference.pageImageUrl?.match(/\/page_(\d+)\./i)?.[1] || 0) || undefined
   const page = reference.pageNumber || inferredPage
+  const rawPayload = reference.rawPayload && typeof reference.rawPayload === 'object' && !Array.isArray(reference.rawPayload)
+    ? reference.rawPayload as Record<string, unknown>
+    : undefined
+  let documentId = typeof rawPayload?.document_id === 'string' ? rawPayload.document_id : undefined
+  if (!documentId) {
+    const catalog = await withDatabaseRetry(() => db.knowledgeDocumentCatalog.findUnique({
+      where: { id: 'default' },
+      select: { documents: true },
+    })).catch(() => null)
+    const documents = Array.isArray(catalog?.documents) ? catalog.documents as Array<Record<string, unknown>> : []
+    const matched = documents.find(item => cleanReferenceDocumentName(String(item.name || '')) === documentName)
+    if (matched && typeof matched.id === 'string')
+    { documentId = matched.id }
+  }
 
   if (disposition === 'inline' && request.nextUrl.searchParams.get('proxy') === '1') {
     return await proxiedReferenceFile({
+      documentId,
       documentName,
       filename,
       requestId,
