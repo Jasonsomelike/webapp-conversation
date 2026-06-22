@@ -12,6 +12,7 @@ import {
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
 import type { KnowledgeGraphEdge, KnowledgeGraphNode } from '@/lib/graph-data'
+import { useChatRuntime } from '@/app/components/chat/runtime-store'
 
 const tones: Record<string, string> = {
   user: 'bg-[#17342b] text-white border-[#17342b]',
@@ -24,8 +25,10 @@ const tones: Record<string, string> = {
   next: 'bg-[#eaf5bc] text-[#4e6422] border-[#91a952]/35',
 }
 
-export default function KnowledgeGraphView({ nodes, edges }: { nodes: KnowledgeGraphNode[], edges: KnowledgeGraphEdge[] }) {
-  const [selected, setSelected] = useState(nodes.find(node => node.type === 'weakness')?.id || nodes[0]?.id || 'user')
+export default function KnowledgeGraphView({ nodes: initialNodes, edges: initialEdges }: { nodes: KnowledgeGraphNode[], edges: KnowledgeGraphEdge[] }) {
+  const [nodes, setNodes] = useState(initialNodes)
+  const [edges, setEdges] = useState(initialEdges)
+  const [selected, setSelected] = useState(initialNodes.find(node => node.type === 'weakness')?.id || initialNodes[0]?.id || '')
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
@@ -52,9 +55,41 @@ export default function KnowledgeGraphView({ nodes, edges }: { nodes: KnowledgeG
     graphCenterY: 0,
   })
   const viewportRef = useRef<HTMLElement>(null)
-  const selectedNode = nodes.find(node => node.id === selected) || nodes[0]!
+  const chatResponding = useChatRuntime(state => state.isResponding)
+  const selectedNode = nodes.find(node => node.id === selected) || nodes[0]
 
   const related = useMemo(() => edges.filter(edge => edge.source === selected || edge.target === selected), [edges, selected])
+
+  useEffect(() => {
+    let cancelled = false
+    let timer: ReturnType<typeof globalThis.setInterval> | undefined
+    const refresh = async () => {
+      try {
+        const response = await fetch('/api/graph', { credentials: 'include', cache: 'no-store' })
+        if (!response.ok)
+        { return }
+        const graph = await response.json() as { nodes?: KnowledgeGraphNode[], edges?: KnowledgeGraphEdge[] }
+        if (cancelled || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges))
+        { return }
+        setNodes(graph.nodes)
+        setEdges(graph.edges)
+        setSelected(current => graph.nodes!.some(node => node.id === current)
+          ? current
+          : graph.nodes!.find(node => node.type === 'weakness')?.id || graph.nodes![0]?.id || '')
+      }
+      catch {
+        // Keep the last successfully rendered graph while a refresh is unavailable.
+      }
+    }
+    void refresh()
+    if (chatResponding)
+    { timer = globalThis.setInterval(refresh, 3500) }
+    return () => {
+      cancelled = true
+      if (timer)
+      { globalThis.clearInterval(timer) }
+    }
+  }, [chatResponding])
 
   const updatePan = (nextPan: { x: number, y: number }) => {
     panRef.current = nextPan
@@ -220,6 +255,25 @@ export default function KnowledgeGraphView({ nodes, edges }: { nodes: KnowledgeG
       x: point.x - graphPoint.x * nextZoom,
       y: point.y - graphPoint.y * nextZoom,
     })
+  }
+
+  if (!nodes.length || !selectedNode) {
+    return (
+      <div className="mx-auto flex h-full min-h-[520px] max-w-[1000px] items-center justify-center p-5 sm:p-8">
+        <PageCard className="w-full max-w-xl px-6 py-12 text-center sm:px-10">
+          <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-[var(--studio-accent)]/35 text-[var(--studio-accent-strong)]">
+            <SparklesIcon className="h-8 w-8" />
+          </div>
+          <h2 className="mt-5 text-lg font-semibold">知识图谱还是空的</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-7 text-[var(--studio-muted)]">
+            完成一次计算机网络学习对话后，系统会根据你的问题和知识库引用生成专属节点与关系。
+          </p>
+          <a href="/chat" className="mt-6 inline-flex rounded-xl bg-[var(--studio-deep)] px-5 py-2.5 text-xs font-semibold text-white">
+            开始第一次学习对话
+          </a>
+        </PageCard>
+      </div>
+    )
   }
 
   return (

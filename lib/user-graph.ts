@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { KnowledgeGraphEdge, KnowledgeGraphNode, UserKnowledgeGraph } from '@/lib/graph-data'
-import { fallbackGraph } from '@/lib/graph-data'
+import { emptyGraph } from '@/lib/graph-data'
 import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
 
 const taxonomy = [
@@ -72,7 +72,7 @@ const buildGraph = async (appUserId: string): Promise<UserKnowledgeGraph> => {
     select: { difyConversationId: true },
   })).map(item => item.difyConversationId)
   if (!activeIds.length)
-  { return fallbackGraph }
+  { return emptyGraph }
 
   const [messages, references] = await Promise.all([
     db.chatMessage.findMany({
@@ -102,8 +102,8 @@ const buildGraph = async (appUserId: string): Promise<UserKnowledgeGraph> => {
     .sort((left, right) => right.score - left.score)
     .slice(0, 20)
 
-  if (!ranked.length)
-  { return fallbackGraph }
+  if (!messages.length && !references.length)
+  { return emptyGraph }
 
   const nodes: KnowledgeGraphNode[] = [{
     id: 'user',
@@ -229,12 +229,12 @@ const buildGraph = async (appUserId: string): Promise<UserKnowledgeGraph> => {
 
 export const getUserKnowledgeGraph = async (appUserId: string): Promise<UserKnowledgeGraph> => {
   if (!isDatabaseConfigured())
-  { return fallbackGraph }
+  { return emptyGraph }
   try {
     return await withDatabaseRetry(() => buildGraph(appUserId))
   }
   catch (error) {
     console.error('[user-knowledge-graph] database unavailable', { appUserId, error })
-    return fallbackGraph
+    return emptyGraph
   }
 }

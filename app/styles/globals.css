@@ -296,13 +296,49 @@ a {
 }
 
 .streamdown-markdown table {
-  overflow: hidden;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
   border-radius: 12px;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--studio-ink) 9%, transparent);
 }
 
 .streamdown-markdown th {
   background: color-mix(in srgb, var(--studio-accent) 24%, var(--studio-surface));
+}
+
+@media (max-width: 639px) {
+  .streamdown-markdown {
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .streamdown-markdown h1 {
+    font-size: 1.32rem;
+  }
+
+  .streamdown-markdown h2 {
+    margin-top: 1.3em;
+    font-size: 1.14rem;
+  }
+
+  .streamdown-markdown h3 {
+    font-size: 1rem;
+  }
+
+  .streamdown-markdown table {
+    width: max-content;
+    min-width: 100%;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .streamdown-markdown th,
+  .streamdown-markdown td {
+    min-width: 88px;
+    padding: 0.65rem 0.75rem;
+    white-space: normal;
+  }
 }
 
 .streamdown-markdown .markdown-media img {

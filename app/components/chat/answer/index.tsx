@@ -233,7 +233,7 @@ const Answer: FC<IAnswerProps> = ({
       className="chat-message-target rounded-2xl"
     >
       <div className="flex items-start">
-        <div className={`${s.answerIcon} w-10 h-10 shrink-0`}>
+        <div className={`${s.answerIcon} hidden h-10 w-10 shrink-0 sm:block`}>
           {isResponding
             && (
               <div className={s.typeingIcon}>
@@ -241,9 +241,9 @@ const Answer: FC<IAnswerProps> = ({
               </div>
             )}
         </div>
-        <div className={`${s.answerWrap} min-w-0 max-w-[calc(100%_-_3rem)] flex-1`}>
+        <div className={`${s.answerWrap} min-w-0 max-w-full flex-1 sm:max-w-[calc(100%_-_3rem)]`}>
           <div className='relative text-sm text-gray-900'>
-            <div className='chat-answer-card ml-2 min-w-0 rounded-2xl border border-[#17342b]/[0.08] bg-white px-5 py-4 shadow-[0_10px_30px_rgba(31,54,46,0.055)]'>
+            <div className='chat-answer-card min-w-0 rounded-2xl border border-[#17342b]/[0.08] bg-white px-3 py-3.5 shadow-[0_10px_30px_rgba(31,54,46,0.055)] sm:ml-2 sm:px-5 sm:py-4'>
               {workflowProcess && (
                 <div className='mb-4 border-b border-[#17342b]/10 pb-4'>
                   <WorkflowProcess data={workflowProcess} hideInfo />

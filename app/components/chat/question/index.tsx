@@ -18,7 +18,7 @@ const Question: FC<IQuestionProps> = ({ id, content, useCurrentUserAvatar, imgSr
       <div>
         <div className={`${s.question} relative text-sm text-gray-900`}>
           <div
-            className={'chat-question-card mr-2 rounded-b-2xl rounded-tl-2xl bg-blue-500 px-4 py-3'}
+            className={'chat-question-card rounded-b-2xl rounded-tl-2xl bg-blue-500 px-3 py-2.5 sm:mr-2 sm:px-4 sm:py-3'}
           >
             {imgSrcs && imgSrcs.length > 0 && (
               <ImageGallery srcs={imgSrcs} />
@@ -34,7 +34,7 @@ const Question: FC<IQuestionProps> = ({ id, content, useCurrentUserAvatar, imgSr
           </div>
         )
         : (
-          <div className={`${s.questionIcon} w-10 h-10 shrink-0 `}></div>
+          <div className={`${s.questionIcon} hidden h-10 w-10 shrink-0 sm:block`}></div>
         )}
     </div>
   )

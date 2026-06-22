@@ -164,12 +164,22 @@ const handleStream = (
   let bufferObj: Record<string, any>
   let isFirstMessage = true
   let persistPromise: Promise<void> | undefined
+  const safelyCall = (name: string, callback: (() => void) | undefined) => {
+    if (!callback)
+    { return }
+    try {
+      callback()
+    }
+    catch (error) {
+      console.error(`[chat-stream] ${name} callback failed`, error)
+    }
+  }
   function read() {
     let hasError = false
     reader?.read().then(async (result: any) => {
       if (result.done) {
         await persistPromise
-        onCompleted && onCompleted()
+        safelyCall('completed', () => onCompleted?.())
         return
       }
       buffer += decoder.decode(result.value, { stream: true })
@@ -182,41 +192,41 @@ const handleStream = (
             }
             catch (e) {
               // mute handle message cut off
-              onData('', isFirstMessage, {
+              safelyCall('partial-data', () => onData('', isFirstMessage, {
                 conversationId: bufferObj?.conversation_id,
                 messageId: bufferObj?.message_id,
-              })
+              }))
               return
             }
             if (bufferObj.status === 400 || !bufferObj.event) {
-              onData('', false, {
+              safelyCall('error-data', () => onData('', false, {
                 conversationId: undefined,
                 messageId: '',
                 errorMessage: bufferObj?.message,
                 errorCode: bufferObj?.code,
-              })
+              }))
               hasError = true
-              onCompleted?.(true)
+              safelyCall('error-completed', () => onCompleted?.(true))
               return
             }
             if (bufferObj.event === 'message' || bufferObj.event === 'agent_message') {
               // can not use format here. Because message is splited.
-              onData(unicodeToChar(bufferObj.answer), isFirstMessage, {
+              safelyCall('message', () => onData(unicodeToChar(bufferObj.answer), isFirstMessage, {
                 conversationId: bufferObj.conversation_id,
                 taskId: bufferObj.task_id,
                 messageId: bufferObj.id,
-              })
+              }))
               isFirstMessage = false
             }
             else if (bufferObj.event === 'agent_thought') {
-              onThought?.(bufferObj as ThoughtItem)
+              safelyCall('agent-thought', () => onThought?.(bufferObj as ThoughtItem))
             }
             else if (bufferObj.event === 'message_file') {
-              onFile?.({
+              safelyCall('message-file', () => onFile?.({
                 ...bufferObj,
                 url: bufferObj.url || bufferObj.file_url || '',
                 name: bufferObj.name || bufferObj.filename,
-              } as VisionFile)
+              } as VisionFile))
             } else if (bufferObj.event === 'relay_persist' && bufferObj.data) {
               persistPromise = globalThis.fetch('/api/chat-persist', {
                 method: 'POST',
@@ -229,35 +239,35 @@ const handleStream = (
               }).catch(error => console.error('[chat-persist] browser callback failed', error))
             }
             else if (bufferObj.event === 'message_end') {
-              onMessageEnd?.(bufferObj as MessageEnd)
+              safelyCall('message-end', () => onMessageEnd?.(bufferObj as MessageEnd))
             }
             else if (bufferObj.event === 'message_replace') {
-              onMessageReplace?.(bufferObj as MessageReplace)
+              safelyCall('message-replace', () => onMessageReplace?.(bufferObj as MessageReplace))
             }
             else if (bufferObj.event === 'workflow_started') {
-              onWorkflowStarted?.(bufferObj as WorkflowStartedResponse)
+              safelyCall('workflow-started', () => onWorkflowStarted?.(bufferObj as WorkflowStartedResponse))
             }
             else if (bufferObj.event === 'workflow_finished') {
-              onWorkflowFinished?.(bufferObj as WorkflowFinishedResponse)
+              safelyCall('workflow-finished', () => onWorkflowFinished?.(bufferObj as WorkflowFinishedResponse))
             }
             else if (bufferObj.event === 'node_started') {
-              onNodeStarted?.(bufferObj as NodeStartedResponse)
+              safelyCall('node-started', () => onNodeStarted?.(bufferObj as NodeStartedResponse))
             }
             else if (bufferObj.event === 'node_finished') {
-              onNodeFinished?.(bufferObj as NodeFinishedResponse)
+              safelyCall('node-finished', () => onNodeFinished?.(bufferObj as NodeFinishedResponse))
             }
           }
         })
         buffer = lines[lines.length - 1]
       }
       catch (e) {
-        onData('', false, {
+        safelyCall('stream-parse-error', () => onData('', false, {
           conversationId: undefined,
           messageId: '',
           errorMessage: `${e}`,
-        })
+        }))
         hasError = true
-        onCompleted?.(true)
+        safelyCall('parse-error-completed', () => onCompleted?.(true))
         return
       }
       if (!hasError) { read() }

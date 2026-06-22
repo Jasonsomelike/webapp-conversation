@@ -2,11 +2,13 @@
 import type { FC } from 'react'
 import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import produce, { setAutoFreeze } from 'immer'
-import { useBoolean, useGetState } from 'ahooks'
+import produce from 'immer'
+import { useGetState } from 'ahooks'
+import { ChevronLeftIcon } from '@heroicons/react/24/outline'
 import useConversation from '@/hooks/use-conversation'
 import Toast from '@/app/components/base/toast'
 import Sidebar from '@/app/components/sidebar'
+import MobileConversationList from '@/app/components/sidebar/mobile-conversation-list'
 import ConfigSence from '@/app/components/config-scence'
 import { deleteConversation as deleteConversationRequest, fetchAppParams, fetchChatList, fetchConversations, generationConversationName, sendChatMessage, updateFeedback } from '@/service'
 import type { ChatItem, ConversationItem, Feedbacktype, PromptConfig, VisionFile, VisionSettings } from '@/types/app'
@@ -27,6 +29,12 @@ export interface IMainProps {
   params: any
 }
 
+const cloneChatItem = (item: ChatItem): ChatItem => {
+  if (typeof globalThis.structuredClone === 'function')
+  { return globalThis.structuredClone(item) }
+  return JSON.parse(JSON.stringify(item)) as ChatItem
+}
+
 const Main: FC<IMainProps> = () => {
   const { t } = useTranslation()
   const media = useBreakpoints()
@@ -43,8 +51,7 @@ const Main: FC<IMainProps> = () => {
   const [targetMessageId, setTargetMessageId] = useState('')
   const targetConversationIdRef = useRef('')
   const highlightedMessageRef = useRef('')
-  // in mobile, show sidebar by click button
-  const [isShowSidebar, { setTrue: showSidebar, setFalse: hideSidebar }] = useBoolean(false)
+  const [showMobileConversationList, setShowMobileConversationList] = useState(true)
   const [visionConfig, setVisionConfig] = useState<VisionSettings | undefined>({
     enabled: false,
     number_limits: 2,
@@ -56,14 +63,6 @@ const Main: FC<IMainProps> = () => {
   useEffect(() => {
     if (APP_INFO?.title) { document.title = `${APP_INFO.title} · 知行网络学堂` }
   }, [APP_INFO?.title])
-
-  // onData change thought (the produce obj). https://github.com/immerjs/immer/issues/576
-  useEffect(() => {
-    setAutoFreeze(false)
-    return () => {
-      setAutoFreeze(true)
-    }
-  }, [])
 
   /*
   * conversation info
@@ -177,7 +176,7 @@ const Main: FC<IMainProps> = () => {
     }
     // trigger handleConversationSwitch
     setCurrConversationId(id, APP_ID)
-    hideSidebar()
+    setShowMobileConversationList(false)
   }
 
   /*
@@ -420,6 +419,7 @@ const Main: FC<IMainProps> = () => {
           targetConversationIdRef.current = requestedConversation.id
           setTargetMessageId(requestedMessageId)
           followOutputRef.current = !requestedMessageId
+          setShowMobileConversationList(false)
         }
 
         // fetch new conversation info
@@ -573,7 +573,7 @@ const Main: FC<IMainProps> = () => {
       (draft) => {
         if (!draft.find(item => item.id === questionId)) { draft.push({ ...questionItem }) }
 
-        draft.push({ ...responseItem })
+        draft.push(cloneChatItem(responseItem))
       },
     )
     setChatList(newListWithAnswer)
@@ -700,7 +700,7 @@ const Main: FC<IMainProps> = () => {
         }
         else {
           const lastThought = responseItem.agent_thoughts?.[responseItem.agent_thoughts?.length - 1]
-          if (lastThought) { lastThought.thought = lastThought.thought + message } // need immer setAutoFreeze
+          if (lastThought) { lastThought.thought = lastThought.thought + message }
         }
         if (messageId && !hasSetResponseId) {
           responseItem.id = messageId
@@ -725,21 +725,19 @@ const Main: FC<IMainProps> = () => {
       },
       async onCompleted(hasError?: boolean) {
         try {
-          if (!hasError && getConversationIdChangeBecauseOfNew()) {
+          if (!hasError) {
             const { data: allConversations }: any = await fetchConversations()
-            const newConversation = allConversations.find((item: any) => item.id === tempNewConversationId)
-              || allConversations[0]
-
-            if (newConversation?.id) {
-              const newItem: any = await generationConversationName(newConversation.id)
-              const newAllConversations = produce(allConversations, (draft: any[]) => {
-                const target = draft.find(item => item.id === newConversation.id)
-                if (target) {
-                  target.name = newItem.name
-                }
-              })
-              setConversationList(newAllConversations as any)
+            if (getConversationIdChangeBecauseOfNew()) {
+              const newConversation = allConversations.find((item: any) => item.id === tempNewConversationId)
+                || allConversations[0]
+              if (newConversation?.id) {
+                const newItem: any = await generationConversationName(newConversation.id)
+                const target = allConversations.find((item: any) => item.id === newConversation.id)
+                if (target)
+                { target.name = newItem.name }
+              }
             }
+            setConversationList([...allConversations])
           }
         }
         catch (error) {
@@ -823,9 +821,7 @@ const Main: FC<IMainProps> = () => {
             (draft) => {
               if (!draft.find(item => item.id === questionId)) { draft.push({ ...questionItem }) }
 
-              draft.push({
-                ...responseItem,
-              })
+              draft.push(cloneChatItem(responseItem))
             },
           )
           setChatList(newListWithAnswer)
@@ -839,7 +835,7 @@ const Main: FC<IMainProps> = () => {
           (draft) => {
             if (!draft.find(item => item.id === questionId)) { draft.push({ ...questionItem }) }
 
-            draft.push({ ...responseItem })
+            draft.push(cloneChatItem(responseItem))
           },
         )
         setChatList(newListWithAnswer)
@@ -858,7 +854,9 @@ const Main: FC<IMainProps> = () => {
         setRespondingFalse()
         // role back placeholder answer
         setChatList(produce(getChatList(), (draft) => {
-          draft.splice(draft.findIndex(item => item.id === placeholderAnswerId), 1)
+          const placeholderIndex = draft.findIndex(item => item.id === placeholderAnswerId)
+          if (placeholderIndex >= 0)
+          { draft.splice(placeholderIndex, 1) }
         }))
       },
       onWorkflowStarted: ({ workflow_run_id }) => {
@@ -959,47 +957,60 @@ const Main: FC<IMainProps> = () => {
       <div className="flex h-full min-h-0 w-full overflow-hidden">
         {/* sidebar */}
         {!isMobile && renderSidebar()}
-        {isMobile && isShowSidebar && (
-          <div className='fixed inset-0 z-50' style={{ backgroundColor: 'rgba(35, 56, 118, 0.2)' }} onClick={hideSidebar} >
-            <div className='inline-block' onClick={e => e.stopPropagation()}>
-              {renderSidebar()}
-            </div>
-          </div>
-        )}
         {/* main */}
-        <div className='relative flex min-h-0 flex-grow flex-col overflow-hidden bg-[var(--studio-chat-surface)]'>
-          <div className="sticky top-0 z-20 flex h-12 shrink-0 items-center justify-between border-b border-black/[0.07] bg-[var(--studio-chat-surface)]/90 px-4 backdrop-blur lg:hidden">
-            <button onClick={showSidebar} className="rounded-lg bg-[#f0f2ed] px-3 py-1.5 text-xs font-medium text-[#526159]">会话</button>
-            <button onClick={() => handleConversationIdChange('-1')} className="rounded-lg bg-[#17342b] px-3 py-1.5 text-xs font-medium text-white">新对话</button>
-          </div>
-          <ConfigSence
-            conversationName={conversationName}
-            hasSetInputs={hasSetInputs}
-            isPublicVersion={isShowPrompt}
-            siteInfo={APP_INFO}
-            promptConfig={promptConfig}
-            onStartChat={handleStartChat}
-            canEditInputs={canEditInputs}
-            savedInputs={currInputs as Record<string, any>}
-            onInputsChange={setCurrInputs}
-          ></ConfigSence>
+        {isMobile && showMobileConversationList
+          ? (
+            <div className="min-h-0 flex-1">
+              <MobileConversationList
+                list={conversationList}
+                onOpen={handleConversationIdChange}
+                onNew={() => handleConversationIdChange('-1')}
+              />
+            </div>
+          )
+          : (
+            <div className='relative flex min-h-0 flex-grow flex-col overflow-hidden bg-[var(--studio-chat-surface)]'>
+              <div className="sticky top-0 z-20 flex h-12 shrink-0 items-center justify-between border-b border-black/[0.07] bg-[var(--studio-chat-surface)]/90 px-3 backdrop-blur lg:hidden">
+                <button
+                  onClick={() => setShowMobileConversationList(true)}
+                  className="flex min-w-0 items-center gap-1.5 rounded-lg px-1 py-1.5 text-xs font-medium text-[#526159]"
+                >
+                  <ChevronLeftIcon className="h-4 w-4 shrink-0" />
+                  <span className="max-w-[180px] truncate">{isNewConversation ? '对话记录' : conversationName}</span>
+                </button>
+                <button onClick={() => handleConversationIdChange('-1')} className="rounded-lg bg-[#17342b] px-3 py-1.5 text-xs font-medium text-white">新对话</button>
+              </div>
+              {(!isMobile || !hasSetInputs) && (
+                <ConfigSence
+                  conversationName={conversationName}
+                  hasSetInputs={hasSetInputs}
+                  isPublicVersion={isShowPrompt}
+                  siteInfo={APP_INFO}
+                  promptConfig={promptConfig}
+                  onStartChat={handleStartChat}
+                  canEditInputs={canEditInputs}
+                  savedInputs={currInputs as Record<string, any>}
+                  onInputsChange={setCurrInputs}
+                ></ConfigSence>
+              )}
 
-          {
-            hasSetInputs && (
-              <div className='relative mx-auto flex min-h-0 w-full max-w-[860px] flex-1 flex-col pb-1 pt-1 sm:pb-3 sm:pt-2'>
-                <Chat
-                  chatList={chatList}
-                  onSend={handleSend}
-                  onFeedback={handleFeedback}
-                  isResponding={isResponding}
-                  checkCanSend={checkCanSend}
-                  visionConfig={visionConfig}
-                  fileConfig={fileConfig}
-                  scrollContainerRef={chatListDomRef}
-                />
-              </div>)
-          }
-        </div>
+              {
+                hasSetInputs && (
+                  <div className='relative mx-auto flex min-h-0 w-full max-w-[980px] flex-1 flex-col pb-1 pt-1 sm:pb-3 sm:pt-2'>
+                    <Chat
+                      chatList={chatList}
+                      onSend={handleSend}
+                      onFeedback={handleFeedback}
+                      isResponding={isResponding}
+                      checkCanSend={checkCanSend}
+                      visionConfig={visionConfig}
+                      fileConfig={fileConfig}
+                      scrollContainerRef={chatListDomRef}
+                    />
+                  </div>)
+              }
+            </div>
+          )}
       </div>
     </div>
   )

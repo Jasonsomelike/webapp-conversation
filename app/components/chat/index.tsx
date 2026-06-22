@@ -149,7 +149,7 @@ const Chat: FC<IChatProps> = ({
   }
 
   return (
-    <div className={cn(!feedbackDisabled && 'px-3.5', 'flex h-full min-h-0 flex-col')}>
+    <div className={cn(!feedbackDisabled && 'px-1 sm:px-3.5', 'flex h-full min-h-0 flex-col')}>
       {/* Chat List */}
       <div ref={scrollContainerRef} className="min-h-0 flex-1 space-y-[30px] overflow-y-auto overscroll-contain pb-4 pt-2">
         {chatList.map((item) => {

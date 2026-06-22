@@ -228,7 +228,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
             <div className="h-full w-1/2 animate-pulse rounded-r-full bg-[var(--studio-accent-strong)]" />
           </div>
         )}
-        <header className="relative z-30 flex h-[84px] shrink-0 items-center gap-4 border-b border-black/[0.07] bg-[var(--studio-surface)]/90 px-4 backdrop-blur-xl sm:px-7">
+        <header className="relative z-30 flex h-[72px] shrink-0 items-center gap-3 border-b border-black/[0.07] bg-[var(--studio-surface)]/90 px-3 backdrop-blur-xl sm:h-[84px] sm:gap-4 sm:px-7">
           <button
             className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-black/10 bg-white lg:hidden"
             onClick={() => setMobileOpen(true)}
@@ -239,7 +239,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
           <div className="min-w-0 flex-1">
             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--studio-muted)]">{current.eyebrow}</div>
             <div className="mt-1 flex min-w-0 items-baseline gap-3">
-              <h1 className="truncate text-xl font-semibold tracking-[-0.025em]">{current.title}</h1>
+              <h1 className="truncate text-lg font-semibold tracking-[-0.025em] sm:text-xl">{current.title}</h1>
               <p className="hidden truncate text-xs text-black/45 xl:block">{current.description}</p>
             </div>
           </div>
