@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   CheckIcon,
   ClipboardDocumentIcon,
@@ -53,15 +53,68 @@ export default function ConversationShareDialog({
   title: string
   chatList: ChatItem[]
 }) {
-  const [scope, setScope] = useState<'all' | 'latest'>('latest')
+  const [selectedExchangeIds, setSelectedExchangeIds] = useState<string[]>([])
   const [link, setLink] = useState('')
   const [working, setWorking] = useState(false)
   const { notify } = Toast
+  const exchanges = useMemo(() => {
+    const items = chatList.filter(item => !item.isOpeningStatement)
+    const result: Array<{
+      id: string
+      items: ChatItem[]
+      question: string
+      answer: string
+    }> = []
+    for (let index = 0; index < items.length; index += 1) {
+      const first = items[index]
+      if (first.isAnswer) {
+        result.push({
+          id: first.id,
+          items: [first],
+          question: '续接回答',
+          answer: plainText(first.content),
+        })
+        continue
+      }
+      const answer = items[index + 1]?.isAnswer ? items[index + 1] : undefined
+      const id = answer?.id || first.id.replace(/^question-/, '')
+      result.push({
+        id,
+        items: answer ? [first, answer] : [first],
+        question: plainText(first.content),
+        answer: plainText(answer?.content || ''),
+      })
+      if (answer)
+      { index += 1 }
+    }
+    return result.filter(exchange => exchange.id && exchange.items.length)
+  }, [chatList])
+
+  useEffect(() => {
+    if (!open)
+    { return }
+    setLink('')
+    setSelectedExchangeIds((current) => {
+      const available = new Set(exchanges.map(exchange => exchange.id))
+      const preserved = current.filter(id => available.has(id))
+      return preserved.length
+        ? preserved
+        : exchanges.length ? [exchanges[exchanges.length - 1].id] : []
+    })
+  }, [exchanges, open])
+
   if (!open)
   { return null }
 
-  const allItems = chatList.filter(item => !item.isOpeningStatement)
-  const selectedItems = scope === 'latest' ? allItems.slice(-2) : allItems
+  const selectedIdSet = new Set(selectedExchangeIds)
+  const selectedExchanges = exchanges.filter(exchange => selectedIdSet.has(exchange.id))
+  const selectedItems = selectedExchanges.flatMap(exchange => exchange.items)
+  const toggleExchange = (id: string) => {
+    setSelectedExchangeIds(current => current.includes(id)
+      ? current.filter(item => item !== id)
+      : [...current, id])
+    setLink('')
+  }
 
   const createLink = async () => {
     setWorking(true)
@@ -69,7 +122,10 @@ export default function ConversationShareDialog({
       const response = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/share`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope }),
+        body: JSON.stringify({
+          scope: 'selected',
+          messageIds: selectedExchangeIds,
+        }),
       })
       if (!response.ok)
       { throw new Error('SHARE_FAILED') }
@@ -114,7 +170,7 @@ export default function ConversationShareDialog({
       context.fillText(title.slice(0, 22) || '网络学习会话', 80, 145)
       context.font = '24px sans-serif'
       context.fillStyle = 'rgba(255,255,255,.55)'
-      context.fillText(scope === 'latest' ? '最近一轮对话' : '完整对话节选', 80, 190)
+      context.fillText(`精选 ${selectedExchanges.length} 组对话`, 80, 190)
 
       let y = 270
       blocks.forEach((block) => {
@@ -175,19 +231,38 @@ export default function ConversationShareDialog({
             <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-3">
-          {[
-            ['latest', '最近一轮', '1 组对话'],
-            ['all', '全部对话', `${Math.ceil(allItems.length / 2)} 组对话`],
-          ].map(([value, label, description]) => (
-            <button key={value} onClick={() => setScope(value as 'all' | 'latest')} className={`rounded-2xl border p-4 text-left ${scope === value ? 'border-[#17342b] bg-[#eef4ef]' : 'border-black/10'}`}>
-              <div className="flex items-center justify-between text-sm font-semibold">
-                {label}
-                {scope === value && <CheckIcon className="h-4 w-4" />}
-              </div>
-              <div className="mt-1 text-[11px] text-black/40">{description}</div>
-            </button>
-          ))}
+        <div className="mt-5 flex items-center justify-between gap-3">
+          <div className="text-xs font-semibold">选择要分享的对话</div>
+          <div className="flex gap-2 text-[11px]">
+            <button type="button" onClick={() => setSelectedExchangeIds(exchanges.map(item => item.id))} className="rounded-lg bg-black/[0.04] px-2.5 py-1.5">全选</button>
+            <button type="button" onClick={() => setSelectedExchangeIds(exchanges.length ? [exchanges[exchanges.length - 1].id] : [])} className="rounded-lg bg-black/[0.04] px-2.5 py-1.5">仅最近</button>
+          </div>
+        </div>
+        <div className="mt-3 max-h-[min(42dvh,340px)] space-y-2 overflow-y-auto overscroll-contain pr-1">
+          {exchanges.map((exchange, index) => {
+            const checked = selectedIdSet.has(exchange.id)
+            return (
+              <button
+                key={exchange.id}
+                type="button"
+                onClick={() => toggleExchange(exchange.id)}
+                className={`flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition ${
+                  checked ? 'border-[#17342b]/35 bg-[#eef4ef]' : 'border-black/10 hover:bg-black/[0.025]'
+                }`}
+              >
+                <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border ${
+                  checked ? 'border-[#17342b] bg-[#17342b] text-white' : 'border-black/20 bg-white'
+                }`}>
+                  {checked && <CheckIcon className="h-3.5 w-3.5" />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[10px] font-semibold text-black/35">第 {index + 1} 组</span>
+                  <span className="mt-0.5 block truncate text-xs font-semibold">{exchange.question || '用户消息'}</span>
+                  {exchange.answer && <span className="mt-1 block line-clamp-2 text-[11px] leading-5 text-black/45">{exchange.answer}</span>}
+                </span>
+              </button>
+            )
+          })}
         </div>
         {link && (
           <button onClick={() => void navigator.clipboard.writeText(link)} className="mt-4 flex w-full items-center gap-2 rounded-2xl bg-black/[0.035] px-4 py-3 text-left text-xs">
@@ -197,7 +272,7 @@ export default function ConversationShareDialog({
           </button>
         )}
         <div className="mt-5 grid grid-cols-2 gap-3 pb-[env(safe-area-inset-bottom)]">
-          <button disabled={working || conversationId === '-1'} onClick={() => void createLink()} className="flex h-13 items-center justify-center gap-2 rounded-2xl border border-black/10 py-3.5 text-sm font-semibold disabled:opacity-40">
+          <button disabled={working || conversationId === '-1' || !selectedItems.length} onClick={() => void createLink()} className="flex h-13 items-center justify-center gap-2 rounded-2xl border border-black/10 py-3.5 text-sm font-semibold disabled:opacity-40">
             <LinkIcon className="h-5 w-5" />创建链接
           </button>
           <button disabled={working || !selectedItems.length} onClick={() => void createImage()} className="flex h-13 items-center justify-center gap-2 rounded-2xl bg-[var(--studio-deep)] py-3.5 text-sm font-semibold text-white disabled:opacity-40">

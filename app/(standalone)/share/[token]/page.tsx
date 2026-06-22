@@ -2,12 +2,10 @@ import { notFound } from 'next/navigation'
 import { AcademicCapIcon, CalendarDaysIcon } from '@heroicons/react/24/outline'
 import { db } from '@/lib/db'
 import { verifyConversationShareToken } from '@/lib/conversation-share'
+import SharedMarkdown from '@/app/components/base/shared-markdown'
 
-const compactMarkdown = (content: string) =>
-  content
-    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, '[图片]')
-    .trim()
+const visibleMarkdown = (content: string) =>
+  content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
 
 export default async function SharedConversationPage({
   params,
@@ -49,13 +47,20 @@ export default async function SharedConversationPage({
     current.push(message)
     groups.set(key, current)
   })
-  const exchanges = [...groups.values()].map(group => [
-    ...group.filter(message => message.role === 'user'),
-    ...group.filter(message => message.role === 'assistant'),
-  ]).flat()
-  const visibleMessages = payload.scope === 'latest'
-    ? exchanges.slice(Math.max(0, exchanges.length - 2))
-    : exchanges
+  const exchangeGroups = [...groups.entries()].map(([id, group]) => ({
+    id,
+    messages: [
+      ...group.filter(message => message.role === 'user'),
+      ...group.filter(message => message.role === 'assistant'),
+    ],
+  }))
+  const selectedIds = new Set(payload.messageIds || [])
+  const visibleGroups = payload.scope === 'latest'
+    ? exchangeGroups.slice(-1)
+    : payload.scope === 'selected'
+      ? exchangeGroups.filter(group => selectedIds.has(group.id))
+      : exchangeGroups
+  const visibleMessages = visibleGroups.flatMap(group => group.messages)
 
   return (
     <main className="min-h-screen bg-[#f3f5f3] px-3 py-6 text-[#18231f] sm:px-6">
@@ -73,7 +78,13 @@ export default async function SharedConversationPage({
           <div className="mt-5 flex flex-wrap gap-4 text-xs text-white/50">
             <span>分享者：{owner?.displayName || '学习者'}</span>
             <span className="flex items-center gap-1"><CalendarDaysIcon className="h-4 w-4" />{conversation.createdAt.toLocaleDateString('zh-CN')}</span>
-            <span>{payload.scope === 'latest' ? '最近一轮对话' : '完整对话'}</span>
+            <span>
+              {payload.scope === 'latest'
+                ? '最近一轮对话'
+                : payload.scope === 'selected'
+                  ? `精选 ${visibleGroups.length} 组对话`
+                  : '完整对话'}
+            </span>
           </div>
         </header>
 
@@ -90,7 +101,7 @@ export default async function SharedConversationPage({
               <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-black/35">
                 {message.role === 'user' ? '用户' : '计网Agent'}
               </div>
-              <div className="whitespace-pre-wrap break-words text-sm leading-7">{compactMarkdown(message.content)}</div>
+              <SharedMarkdown content={visibleMarkdown(message.content)} />
             </article>
           ))}
         </div>

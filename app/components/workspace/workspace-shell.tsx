@@ -152,6 +152,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
               <Link
                 href={item.href}
                 key={item.href}
+                aria-current={active ? 'page' : undefined}
                 onClick={() => {
                   setMobileOpen(false)
                   if (pathname !== item.href)
@@ -323,7 +324,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
               <Link
                 key={item.href}
                 href={item.href}
-                prefetch={false}
+                aria-current={active ? 'page' : undefined}
                 onClick={() => {
                   if (pathname !== item.href)
                   { setPendingHref(item.href) }

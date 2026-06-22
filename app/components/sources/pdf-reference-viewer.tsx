@@ -10,6 +10,16 @@ import {
   MagnifyingGlassPlusIcon,
 } from '@heroicons/react/24/outline'
 
+let pdfJsPromise: Promise<typeof import('pdfjs-dist')> | undefined
+
+const loadPdfJs = () => {
+  pdfJsPromise ||= import('pdfjs-dist').then((pdfjs) => {
+    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+    return pdfjs
+  })
+  return pdfJsPromise
+}
+
 interface PdfReferenceViewerProps {
   referenceId?: string
   filename: string
@@ -45,11 +55,13 @@ export default function PdfReferenceViewer({
     ;(async () => {
       try {
         setLoading(true)
-        const pdfjs = await import('pdfjs-dist')
-        pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+        const pdfjs = await loadPdfJs()
         loadingTask = pdfjs.getDocument({
           url: sourceUrl,
           withCredentials: true,
+          rangeChunkSize: 256 * 1024,
+          disableAutoFetch: true,
+          disableStream: false,
         })
         const document = await loadingTask.promise
         if (disposed)
@@ -131,7 +143,14 @@ export default function PdfReferenceViewer({
       </header>
 
       <main className="min-h-0 flex-1 overflow-auto p-3 sm:p-5">
-        {loading && <div className="grid h-full place-items-center text-sm text-black/50">正在加载 PDF 第 {page} 页…</div>}
+        {loading && (
+          <div className="grid h-full place-items-center">
+            <div className="flex items-center gap-3 rounded-2xl bg-white/80 px-5 py-3 text-sm text-black/50 shadow-sm backdrop-blur">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/15 border-t-[var(--studio-accent-strong)]" />
+              正在按需加载 PDF 第 {page} 页…
+            </div>
+          </div>
+        )}
         {error && (
           <div className="mx-auto mt-16 max-w-md rounded-2xl border border-red-200 bg-white p-6 text-center">
             <div className="font-semibold text-red-700">PDF 预览失败</div>

@@ -172,7 +172,7 @@ export default function DocumentLibrary({
                     const currentStatus = document.indexing_status || document.display_status || 'waiting'
                     const healthy = ['completed', 'available'].includes(currentStatus)
                     return (
-                      <div key={document.id} className="grid gap-4 px-5 py-5 transition hover:bg-black/[0.018] md:grid-cols-[minmax(0,1fr)_110px_100px_150px_150px] md:items-center">
+                      <div key={document.id} className="grid gap-4 px-5 py-5 transition [contain-intrinsic-size:116px] [content-visibility:auto] hover:bg-black/[0.018] md:grid-cols-[minmax(0,1fr)_110px_100px_150px_150px] md:items-center">
                         <div className="flex min-w-0 items-start gap-4">
                           <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[var(--studio-accent)]/30 text-[var(--studio-accent-strong)]">
                             <DocumentTextIcon className="h-5 w-5" />

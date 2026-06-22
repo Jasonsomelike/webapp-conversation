@@ -20,6 +20,10 @@ const LocaleLayout = async ({
   const locale = await getLocaleOnServer()
   return (
     <html lang={locale ?? 'zh-Hans'} className="h-full" data-theme="forest">
+      <head>
+        <link rel="dns-prefetch" href="//dify.jasonsome.cn" />
+        <link rel="preconnect" href="https://dify.jasonsome.cn:22380" crossOrigin="" />
+      </head>
       <body className="min-h-full bg-[var(--studio-paper)] antialiased">
         {children}
       </body>

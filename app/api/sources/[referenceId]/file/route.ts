@@ -8,6 +8,12 @@ import { getSessionFromRequest } from '@/lib/session'
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
+const documentNameKey = (value: unknown) =>
+  cleanReferenceDocumentName(value)
+    .normalize('NFKC')
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .toLowerCase()
+
 const signedReferenceFileRedirect = ({
   documentName,
   disposition,
@@ -46,6 +52,47 @@ const signedReferenceFileRedirect = ({
       'Cache-Control': 'private, no-store',
       'X-Request-Id': requestId,
       'X-Library-File-Source': 'signed-reference-name-redirect',
+    },
+  })
+}
+
+const signedReferenceDocumentRedirect = ({
+  documentId,
+  disposition,
+  filename,
+  requestId,
+  page,
+}: {
+  documentId: string
+  disposition: 'inline' | 'attachment'
+  filename: string
+  requestId: string
+  page?: number
+}) => {
+  const baseUrl = process.env.LIBRARY_FILE_SERVICE_URL?.replace(/\/$/, '')
+  const token = process.env.LIBRARY_FILE_SERVICE_TOKEN
+  if (!baseUrl || !token)
+  { return null }
+
+  const expires = String(Math.floor(Date.now() / 1000) + 300)
+  const canonical = `${documentId}\n${disposition}\n${filename}\n${requestId}\n${expires}`
+  const signature = createHmac('sha256', token).update(canonical).digest('base64url')
+  const url = new URL(`${baseUrl}/library/documents/${encodeURIComponent(documentId)}/file`)
+  url.searchParams.set('disposition', disposition)
+  url.searchParams.set('filename', filename)
+  url.searchParams.set('requestId', requestId)
+  url.searchParams.set('expires', expires)
+  url.searchParams.set('signature', signature)
+  if (page && disposition === 'inline')
+  { url.hash = `page=${page}` }
+
+  return new Response(null, {
+    status: 307,
+    headers: {
+      'Location': url.toString(),
+      'Cache-Control': 'private, no-store',
+      'X-Request-Id': requestId,
+      'X-Library-File-Source': 'signed-reference-document-redirect',
     },
   })
 }
@@ -212,7 +259,8 @@ export async function GET(
       select: { documents: true },
     })).catch(() => null)
     const documents = Array.isArray(catalog?.documents) ? catalog.documents as Array<Record<string, unknown>> : []
-    const matched = documents.find(item => cleanReferenceDocumentName(String(item.name || '')) === documentName)
+    const targetNameKey = documentNameKey(documentName)
+    const matched = documents.find(item => documentNameKey(item.name) === targetNameKey)
     if (matched && typeof matched.id === 'string')
     { documentId = matched.id }
   }
@@ -228,6 +276,21 @@ export async function GET(
       status: 503,
       headers: { 'X-Request-Id': requestId },
     })
+  }
+
+  // References created by Dify occasionally contain a slightly different
+  // document name from the catalog. When we know the document ID, use the
+  // exact same stable file route as the knowledge-library preview.
+  if (documentId) {
+    const documentRedirect = signedReferenceDocumentRedirect({
+      documentId,
+      disposition,
+      filename,
+      requestId,
+      page: page || undefined,
+    })
+    if (documentRedirect)
+    { return documentRedirect }
   }
 
   return signedReferenceFileRedirect({

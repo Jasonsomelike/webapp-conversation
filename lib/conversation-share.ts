@@ -2,12 +2,13 @@ import 'server-only'
 
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
 
-export type ConversationShareScope = 'all' | 'latest'
+export type ConversationShareScope = 'all' | 'latest' | 'selected'
 
 export interface ConversationSharePayload {
   conversationId: string
   appUserId: string
   scope: ConversationShareScope
+  messageIds?: string[]
   expiresAt: number
 }
 
@@ -42,7 +43,13 @@ export const verifyConversationShareToken = (token: string): ConversationSharePa
     if (
       !payload.appUserId
       || !payload.conversationId
-      || !['all', 'latest'].includes(payload.scope)
+      || !['all', 'latest', 'selected'].includes(payload.scope)
+      || (payload.messageIds !== undefined && (
+        !Array.isArray(payload.messageIds)
+        || payload.messageIds.length > 60
+        || payload.messageIds.some(id => typeof id !== 'string' || !id || id.length > 128)
+      ))
+      || (payload.scope === 'selected' && !payload.messageIds?.length)
       || payload.expiresAt < Date.now()
     )
     { return null }

@@ -215,7 +215,7 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
                         setSelectedId(item.id)
                         setMobileDetailOpen(true)
                       }}
-                      className={`min-w-0 w-full overflow-hidden rounded-2xl border p-4 text-left transition ${
+                      className={`min-w-0 w-full overflow-hidden rounded-2xl border p-4 text-left transition [contain-intrinsic-size:132px] [content-visibility:auto] ${
                         selected?.id === item.id
                           ? 'border-[var(--studio-accent-strong)]/25 bg-[var(--studio-accent)]/25'
                           : 'border-black/[0.07] bg-white hover:border-black/15'
