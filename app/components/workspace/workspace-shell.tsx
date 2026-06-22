@@ -203,7 +203,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
   )
 
   return (
-    <div className="flex h-screen min-h-[620px] overflow-hidden bg-[var(--studio-paper)] text-[var(--studio-ink)]">
+    <div className="flex h-screen h-[100dvh] min-h-0 overflow-hidden bg-[var(--studio-paper)] text-[var(--studio-ink)] lg:min-h-[620px]">
       <aside className="hidden w-[252px] shrink-0 lg:block">{sidebar}</aside>
 
       {mobileOpen && (
@@ -292,11 +292,11 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
           </div>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-auto pb-[72px] lg:pb-0">
+        <main className="min-h-0 flex-1 overflow-auto pb-[calc(72px+env(safe-area-inset-bottom))] lg:pb-0">
           {children}
         </main>
 
-        <nav className="fixed inset-x-0 bottom-0 z-40 flex h-[68px] items-center justify-around overflow-x-auto border-t border-black/10 bg-[var(--studio-surface)]/95 px-1 backdrop-blur-xl lg:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(68px+env(safe-area-inset-bottom))] items-start justify-around overflow-x-auto border-t border-black/10 bg-[var(--studio-surface)]/95 px-1 pb-[env(safe-area-inset-bottom)] pt-1 backdrop-blur-xl lg:hidden">
           {navItems.map((item) => {
             const active = pathname === item.href
             const Icon = item.icon

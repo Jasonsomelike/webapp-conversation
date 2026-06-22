@@ -195,6 +195,11 @@ const Main: FC<IMainProps> = () => {
   const autoScrollTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null)
 
   const findScrollParent = (element: HTMLElement | null) => {
+    if (element) {
+      const elementStyle = globalThis.getComputedStyle(element)
+      if (/(auto|scroll)/.test(elementStyle.overflowY))
+      { return element }
+    }
     let current = element?.parentElement || null
     while (current) {
       const style = globalThis.getComputedStyle(current)
@@ -962,7 +967,7 @@ const Main: FC<IMainProps> = () => {
           </div>
         )}
         {/* main */}
-        <div className='relative flex min-h-0 flex-grow flex-col overflow-y-auto bg-[var(--studio-chat-surface)]'>
+        <div className='relative flex min-h-0 flex-grow flex-col overflow-hidden bg-[var(--studio-chat-surface)]'>
           <div className="sticky top-0 z-20 flex h-12 shrink-0 items-center justify-between border-b border-black/[0.07] bg-[var(--studio-chat-surface)]/90 px-4 backdrop-blur lg:hidden">
             <button onClick={showSidebar} className="rounded-lg bg-[#f0f2ed] px-3 py-1.5 text-xs font-medium text-[#526159]">会话</button>
             <button onClick={() => handleConversationIdChange('-1')} className="rounded-lg bg-[#17342b] px-3 py-1.5 text-xs font-medium text-white">新对话</button>
@@ -981,7 +986,7 @@ const Main: FC<IMainProps> = () => {
 
           {
             hasSetInputs && (
-              <div className='relative mx-auto mb-3.5 w-full max-w-[860px] grow pb-5 pt-2' ref={chatListDomRef}>
+              <div className='relative mx-auto flex min-h-0 w-full max-w-[860px] flex-1 flex-col pb-1 pt-1 sm:pb-3 sm:pt-2'>
                 <Chat
                   chatList={chatList}
                   onSend={handleSend}
@@ -990,6 +995,7 @@ const Main: FC<IMainProps> = () => {
                   checkCanSend={checkCanSend}
                   visionConfig={visionConfig}
                   fileConfig={fileConfig}
+                  scrollContainerRef={chatListDomRef}
                 />
               </div>)
           }

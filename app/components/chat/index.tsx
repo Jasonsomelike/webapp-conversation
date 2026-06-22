@@ -1,5 +1,5 @@
 'use client'
-import type { FC } from 'react'
+import type { FC, Ref } from 'react'
 import React, { useEffect, useRef } from 'react'
 import cn from 'classnames'
 import { useTranslation } from 'react-i18next'
@@ -36,6 +36,7 @@ export interface IChatProps {
   controlClearQuery?: number
   visionConfig?: VisionSettings
   fileConfig?: FileUpload
+  scrollContainerRef?: Ref<HTMLDivElement>
 }
 
 const Chat: FC<IChatProps> = ({
@@ -50,6 +51,7 @@ const Chat: FC<IChatProps> = ({
   controlClearQuery,
   visionConfig,
   fileConfig,
+  scrollContainerRef,
 }) => {
   const { t } = useTranslation()
   const { notify } = Toast
@@ -147,9 +149,9 @@ const Chat: FC<IChatProps> = ({
   }
 
   return (
-    <div className={cn(!feedbackDisabled && 'px-3.5', 'h-full')}>
+    <div className={cn(!feedbackDisabled && 'px-3.5', 'flex h-full min-h-0 flex-col')}>
       {/* Chat List */}
-      <div className="h-full space-y-[30px]">
+      <div ref={scrollContainerRef} className="min-h-0 flex-1 space-y-[30px] overflow-y-auto overscroll-contain pb-4 pt-2">
         {chatList.map((item) => {
           if (item.isAnswer) {
             const isLast = item.id === chatList[chatList.length - 1].id
@@ -175,7 +177,7 @@ const Chat: FC<IChatProps> = ({
       </div>
       {
         !isHideSendInput && (
-          <div className='sticky z-10 bottom-0 mx-auto w-full max-w-[860px] bg-gradient-to-t from-[var(--studio-chat-surface)] via-[var(--studio-chat-surface)] to-transparent px-3.5 pb-5 pt-8'>
+          <div className='z-10 mx-auto w-full max-w-[860px] shrink-0 bg-gradient-to-t from-[var(--studio-chat-surface)] via-[var(--studio-chat-surface)] to-transparent px-1 pb-2 pt-3 sm:px-3.5 sm:pb-5 sm:pt-6'>
             <div className='chat-composer relative max-h-[170px] overflow-y-auto rounded-2xl border border-[#17342b]/15 bg-white p-[7px] shadow-[0_18px_45px_rgba(35,55,47,.12)]'>
               {fileConfig?.enabled && (
                 <div className='mb-1'>

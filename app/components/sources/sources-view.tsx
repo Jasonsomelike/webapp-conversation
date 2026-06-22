@@ -7,6 +7,7 @@ import {
   BookOpenIcon,
   DocumentMagnifyingGlassIcon,
   MagnifyingGlassIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
 import type { KnowledgeReference } from '@/lib/learning-types'
@@ -15,6 +16,7 @@ import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
 export default function SourcesView({ initialReferences }: { initialReferences: KnowledgeReference[] }) {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState(initialReferences[0]?.id)
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
 
   const [imageError, setImageError] = useState(false)
   const filtered = useMemo(() => initialReferences.filter(item =>
@@ -35,6 +37,16 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
   useEffect(() => {
     setImageError(false)
   }, [selected?.id])
+  useEffect(() => {
+    if (!mobileDetailOpen)
+    { return }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape')
+      { setMobileDetailOpen(false) }
+    }
+    globalThis.addEventListener('keydown', closeOnEscape)
+    return () => globalThis.removeEventListener('keydown', closeOnEscape)
+  }, [mobileDetailOpen])
   const averageScore = initialReferences.length
     ? Math.round(initialReferences.reduce((sum, item) => sum + (item.score || 0), 0) / initialReferences.length * 100)
     : 0
@@ -57,6 +69,85 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
     anchor.download = '我的知识库引用.csv'
     anchor.click()
     URL.revokeObjectURL(url)
+  }
+
+  const renderSelectedDetails = (mobile = false) => {
+    if (!selected)
+    { return null }
+
+    const actions = (
+      <div className="mt-5 flex flex-wrap gap-3">
+        {selected.conversationId && (
+          <a
+            href={`/chat?conversationId=${encodeURIComponent(selected.conversationId)}${selected.messageId ? `&messageId=${encodeURIComponent(selected.messageId)}` : ''}`}
+            title={selected.messageId ? '回到产生该引用的回答' : '该引用缺少消息定位信息，仅能回到会话'}
+            className="inline-flex items-center gap-2 rounded-xl bg-[var(--studio-deep)] px-4 py-2.5 text-xs font-semibold text-white"
+          >
+            {selected.messageId ? '回到原消息' : '回到原对话'} <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+          </a>
+        )}
+        <a
+          href={documentPreviewUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-xs font-semibold"
+        >
+          预览来源 PDF <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+        </a>
+        <a
+          href={documentDownloadUrl}
+          className="inline-flex items-center gap-2 rounded-xl bg-[var(--studio-accent)] px-4 py-2.5 text-xs font-semibold text-[var(--studio-deep)]"
+        >
+          下载文档 <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+        </a>
+      </div>
+    )
+
+    const sourcePreview = pageImageHref && !imageError
+      ? (
+        <a
+          href={documentPreviewUrl || pageImageHref}
+          target="_blank"
+          rel="noreferrer"
+          className={`group mt-5 inline-block max-w-full overflow-hidden rounded-2xl border border-black/10 bg-black/[0.025] p-2 text-left shadow-sm ${mobile ? 'w-full' : 'sm:max-w-[50%]'}`}
+        >
+          <img
+            src={pageImageHref}
+            alt={`${selected.documentName} 来源页`}
+            loading="lazy"
+            onError={() => setImageError(true)}
+            className={`w-full rounded-xl object-contain transition-transform duration-200 group-hover:scale-[1.01] ${mobile ? 'max-h-[42dvh]' : 'max-h-[240px]'}`}
+          />
+          <div className="px-2 pb-1 pt-2 text-[10px] text-black/40">点击预览来源 PDF 并定位到当前页</div>
+        </a>
+      )
+      : (
+        <div className="mt-5 rounded-2xl border border-dashed border-black/10 bg-black/[0.025] px-5 py-10 text-center">
+          <DocumentMagnifyingGlassIcon className="mx-auto h-7 w-7 text-[var(--studio-muted)]" />
+          <div className="mt-2 text-xs font-semibold">{imageError ? '来源页图片加载失败' : '该引用暂无来源页图片'}</div>
+          <div className="mt-1 text-[10px] text-[var(--studio-muted)]">可尝试打开或下载对应文档。</div>
+        </div>
+      )
+
+    return (
+      <>
+        <div className="flex flex-wrap gap-2 text-[10px]">
+          <span className="rounded-full bg-[var(--studio-accent)]/35 px-3 py-1.5 font-semibold text-[var(--studio-accent-strong)]">{selected.topic}</span>
+          {selected.pageNumber && <span className="rounded-full bg-black/[0.04] px-3 py-1.5">分卷第 {selected.pageNumber} 页</span>}
+          {selected.originalPageNumber && <span className="rounded-full bg-orange-50 px-3 py-1.5 text-orange-700">原 PDF 第 {selected.originalPageNumber} 页</span>}
+        </div>
+        <h2 className="mt-4 break-all text-lg font-semibold leading-7">{selected.documentName}</h2>
+        <div className="mt-1 text-xs text-black/40">{selected.datasetName || '课程知识库'}</div>
+        {mobile && actions}
+        {sourcePreview}
+        <div className="mt-5 rounded-2xl border border-black/[0.07] bg-black/[0.025] p-5 sm:mt-7 sm:p-6">
+          <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.16em] text-black/40">Dify 命中片段</div>
+          <blockquote className="break-words border-l-2 border-[var(--studio-accent-strong)]/50 pl-4 text-sm leading-7 text-black/70 [overflow-wrap:anywhere]">{selected.quote}</blockquote>
+        </div>
+        {!mobile && actions}
+        <p className="mt-8 text-[11px] leading-5 text-black/35">该记录由当前账号的 Dify 对话产生，并在服务端按用户 ID 隔离保存。</p>
+      </>
+    )
   }
 
   return (
@@ -113,15 +204,18 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
             </div>
           )
           : (
-            <div className="grid min-h-[580px] lg:grid-cols-[380px_1fr]">
-              <aside className="border-b border-black/[0.07] bg-black/[0.018] p-3 lg:border-b-0 lg:border-r">
+            <div className="grid min-h-[580px] min-w-0 lg:grid-cols-[380px_1fr]">
+              <aside className="min-w-0 border-b border-black/[0.07] bg-black/[0.018] p-3 lg:border-b-0 lg:border-r">
                 <div className="mb-2 px-2 py-2 text-[10px] font-bold uppercase tracking-[0.18em] text-black/40">当前账号引用 · {filtered.length}</div>
-                <div className="max-h-[535px] space-y-2 overflow-y-auto">
+                <div className="space-y-2 lg:max-h-[535px] lg:overflow-y-auto">
                   {filtered.map(item => (
                     <button
                       key={item.id}
-                      onClick={() => setSelectedId(item.id)}
-                      className={`w-full rounded-2xl border p-4 text-left transition ${
+                      onClick={() => {
+                        setSelectedId(item.id)
+                        setMobileDetailOpen(true)
+                      }}
+                      className={`min-w-0 w-full overflow-hidden rounded-2xl border p-4 text-left transition ${
                         selected?.id === item.id
                           ? 'border-[var(--studio-accent-strong)]/25 bg-[var(--studio-accent)]/25'
                           : 'border-black/[0.07] bg-white hover:border-black/15'
@@ -132,83 +226,40 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
                         <span>{item.pageNumber ? `第 ${item.pageNumber} 页` : '未标注页码'}</span>
                         <span>{item.score ? `${Math.round(item.score * 100)}%` : '—'}</span>
                       </div>
-                      <p className="mt-2 line-clamp-2 text-[11px] leading-5 text-black/45">{item.quote}</p>
+                      <p className="mt-2 line-clamp-2 break-words text-[11px] leading-5 text-black/45 [overflow-wrap:anywhere]">{item.quote}</p>
                     </button>
                   ))}
                 </div>
               </aside>
 
-              <section className="p-6 sm:p-8">
-                {selected && (
-                  <>
-                    <div className="flex flex-wrap gap-2 text-[10px]">
-                      <span className="rounded-full bg-[var(--studio-accent)]/35 px-3 py-1.5 font-semibold text-[var(--studio-accent-strong)]">{selected.topic}</span>
-                      {selected.pageNumber && <span className="rounded-full bg-black/[0.04] px-3 py-1.5">分卷第 {selected.pageNumber} 页</span>}
-                      {selected.originalPageNumber && <span className="rounded-full bg-orange-50 px-3 py-1.5 text-orange-700">原 PDF 第 {selected.originalPageNumber} 页</span>}
-                    </div>
-                    <h2 className="mt-5 break-all text-lg font-semibold leading-7">{selected.documentName}</h2>
-                    <div className="mt-1 text-xs text-black/40">{selected.datasetName || '课程知识库'}</div>
-                    <div className="mt-7 rounded-2xl border border-black/[0.07] bg-black/[0.025] p-6">
-                      <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.16em] text-black/40">Dify 命中片段</div>
-                      <blockquote className="border-l-2 border-[var(--studio-accent-strong)]/50 pl-4 text-sm leading-8 text-black/70">{selected.quote}</blockquote>
-                    </div>
-                    {pageImageHref && !imageError
-                      ? (
-                        <a
-                          href={documentPreviewUrl || pageImageHref}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="group mt-5 inline-block max-w-full overflow-hidden rounded-2xl border border-black/10 bg-black/[0.025] p-2 text-left shadow-sm sm:max-w-[50%]"
-                        >
-                          <img
-                            src={pageImageHref}
-                            alt={`${selected.documentName} 来源页`}
-                            loading="lazy"
-                            onError={() => setImageError(true)}
-                            className="max-h-[240px] max-w-full rounded-xl object-contain transition-transform duration-200 group-hover:scale-[1.01]"
-                          />
-                          <div className="px-2 pb-1 pt-2 text-[10px] text-black/40">点击预览来源 PDF 并定位到当前页</div>
-                        </a>
-                      )
-                      : (
-                        <div className="mt-5 rounded-2xl border border-dashed border-black/10 bg-black/[0.025] px-5 py-10 text-center">
-                          <DocumentMagnifyingGlassIcon className="mx-auto h-7 w-7 text-[var(--studio-muted)]" />
-                          <div className="mt-2 text-xs font-semibold">{imageError ? '来源页图片加载失败' : '该引用暂无来源页图片'}</div>
-                          <div className="mt-1 text-[10px] text-[var(--studio-muted)]">可尝试打开或下载对应文档。</div>
-                        </div>
-                      )}
-                    <div className="mt-5 flex flex-wrap gap-3">
-                      {selected.conversationId && (
-                        <a
-                          href={`/chat?conversationId=${encodeURIComponent(selected.conversationId)}${selected.messageId ? `&messageId=${encodeURIComponent(selected.messageId)}` : ''}`}
-                          title={selected.messageId ? '回到产生该引用的回答' : '该引用缺少消息定位信息，仅能回到会话'}
-                          className="inline-flex items-center gap-2 rounded-xl bg-[var(--studio-deep)] px-4 py-2.5 text-xs font-semibold text-white"
-                        >
-                          {selected.messageId ? '回到原消息' : '回到原对话'} <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
-                        </a>
-                      )}
-                      <a
-                        href={documentPreviewUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-xs font-semibold"
-                      >
-                        预览来源 PDF <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
-                      </a>
-                      <a
-                        href={documentDownloadUrl}
-                        className="inline-flex items-center gap-2 rounded-xl bg-[var(--studio-accent)] px-4 py-2.5 text-xs font-semibold text-[var(--studio-deep)]"
-                      >
-                        下载文档 <ArrowDownTrayIcon className="h-3.5 w-3.5" />
-                      </a>
-                    </div>
-                    <p className="mt-8 text-[11px] leading-5 text-black/35">该记录由当前账号的 Dify 对话产生，并在服务端按用户 ID 隔离保存。</p>
-                  </>
-                )}
+              <section className="hidden min-w-0 p-6 sm:p-8 lg:block">
+                {renderSelectedDetails()}
               </section>
             </div>
           )}
       </PageCard>
+
+      {mobileDetailOpen && selected && (
+        <div className="fixed inset-0 z-[70] flex flex-col bg-[var(--studio-paper)] lg:hidden">
+          <div className="flex h-16 shrink-0 items-center justify-between border-b border-black/[0.08] bg-[var(--studio-surface)]/95 px-4 backdrop-blur-xl">
+            <div className="min-w-0">
+              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--studio-muted)]">引用详情</div>
+              <div className="mt-0.5 truncate text-sm font-semibold">{selected.documentName}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMobileDetailOpen(false)}
+              className="ml-3 grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-black/10 bg-[var(--studio-surface)]"
+              aria-label="关闭引用详情"
+            >
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(24px+env(safe-area-inset-bottom))] pt-5">
+            {renderSelectedDetails(true)}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
