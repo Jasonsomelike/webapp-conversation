@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { listKnowledgeDocuments, refreshKnowledgeDocuments } from '@/lib/dify-dataset'
 import { getSession } from '@/lib/session'
 
+export const runtime = 'nodejs'
+export const maxDuration = 300
+
 export async function GET(request: Request) {
   const session = await getSession()
   if (!session)

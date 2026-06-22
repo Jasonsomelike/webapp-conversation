@@ -117,30 +117,39 @@ const fetchCompleteKnowledgeCatalog = async () => {
   const serviceUrl = process.env.LIBRARY_FILE_SERVICE_URL?.replace(/\/$/, '')
   const serviceToken = process.env.LIBRARY_FILE_SERVICE_TOKEN
   if (serviceUrl && serviceToken) {
-    const controller = new AbortController()
-    const timeout = setTimeout(
-      () => controller.abort(new Error('LIBRARY_CATALOG_SERVICE_TIMEOUT')),
-      20_000,
-    )
-    try {
-      const response = await fetch(`${serviceUrl}/library/documents/catalog`, {
-        cache: 'no-store',
-        signal: controller.signal,
-        headers: { 'X-Internal-Token': serviceToken },
-      })
-      if (!response.ok)
-      { throw new Error(`LIBRARY_CATALOG_SERVICE_FAILED:${response.status}`) }
-      const result = await response.json() as { data?: unknown }
-      return normalizeCatalogDocuments(result.data)
+    const serviceErrors: string[] = []
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const controller = new AbortController()
+      const timeout = setTimeout(
+        () => controller.abort(new Error('LIBRARY_CATALOG_SERVICE_TIMEOUT')),
+        25_000,
+      )
+      try {
+        const response = await fetch(`${serviceUrl}/library/documents/catalog`, {
+          cache: 'no-store',
+          signal: controller.signal,
+          headers: { 'X-Internal-Token': serviceToken },
+        })
+        if (response.ok) {
+          const result = await response.json() as { data?: unknown }
+          return normalizeCatalogDocuments(result.data)
+        }
+        serviceErrors.push(`attempt-${attempt + 1}:${response.status}`)
+        if (response.status === 401 || response.status === 403)
+        { break }
+      }
+      catch (error) {
+        serviceErrors.push(`attempt-${attempt + 1}:${error instanceof Error ? error.message : String(error)}`)
+      }
+      finally {
+        clearTimeout(timeout)
+      }
+      if (attempt < 2)
+      { await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1))) }
     }
-    catch (error) {
-      console.warn('[library-catalog] local catalog service unavailable, using Dify API fallback', {
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
-    finally {
-      clearTimeout(timeout)
-    }
+    console.warn('[library-catalog] local catalog service unavailable, using Dify API fallback', {
+      errors: serviceErrors,
+    })
   }
 
   const documents: DifyKnowledgeDocument[] = []

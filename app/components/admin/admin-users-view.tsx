@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import {
   ArrowPathIcon,
+  ChatBubbleLeftRightIcon,
   CheckIcon,
   LockOpenIcon,
   MagnifyingGlassIcon,
@@ -10,6 +11,7 @@ import {
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
 import Toast from '@/app/components/base/toast'
+import AdminUserConversations from '@/app/components/admin/admin-user-conversations'
 import { themes } from '@/lib/themes'
 
 export interface AdminUserRow {
@@ -29,6 +31,7 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
   const [users, setUsers] = useState(initialUsers)
   const [query, setQuery] = useState('')
   const [savingId, setSavingId] = useState('')
+  const [conversationUser, setConversationUser] = useState<AdminUserRow>()
   const { notify } = Toast
   const filtered = useMemo(() => users.filter(user =>
     `${user.username} ${user.displayName} ${user.difyUserId}`.toLowerCase().includes(query.trim().toLowerCase()),
@@ -110,6 +113,15 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
                 <div>{user._count.references} 引用 · 登录 {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString('zh-CN') : '从未'}</div>
               </div>
               <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConversationUser(user)}
+                  className="flex h-10 items-center justify-center gap-2 rounded-xl border border-black/10 px-3 text-xs font-semibold"
+                  title="查看用户对话记录"
+                >
+                  <ChatBubbleLeftRightIcon className="h-4 w-4" />
+                  对话
+                </button>
                 {(user.failedLoginCount > 0 || user.lockedUntil) && (
                   <button onClick={() => void save(user, true)} disabled={savingId === user.id} className="grid h-10 w-10 place-items-center rounded-xl border border-black/10" title="解除锁定">
                     <LockOpenIcon className="h-4 w-4" />
@@ -124,6 +136,14 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
           ))}
         </div>
       </PageCard>
+      {conversationUser && (
+        <AdminUserConversations
+          userId={conversationUser.id}
+          displayName={conversationUser.displayName}
+          username={conversationUser.username}
+          onClose={() => setConversationUser(undefined)}
+        />
+      )}
     </div>
   )
 }

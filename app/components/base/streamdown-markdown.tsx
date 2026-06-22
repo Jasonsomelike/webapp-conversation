@@ -20,7 +20,12 @@ interface StreamdownMarkdownProps {
 const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElement>) => {
   const [preview, setPreview] = useState(false)
   const [failed, setFailed] = useState(false)
-  const [sourceInfo, setSourceInfo] = useState<{ documentName?: string, pageNumber?: number }>()
+  const [sourceInfo, setSourceInfo] = useState<{
+    referenceId?: string
+    previewUrl?: string
+    documentName?: string
+    pageNumber?: number
+  }>()
   const sourceUrl = String(src)
   const absoluteSourceUrl = toAbsoluteDifyAssetUrl(sourceUrl)
   const imageUrl = toDifyAssetProxyUrl(sourceUrl)
@@ -36,7 +41,10 @@ const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElemen
       : alt
         ? `图片说明：${alt}`
         : '来源：回答附图'
-  const originalLabel = isKnowledgeSource ? '查看来源原图' : '查看原图'
+  const originalLabel = isKnowledgeSource ? '查看来源' : '查看原图'
+  const sourceHref = isKnowledgeSource
+    ? sourceInfo?.previewUrl || `/api/sources/image-info?redirect=1&url=${encodeURIComponent(absoluteSourceUrl)}`
+    : imageUrl
 
   useEffect(() => {
     if (!absoluteSourceUrl.includes('/page-images/'))
@@ -71,7 +79,7 @@ const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElemen
       <span className='markdown-media-error'>
         <span>{sourceLabel} · 图片加载失败</span>
         <button type='button' onClick={() => setFailed(false)}>重试</button>
-        <a href={imageUrl} target='_blank' rel='noreferrer'>{originalLabel}</a>
+        <a href={sourceHref} target='_blank' rel='noreferrer'>{originalLabel}</a>
       </span>
     )
   }
@@ -96,7 +104,7 @@ const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElemen
         </span>
         <figcaption className='flex flex-wrap items-center justify-between gap-2 border-t border-black/10 px-3 py-2 text-[11px] text-[var(--studio-muted)]'>
           <span>{sourceLabel}</span>
-          <a href={imageUrl} target='_blank' rel='noreferrer' onClick={event => event.stopPropagation()} className='font-semibold text-[var(--studio-accent-strong)]'>
+          <a href={sourceHref} target='_blank' rel='noreferrer' onClick={event => event.stopPropagation()} className='font-semibold text-[var(--studio-accent-strong)]'>
             {originalLabel}
           </a>
         </figcaption>
