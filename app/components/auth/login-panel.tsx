@@ -126,7 +126,8 @@ export default function LoginPanel() {
         if (qqPollRef.current)
         { clearInterval(qqPollRef.current) }
         setQqLoading(false)
-        setError('QQ 登录响应超时，请确认已安装 QQ 并重试')
+        const nativeStatus = bridge.getQqLoginStatus?.()
+        setError(`QQ 登录响应超时${nativeStatus ? `（原生阶段：${nativeStatus}）` : ''}，请重试`)
       }, 60_000)
     }
     catch {

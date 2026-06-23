@@ -43,16 +43,16 @@ const FileUploaderInAttachment = ({
   ]
 
   const renderButton = useCallback((option: Option, open?: boolean) => {
-    if (compact && option.value === TransferMethod.local_file) {
+    if (compact) {
       return (
         <div
           key={option.value}
-          title='上传文件'
-          aria-label='上传文件'
-          className='relative grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-gray-500 transition hover:bg-black/[0.05]'
+          title={option.label}
+          aria-label={option.label}
+          className='relative grid h-9 w-9 cursor-pointer place-items-center rounded-xl text-[var(--studio-muted)] transition hover:bg-black/[0.05] active:scale-95'
         >
           {option.icon}
-          <FileInput fileConfig={fileConfig} />
+          {option.value === TransferMethod.local_file && <FileInput fileConfig={fileConfig} />}
         </div>
       )
     }
@@ -91,11 +91,11 @@ const FileUploaderInAttachment = ({
   }, [fileConfig, renderButton, renderTrigger])
 
   return (
-    <div className={compact ? 'relative min-h-8' : ''}>
-      <div className={compact ? 'absolute left-0 top-0 flex items-center' : 'flex items-center space-x-1'}>
+    <div className={compact ? 'flex max-w-[min(68vw,460px)] flex-col-reverse items-start gap-1' : ''}>
+      <div className={compact ? 'flex items-center' : 'flex items-center space-x-1'}>
         {options.map(renderOption)}
       </div>
-      <div className={compact ? 'space-y-1 pl-10' : 'mt-1 space-y-1'}>
+      <div className={compact ? 'w-full space-y-1' : 'mt-1 space-y-1'}>
         {files.map(file => (
           <FileItem
             key={file.id}

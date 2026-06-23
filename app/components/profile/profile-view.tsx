@@ -240,7 +240,8 @@ export default function ProfileView({
       if (qqPollRef.current)
       { clearInterval(qqPollRef.current) }
       setQqBinding(false)
-      notify({ type: 'error', message: 'QQ 授权响应超时，请重试' })
+      const nativeStatus = bridge.getQqLoginStatus?.()
+      notify({ type: 'error', message: `QQ 授权响应超时${nativeStatus ? `（原生阶段：${nativeStatus}）` : ''}，请重试` })
     }, 60_000)
   }
 

@@ -29,6 +29,7 @@ declare global {
       loginWithQQ: () => void
       bindQQ?: () => void
       consumePendingQqResult?: () => string
+      getQqLoginStatus?: () => string
       setShellState: (path: string, title: string, eyebrow: string) => void
       hideShell: () => void
       setConversationMode?: (detail: boolean) => void

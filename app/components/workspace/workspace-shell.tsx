@@ -110,6 +110,16 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
   }, [theme])
 
   useEffect(() => {
+    const handleThemeChanged = (event: Event) => {
+      const nextTheme = (event as CustomEvent<{ theme?: string }>).detail?.theme
+      if (nextTheme && isThemeId(nextTheme))
+      { setTheme(nextTheme) }
+    }
+    globalThis.addEventListener('network-study-theme-changed', handleThemeChanged)
+    return () => globalThis.removeEventListener('network-study-theme-changed', handleThemeChanged)
+  }, [])
+
+  useEffect(() => {
     const isNative = isNetworkStudyApp()
     setNativeApp(isNative)
     if (!isNative)

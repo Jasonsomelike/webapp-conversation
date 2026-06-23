@@ -2,6 +2,8 @@ import Link from 'next/link'
 import {
   AcademicCapIcon,
   ArrowTopRightOnSquareIcon,
+  CodeBracketIcon,
+  CubeTransparentIcon,
   ShieldCheckIcon,
   SparklesIcon,
 } from '@heroicons/react/24/outline'
@@ -17,7 +19,7 @@ export default function AboutPage() {
           </div>
           <h2 className="mt-5 text-2xl font-semibold">知行网络学堂</h2>
           <p className="mt-2 text-sm text-white/55">计算机网络个性化 AI 学习空间</p>
-          <div className="mt-3 text-xs text-white/35">Web / Android · 版本 1.1</div>
+          <div className="mt-3 text-xs text-white/35">Web / Android · 版本 1.6</div>
         </div>
         <div className="space-y-5 p-6">
           <p className="text-sm leading-7 text-[var(--studio-muted)]">
@@ -34,9 +36,30 @@ export default function AboutPage() {
               <div className="mt-3 text-sm font-semibold">专属数据空间</div>
               <p className="mt-1 text-xs leading-6 text-[var(--studio-muted)]">按账号隔离会话、引用、记忆和分析结果。</p>
             </div>
+            <div className="rounded-2xl bg-[#eef4ef] p-4">
+              <CubeTransparentIcon className="h-5 w-5 text-[#527361]" />
+              <div className="mt-3 text-sm font-semibold">轻量原生容器</div>
+              <p className="mt-1 text-xs leading-6 text-[var(--studio-muted)]">复用 Android 系统 WebView 与 Lite QQ SDK，不重复打包浏览器内核，也不内置模型权重。</p>
+            </div>
+            <div className="rounded-2xl bg-[#f5eff8] p-4">
+              <CodeBracketIcon className="h-5 w-5 text-[#765692]" />
+              <div className="mt-3 text-sm font-semibold">开放源代码</div>
+              <p className="mt-1 text-xs leading-6 text-[var(--studio-muted)]">Android 客户端与 PDF 分页处理插件均提供源码、构建说明和版本发布包。</p>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-black/[0.07] bg-black/[0.018] p-4 text-xs leading-6 text-[var(--studio-muted)]">
+            安装包体积较小是架构选择的结果：应用不携带 Chromium、离线大模型或重复课程资源。核心体验由原生外壳、系统 WebView、服务端学习数据与按需加载的页面共同组成。
           </div>
           <Link href="https://www.jasonsome.cn" className="flex items-center justify-between rounded-2xl border border-black/10 px-4 py-3 text-sm font-semibold">
             www.jasonsome.cn
+            <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+          </Link>
+          <Link href="https://github.com/Jasonsomelike/network-study-android" className="flex items-center justify-between rounded-2xl border border-black/10 px-4 py-3 text-sm font-semibold">
+            Android 客户端源码
+            <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+          </Link>
+          <Link href="https://github.com/Jasonsomelike/pdf-page-processor" className="flex items-center justify-between rounded-2xl border border-black/10 px-4 py-3 text-sm font-semibold">
+            PDF 分页处理插件源码
             <ArrowTopRightOnSquareIcon className="h-4 w-4" />
           </Link>
           <div className="text-center text-[11px] text-black/35">© 2026 知行网络学堂</div>
