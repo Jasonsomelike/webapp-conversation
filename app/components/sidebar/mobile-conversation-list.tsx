@@ -7,6 +7,7 @@ import {
   PencilSquareIcon,
 } from '@heroicons/react/24/outline'
 import type { ConversationItem } from '@/types/app'
+import { toConversationPreview } from '@/lib/message-preview'
 
 interface MobileConversationListProps {
   list: ConversationItem[]
@@ -46,7 +47,11 @@ export default function MobileConversationList({ list, onOpen, onNew }: MobileCo
   const [query, setQuery] = useState('')
   const conversations = useMemo(() => list
     .filter(item => item.id !== '-1')
-    .filter(item => `${item.name} ${item.preview || ''}`.toLowerCase().includes(query.trim().toLowerCase())), [list, query])
+    .map(item => ({
+      ...item,
+      preview: toConversationPreview(item.preview || '') || '点击继续本次学习对话',
+    }))
+    .filter(item => `${item.name} ${item.preview}`.toLowerCase().includes(query.trim().toLowerCase())), [list, query])
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--studio-chat-surface)]">

@@ -19,6 +19,7 @@ declare global {
       chooseDownloadDirectory: () => void
       resetDownloadDirectory: () => void
       saveBase64Image: (dataUrl: string, filename: string) => void
+      getBridgeVersion?: () => string
       loginWithQQ: () => void
       setShellState: (path: string, title: string, eyebrow: string) => void
       hideShell: () => void

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db, withDatabaseRetry } from '@/lib/db'
 import { isAdminSession } from '@/lib/admin'
 import { getSession } from '@/lib/session'
+import { toConversationPreview } from '@/lib/message-preview'
 
 const requireAdmin = async () => {
   const session = await getSession()
@@ -105,7 +106,7 @@ export async function GET(
       return {
         ...conversation,
         messageCount: countMap.get(conversation.difyConversationId) || 0,
-        preview: preview?.content.replace(/\s+/g, ' ').trim().slice(0, 180) || '',
+        preview: preview ? toConversationPreview(preview.content, 180) : '',
         updatedAt: preview?.createdAt || conversation.lastMessageAt || conversation.createdAt,
       }
     }),

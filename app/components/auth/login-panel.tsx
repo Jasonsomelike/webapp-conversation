@@ -1,7 +1,7 @@
 'use client'
 
 import type { FormEvent } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeftIcon,
@@ -29,6 +29,8 @@ export default function LoginPanel() {
   const [securityQuestion, setSecurityQuestion] = useState('')
   const [resetUsername, setResetUsername] = useState('')
   const [nativeApp, setNativeApp] = useState(false)
+  const [qqLoading, setQqLoading] = useState(false)
+  const qqTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     router.prefetch('/chat')
@@ -43,7 +45,9 @@ export default function LoginPanel() {
       const detail = (event as CustomEvent<NativeQqLoginResult>).detail
       if (!detail?.accessToken || !detail.openId)
       { return }
-      setLoading(true)
+      if (qqTimeoutRef.current)
+      { clearTimeout(qqTimeoutRef.current) }
+      setQqLoading(true)
       setError('')
       try {
         const response = await fetch('/api/auth/qq/native', {
@@ -61,21 +65,46 @@ export default function LoginPanel() {
         setError(loginError instanceof Error ? loginError.message : 'QQ 登录失败，请重试')
       }
       finally {
-        setLoading(false)
+        setQqLoading(false)
       }
     }
     const failNativeQqLogin = (event: Event) => {
+      if (qqTimeoutRef.current)
+      { clearTimeout(qqTimeoutRef.current) }
       const message = (event as CustomEvent<{ message?: string }>).detail?.message
       setError(message || 'QQ 登录已取消或失败')
-      setLoading(false)
+      setQqLoading(false)
     }
     globalThis.addEventListener('network-study-qq-login', completeNativeQqLogin)
     globalThis.addEventListener('network-study-qq-login-error', failNativeQqLogin)
     return () => {
+      if (qqTimeoutRef.current)
+      { clearTimeout(qqTimeoutRef.current) }
       globalThis.removeEventListener('network-study-qq-login', completeNativeQqLogin)
       globalThis.removeEventListener('network-study-qq-login-error', failNativeQqLogin)
     }
   }, [router])
+
+  const startNativeQqLogin = () => {
+    setError('')
+    const bridge = window.NetworkStudyApp
+    if (!bridge?.loginWithQQ) {
+      setError('QQ 原生登录组件尚未就绪，请完全退出 App 后重新打开')
+      return
+    }
+    try {
+      setQqLoading(true)
+      bridge.loginWithQQ()
+      qqTimeoutRef.current = setTimeout(() => {
+        setQqLoading(false)
+        setError('QQ 登录响应超时，请确认已安装 QQ 并重试')
+      }, 25_000)
+    }
+    catch {
+      setQqLoading(false)
+      setError('无法启动 QQ 登录，请更新 App 后重试')
+    }
+  }
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -159,11 +188,15 @@ export default function LoginPanel() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[var(--studio-deep)] px-5 py-8 text-white" data-theme="forest">
-      <div className="pointer-events-none absolute -left-24 top-[-80px] h-[360px] w-[360px] rounded-full bg-[var(--studio-accent)]/10 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-44 right-[-70px] h-[480px] w-[480px] rounded-full bg-[#f69c63]/10 blur-3xl" />
+    <div
+      className={`relative min-h-screen overflow-hidden ${nativeApp ? 'bg-[#f1f4f2] px-4 py-4 text-[var(--studio-ink)]' : 'bg-[var(--studio-deep)] px-5 py-8 text-white'}`}
+      data-theme="forest"
+      data-native-login={nativeApp ? 'true' : 'false'}
+    >
+      {!nativeApp && <div className="pointer-events-none absolute -left-24 top-[-80px] h-[360px] w-[360px] rounded-full bg-[var(--studio-accent)]/10 blur-3xl" />}
+      {!nativeApp && <div className="pointer-events-none absolute -bottom-44 right-[-70px] h-[480px] w-[480px] rounded-full bg-[#f69c63]/10 blur-3xl" />}
 
-      <div className="relative mx-auto grid min-h-[calc(100vh-64px)] max-w-[1180px] overflow-hidden rounded-[32px] border border-white/10 bg-[var(--studio-sidebar)] shadow-[0_30px_100px_rgba(0,0,0,.32)] lg:grid-cols-[1.04fr_.96fr]">
+      <div className={`relative mx-auto grid overflow-hidden ${nativeApp ? 'min-h-[calc(100dvh-32px)] max-w-[520px] rounded-[28px] border border-black/[0.07] bg-white shadow-[0_22px_70px_rgba(18,34,30,.12)]' : 'min-h-[calc(100vh-64px)] max-w-[1180px] rounded-[32px] border border-white/10 bg-[var(--studio-sidebar)] shadow-[0_30px_100px_rgba(0,0,0,.32)] lg:grid-cols-[1.04fr_.96fr]'}`}>
         <div className="relative hidden overflow-hidden border-r border-white/10 p-12 lg:flex lg:flex-col">
           <div className="flex items-center gap-3">
             <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[var(--studio-accent)] text-[var(--studio-deep)]">
@@ -210,9 +243,9 @@ export default function LoginPanel() {
           </div>
         </div>
 
-        <div className="flex items-center justify-center bg-[var(--studio-surface)] px-6 py-10 text-[var(--studio-ink)] sm:px-12">
+        <div className={`flex justify-center bg-[var(--studio-surface)] text-[var(--studio-ink)] ${nativeApp ? 'items-start px-5 py-6' : 'items-center px-6 py-10 sm:px-12'}`}>
           <div className="w-full max-w-[430px]">
-            <div className="mb-7 lg:hidden">
+            <div className={`${nativeApp ? 'mb-5' : 'mb-7'} lg:hidden`}>
               <div className="inline-flex items-center gap-3">
                 <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[var(--studio-deep)] text-[var(--studio-accent)]">
                   <SparklesIcon className="h-5 w-5" />
@@ -225,7 +258,7 @@ export default function LoginPanel() {
             </div>
 
             {mode !== 'forgot' && (
-              <div className="mb-7 grid grid-cols-2 rounded-2xl bg-black/[0.045] p-1">
+              <div className={`${nativeApp ? 'mb-5' : 'mb-7'} grid grid-cols-2 rounded-2xl bg-black/[0.045] p-1`}>
                 {(['login', 'register'] as Mode[]).map(item => (
                   <button
                     key={item}
@@ -244,7 +277,7 @@ export default function LoginPanel() {
             <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--studio-muted)]">
               {mode === 'login' ? 'Welcome back' : mode === 'register' ? 'Create account' : 'Account recovery'}
             </div>
-            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em]">
+            <h2 className={`mt-3 font-semibold tracking-[-0.035em] ${nativeApp ? 'text-[26px] leading-9' : 'text-3xl'}`}>
               {mode === 'login' ? '登录你的学习空间' : mode === 'register' ? '创建独立学习账号' : '通过安全问题重置密码'}
             </h2>
             <p className="mt-3 text-sm leading-6 text-[#718078]">
@@ -262,7 +295,7 @@ export default function LoginPanel() {
               ? (
                 securityQuestion
                   ? (
-                    <form onSubmit={resetPassword} className="mt-7 space-y-4">
+                    <form onSubmit={resetPassword} className={`${nativeApp ? 'mt-5 space-y-3.5' : 'mt-7 space-y-4'}`}>
                       <div className="rounded-xl bg-black/[0.04] px-4 py-3 text-sm">
                         <div className="text-[10px] text-black/45">安全问题</div>
                         <div className="mt-1 font-medium">{securityQuestion}</div>
@@ -274,14 +307,14 @@ export default function LoginPanel() {
                     </form>
                   )
                   : (
-                    <form onSubmit={findSecurityQuestion} className="mt-7 space-y-4">
+                    <form onSubmit={findSecurityQuestion} className={`${nativeApp ? 'mt-5 space-y-3.5' : 'mt-7 space-y-4'}`}>
                       <Field name="username" label="账号名" placeholder="请输入注册账号" />
                       <SubmitButton loading={loading} label="下一步" icon={ArrowRightIcon} />
                     </form>
                   )
               )
               : (
-                <form onSubmit={submit} className="mt-7 space-y-4">
+                <form onSubmit={submit} className={`${nativeApp ? 'mt-5 space-y-3.5' : 'mt-7 space-y-4'}`}>
                   {mode === 'register' && <Field name="displayName" label="显示名称" placeholder="例如：小林" />}
                   <Field name="username" label="账号名" placeholder="以字母开头，3–32 位" autoComplete="username" />
                   <Field
@@ -332,16 +365,12 @@ export default function LoginPanel() {
                   ? (
                     <button
                       type="button"
-                      disabled={loading}
-                      onClick={() => {
-                        setLoading(true)
-                        setError('')
-                        window.NetworkStudyApp?.loginWithQQ()
-                      }}
-                      className="flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-[#12b7f5]/25 bg-[#12b7f5]/[0.08] text-sm font-semibold text-[#087ca7] transition hover:bg-[#12b7f5]/[0.13] disabled:opacity-50"
+                      disabled={qqLoading}
+                      onClick={startNativeQqLogin}
+                      className="flex h-12 w-full items-center justify-center gap-3 rounded-2xl bg-[#12b7f5] text-sm font-semibold text-white shadow-[0_12px_30px_rgba(18,183,245,.22)] transition active:scale-[.99] disabled:opacity-55"
                     >
-                      <span className="grid h-7 w-7 place-items-center rounded-full bg-[#12b7f5] text-[10px] font-black text-white">QQ</span>
-                      使用 QQ 安全登录
+                      <img src="/qq-login-icon.png" alt="" className="h-6 w-6 rounded" />
+                      {qqLoading ? '正在打开 QQ…' : '使用 QQ 安全登录'}
                     </button>
                   )
                   : (
@@ -349,14 +378,14 @@ export default function LoginPanel() {
                       href="/api/auth/qq/web/start"
                       className="flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-[#12b7f5]/25 bg-[#12b7f5]/[0.08] text-sm font-semibold text-[#087ca7] transition hover:bg-[#12b7f5]/[0.13]"
                     >
-                      <span className="grid h-7 w-7 place-items-center rounded-full bg-[#12b7f5] text-[10px] font-black text-white">QQ</span>
+                      <img src="/qq-login-icon.png" alt="" className="h-6 w-6 rounded" />
                       使用 QQ 登录
                     </a>
                   )}
               </div>
             )}
 
-            <div className="mt-8 space-y-3">
+            {!nativeApp && <div className="mt-8 space-y-3">
               {[
                 '密码采用加盐哈希保存，服务端不会存储明文',
                 '连续登录失败会触发临时账号锁定',
@@ -367,9 +396,9 @@ export default function LoginPanel() {
                   {item}
                 </div>
               ))}
-            </div>
+            </div>}
 
-            <div className="mt-8 flex items-center justify-center gap-2 text-[10px] text-[#9da59f]">
+            <div className={`${nativeApp ? 'mt-5' : 'mt-8'} flex items-center justify-center gap-2 text-[10px] text-[#9da59f]`}>
               <ShieldCheckIcon className="h-3.5 w-3.5" />
               QQ 凭证仅用于身份校验，App Key 只保存在服务端
             </div>

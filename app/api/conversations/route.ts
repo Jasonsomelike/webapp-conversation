@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { getInfo, setSession } from '@/app/api/utils/common'
 import { db, isDatabaseConfigured } from '@/lib/db'
+import { toConversationPreview } from '@/lib/message-preview'
 
 export async function GET(request: NextRequest) {
   const { sessionId, session } = getInfo(request)
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
         inputs: null,
         introduction: '',
         suggested_questions: [],
-        preview: preview?.content.replace(/\s+/g, ' ').trim().slice(0, 160) || '点击继续本次学习对话',
+        preview: preview ? toConversationPreview(preview.content) || '点击继续本次学习对话' : '点击继续本次学习对话',
         updatedAt: (preview?.createdAt || conversation.lastMessageAt || conversation.createdAt).toISOString(),
       }
     }),

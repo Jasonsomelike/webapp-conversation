@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import {
   AcademicCapIcon,
   AdjustmentsHorizontalIcon,
+  ArrowRightStartOnRectangleIcon,
   CalendarDaysIcon,
   ChartBarSquareIcon,
   CheckIcon,
@@ -20,6 +21,7 @@ import type { AppSession } from '@/lib/session'
 import Toast from '@/app/components/base/toast'
 import Link from 'next/link'
 import { isNetworkStudyApp } from '@/lib/native-app'
+import { resetChatRuntime } from '@/app/components/chat/runtime-store'
 
 const stages = ['入门', '系统学习', '复习', '刷题', '备考']
 const styles = ['图示讲解', '公式推导', '例题驱动', '简洁回答']
@@ -49,6 +51,7 @@ export default function ProfileView({
   const [nativeApp, setNativeApp] = useState(false)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
   const { notify } = Toast
   const dirty = stage !== savedProfile.stage || style !== savedProfile.style || target !== savedProfile.target || displayName !== savedProfile.displayName
 
@@ -110,6 +113,21 @@ export default function ProfileView({
     }
     finally {
       setSaving(false)
+    }
+  }
+
+  const logout = async () => {
+    if (loggingOut)
+    { return }
+    setLoggingOut(true)
+    try {
+      resetChatRuntime()
+      await fetch('/api/auth/logout', { method: 'POST' })
+      globalThis.location.replace('/login')
+    }
+    catch {
+      setLoggingOut(false)
+      notify({ type: 'error', message: '退出失败，请稍后重试' })
     }
   }
 
@@ -320,6 +338,17 @@ export default function ProfileView({
               <span className="flex-1 text-sm font-semibold">关于知行网络学堂</span>
               <ChevronRightIcon className="h-4 w-4 text-black/30" />
             </Link>
+            {nativeApp && (
+              <button
+                type="button"
+                onClick={logout}
+                disabled={loggingOut}
+                className="flex w-full items-center gap-3 border-t border-black/[0.06] px-5 py-4 text-left text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+              >
+                <ArrowRightStartOnRectangleIcon className="h-5 w-5" />
+                <span className="flex-1 text-sm font-semibold">{loggingOut ? '正在退出…' : '退出登录'}</span>
+              </button>
+            )}
           </PageCard>
         </div>
       </div>
