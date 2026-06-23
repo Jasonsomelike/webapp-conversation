@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { getQqIdentity, getQqProfile, resolveQqUser } from '@/lib/qq-auth'
-import { setSessionCookie } from '@/lib/session'
+import { bindQqIdentityToUser, getQqIdentity, getQqProfile, resolveQqUser } from '@/lib/qq-auth'
+import { getSession, setSessionCookie } from '@/lib/session'
 
 const stateCookie = 'qq_oauth_state'
+const purposeCookie = 'qq_oauth_purpose'
 
 export async function GET(request: NextRequest) {
   const origin = process.env.AUTH_URL || request.nextUrl.origin
@@ -11,6 +12,7 @@ export async function GET(request: NextRequest) {
   const state = request.nextUrl.searchParams.get('state')
   const code = request.nextUrl.searchParams.get('code')
   const storedState = request.cookies.get(stateCookie)?.value
+  const purpose = request.cookies.get(purposeCookie)?.value === 'bind' ? 'bind' : 'login'
   if (!state || !code || !storedState || state !== storedState) {
     loginUrl.searchParams.set('qq_error', 'state')
     return NextResponse.redirect(loginUrl)
@@ -52,15 +54,33 @@ export async function GET(request: NextRequest) {
     if (identity.openid !== verifiedIdentity.openid)
     { throw new Error('QQ_OPENID_MISMATCH') }
     const profile = await getQqProfile(token.access_token, appId, verifiedIdentity.openid)
+    if (purpose === 'bind') {
+      const session = await getSession()
+      if (!session)
+      { throw new Error('QQ_BIND_SESSION_MISSING') }
+      await bindQqIdentityToUser({
+        appUserId: session.id,
+        appId,
+        openId: verifiedIdentity.openid,
+        unionId: verifiedIdentity.unionid,
+        avatarUrl: profile.figureurl_qq_2 || profile.figureurl_2,
+      })
+      const response = NextResponse.redirect(new URL('/profile?qq_bound=1', origin))
+      response.cookies.set(stateCookie, '', { path: '/', maxAge: 0 })
+      response.cookies.set(purposeCookie, '', { path: '/', maxAge: 0 })
+      return response
+    }
     const user = await resolveQqUser({
       appId,
       openId: verifiedIdentity.openid,
       unionId: verifiedIdentity.unionid,
       nickname: profile.nickname,
+      avatarUrl: profile.figureurl_qq_2 || profile.figureurl_2,
     })
 
     const response = NextResponse.redirect(new URL('/chat', origin))
     response.cookies.set(stateCookie, '', { path: '/', maxAge: 0 })
+    response.cookies.set(purposeCookie, '', { path: '/', maxAge: 0 })
     setSessionCookie(response, {
       id: user.id,
       difyUserId: user.difyUserId,
@@ -74,9 +94,12 @@ export async function GET(request: NextRequest) {
   }
   catch (error) {
     console.error('[qq-web-auth] failed', error)
-    loginUrl.searchParams.set('qq_error', 'failed')
-    const response = NextResponse.redirect(loginUrl)
+    const failureUrl = purpose === 'bind' ? new URL('/profile?qq_bind_error=1', origin) : loginUrl
+    if (purpose !== 'bind')
+    { failureUrl.searchParams.set('qq_error', 'failed') }
+    const response = NextResponse.redirect(failureUrl)
     response.cookies.set(stateCookie, '', { path: '/', maxAge: 0 })
+    response.cookies.set(purposeCookie, '', { path: '/', maxAge: 0 })
     return response
   }
 }

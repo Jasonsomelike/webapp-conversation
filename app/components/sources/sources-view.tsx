@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ArrowDownTrayIcon,
   ArrowTopRightOnSquareIcon,
@@ -254,30 +255,33 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
           )}
       </PageCard>
 
-      {mobileDetailOpen && selected && (
-        <div className="fixed inset-0 z-[100] flex flex-col bg-[var(--studio-paper)] lg:hidden">
-          <div className="flex min-h-16 shrink-0 items-center justify-between border-b border-black/[0.08] bg-[var(--studio-surface)]/95 px-4 py-2 backdrop-blur-xl">
-            <div className="min-w-0">
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--studio-muted)]">引用详情</div>
-              <div className="mt-0.5 truncate text-sm font-semibold">{selected.documentName}</div>
+      {mobileDetailOpen && selected && typeof document !== 'undefined'
+        ? createPortal((
+          <div className="fixed inset-0 z-[1000] flex h-[100dvh] w-screen flex-col overflow-hidden bg-[var(--studio-paper)] lg:hidden">
+            <div className="flex min-h-16 shrink-0 items-center justify-between border-b border-black/[0.08] bg-[var(--studio-surface)]/95 px-4 py-2 backdrop-blur-xl">
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--studio-muted)]">引用详情</div>
+                <div className="mt-0.5 truncate text-sm font-semibold">{selected.documentName}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileDetailOpen(false)}
+                className="ml-3 grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-black/10 bg-[var(--studio-surface)]"
+                aria-label="关闭引用详情"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setMobileDetailOpen(false)}
-              className="ml-3 grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-black/10 bg-[var(--studio-surface)]"
-              aria-label="关闭引用详情"
-            >
-              <XMarkIcon className="h-5 w-5" />
-            </button>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6 pt-5">
+              {renderSelectedDetails(true)}
+            </div>
+            <div className="shrink-0 border-t border-black/[0.08] bg-[var(--studio-surface)]/95 px-3 pb-[calc(10px+env(safe-area-inset-bottom))] pt-2.5 backdrop-blur-xl">
+              {renderActions(true)}
+            </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6 pt-5">
-            {renderSelectedDetails(true)}
-          </div>
-          <div className="shrink-0 border-t border-black/[0.08] bg-[var(--studio-surface)]/95 px-3 pb-[calc(10px+env(safe-area-inset-bottom))] pt-2.5 backdrop-blur-xl">
-            {renderActions(true)}
-          </div>
-        </div>
-      )}
+        ), document.body,
+        )
+        : null}
     </div>
   )
 }

@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from 'react'
 import cn from 'classnames'
 import { useTranslation } from 'react-i18next'
 import Textarea from 'rc-textarea'
+import { PaperAirplaneIcon } from '@heroicons/react/24/solid'
 import s from './style.module.css'
 import Answer from './answer'
 import Question from './question'
@@ -177,8 +178,8 @@ const Chat: FC<IChatProps> = ({
       </div>
       {
         !isHideSendInput && (
-          <div className='z-10 mx-auto w-full max-w-[860px] shrink-0 bg-gradient-to-t from-[var(--studio-chat-surface)] via-[var(--studio-chat-surface)] to-transparent px-1 pb-2 pt-3 sm:px-3.5 sm:pb-5 sm:pt-6'>
-            <div className='chat-composer relative max-h-[170px] overflow-y-auto rounded-2xl border border-[#17342b]/15 bg-white p-[7px] shadow-[0_18px_45px_rgba(35,55,47,.12)]'>
+          <div className='z-10 mx-auto w-full max-w-[860px] shrink-0 bg-gradient-to-t from-[var(--studio-chat-surface)] via-[var(--studio-chat-surface)] to-transparent px-2 pb-[calc(8px+env(safe-area-inset-bottom))] pt-2 sm:px-3.5 sm:pb-4 sm:pt-4'>
+            <div className='chat-composer relative max-h-[150px] overflow-y-auto rounded-[22px] border border-[#17342b]/15 bg-white px-2 py-1.5 shadow-[0_14px_36px_rgba(35,55,47,.13)]'>
               {fileConfig?.enabled && (
                 <div className='mb-1'>
                   <FileUploaderInAttachmentWrapper
@@ -202,9 +203,10 @@ const Chat: FC<IChatProps> = ({
               )}
               <Textarea
                 className={`
-                  block w-full px-2 pr-[118px] py-[7px] leading-5 max-h-none text-base text-[var(--studio-ink)] outline-none appearance-none resize-none
+                  block w-full px-2 pr-[54px] py-1.5 leading-5 max-h-none text-[15px] text-[var(--studio-ink)] outline-none appearance-none resize-none
                   ${(visionConfig?.enabled || fileConfig?.enabled) && 'pl-12'}
                 `}
+                placeholder="发消息，按住或输入都可以…"
                 value={query}
                 onChange={handleContentChange}
                 onKeyUp={handleKeyUp}
@@ -212,8 +214,8 @@ const Chat: FC<IChatProps> = ({
                 onPaste={event => onPaste(event, visionConfig?.number_limits || 5)}
                 autoSize
               />
-              <div className="absolute bottom-2.5 right-3 flex items-center h-8">
-                <div className={`${s.count} mr-3 h-5 leading-5 text-sm bg-gray-50 text-gray-500 px-2 rounded`}>{query.trim().length}</div>
+              <div className="absolute bottom-2 right-2 flex h-9 items-center gap-1.5">
+                {query.trim().length > 0 && <div className={`${s.count} rounded-full bg-gray-50 px-1.5 text-[10px] leading-5 text-gray-400`}>{query.trim().length}</div>}
                 <Tooltip
                   selector='send-tip'
                   htmlContent={
@@ -223,7 +225,15 @@ const Chat: FC<IChatProps> = ({
                     </div>
                   }
                 >
-                  <div className={`${s.sendBtn} w-8 h-8 cursor-pointer rounded-md`} onClick={handleSend}></div>
+                  <button
+                    type="button"
+                    onClick={handleSend}
+                    disabled={!query.trim() || isResponding}
+                    className="grid h-9 w-9 place-items-center rounded-full bg-[var(--studio-deep)] text-white shadow-sm transition active:scale-95 disabled:bg-black/10 disabled:text-black/25"
+                    aria-label="发送消息"
+                  >
+                    <PaperAirplaneIcon className="h-4 w-4 -rotate-45 translate-x-px" />
+                  </button>
                 </Tooltip>
               </div>
             </div>

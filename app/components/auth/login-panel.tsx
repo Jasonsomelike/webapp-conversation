@@ -14,7 +14,7 @@ import {
   UserPlusIcon,
 } from '@heroicons/react/24/outline'
 import { securityQuestions } from '@/lib/account-policy'
-import { isNetworkStudyApp, type NativeQqLoginResult } from '@/lib/native-app'
+import { isNetworkStudyApp, type NativeQqLoginResult, type NativeQqResultEnvelope } from '@/lib/native-app'
 
 type Mode = 'login' | 'register' | 'forgot'
 
@@ -31,6 +31,8 @@ export default function LoginPanel() {
   const [nativeApp, setNativeApp] = useState(false)
   const [qqLoading, setQqLoading] = useState(false)
   const qqTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const qqPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const qqCompletingRef = useRef(false)
 
   useEffect(() => {
     router.prefetch('/chat')
@@ -43,10 +45,14 @@ export default function LoginPanel() {
   useEffect(() => {
     const completeNativeQqLogin = async (event: Event) => {
       const detail = (event as CustomEvent<NativeQqLoginResult>).detail
-      if (!detail?.accessToken || !detail.openId)
+      if (!detail?.accessToken || !detail.openId || detail.purpose === 'bind' || qqCompletingRef.current)
       { return }
+      qqCompletingRef.current = true
+      window.NetworkStudyApp?.consumePendingQqResult?.()
       if (qqTimeoutRef.current)
       { clearTimeout(qqTimeoutRef.current) }
+      if (qqPollRef.current)
+      { clearInterval(qqPollRef.current) }
       setQqLoading(true)
       setError('')
       try {
@@ -66,11 +72,15 @@ export default function LoginPanel() {
       }
       finally {
         setQqLoading(false)
+        qqCompletingRef.current = false
       }
     }
     const failNativeQqLogin = (event: Event) => {
       if (qqTimeoutRef.current)
       { clearTimeout(qqTimeoutRef.current) }
+      if (qqPollRef.current)
+      { clearInterval(qqPollRef.current) }
+      window.NetworkStudyApp?.consumePendingQqResult?.()
       const message = (event as CustomEvent<{ message?: string }>).detail?.message
       setError(message || 'QQ 登录已取消或失败')
       setQqLoading(false)
@@ -80,6 +90,8 @@ export default function LoginPanel() {
     return () => {
       if (qqTimeoutRef.current)
       { clearTimeout(qqTimeoutRef.current) }
+      if (qqPollRef.current)
+      { clearInterval(qqPollRef.current) }
       globalThis.removeEventListener('network-study-qq-login', completeNativeQqLogin)
       globalThis.removeEventListener('network-study-qq-login-error', failNativeQqLogin)
     }
@@ -95,10 +107,27 @@ export default function LoginPanel() {
     try {
       setQqLoading(true)
       bridge.loginWithQQ()
+      qqPollRef.current = setInterval(() => {
+        try {
+          const raw = bridge.consumePendingQqResult?.()
+          if (!raw)
+          { return }
+          const result = JSON.parse(raw) as NativeQqResultEnvelope
+          globalThis.dispatchEvent(new CustomEvent(
+            result.status === 'success' ? 'network-study-qq-login' : 'network-study-qq-login-error',
+            { detail: result.detail },
+          ))
+        }
+        catch {
+          // The SDK may still be switching back to the WebView. Keep polling.
+        }
+      }, 450)
       qqTimeoutRef.current = setTimeout(() => {
+        if (qqPollRef.current)
+        { clearInterval(qqPollRef.current) }
         setQqLoading(false)
         setError('QQ 登录响应超时，请确认已安装 QQ 并重试')
-      }, 25_000)
+      }, 60_000)
     }
     catch {
       setQqLoading(false)
@@ -189,14 +218,14 @@ export default function LoginPanel() {
 
   return (
     <div
-      className={`relative min-h-screen overflow-hidden ${nativeApp ? 'bg-[#f1f4f2] px-4 py-4 text-[var(--studio-ink)]' : 'bg-[var(--studio-deep)] px-5 py-8 text-white'}`}
+      className={`relative min-h-screen overflow-x-hidden ${nativeApp ? 'bg-[var(--studio-surface)] px-6 pb-[max(24px,env(safe-area-inset-bottom))] pt-[max(26px,env(safe-area-inset-top))] text-[var(--studio-ink)]' : 'overflow-hidden bg-[var(--studio-deep)] px-5 py-8 text-white'}`}
       data-theme="forest"
       data-native-login={nativeApp ? 'true' : 'false'}
     >
       {!nativeApp && <div className="pointer-events-none absolute -left-24 top-[-80px] h-[360px] w-[360px] rounded-full bg-[var(--studio-accent)]/10 blur-3xl" />}
       {!nativeApp && <div className="pointer-events-none absolute -bottom-44 right-[-70px] h-[480px] w-[480px] rounded-full bg-[#f69c63]/10 blur-3xl" />}
 
-      <div className={`relative mx-auto grid overflow-hidden ${nativeApp ? 'min-h-[calc(100dvh-32px)] max-w-[520px] rounded-[28px] border border-black/[0.07] bg-white shadow-[0_22px_70px_rgba(18,34,30,.12)]' : 'min-h-[calc(100vh-64px)] max-w-[1180px] rounded-[32px] border border-white/10 bg-[var(--studio-sidebar)] shadow-[0_30px_100px_rgba(0,0,0,.32)] lg:grid-cols-[1.04fr_.96fr]'}`}>
+      <div className={`relative mx-auto grid ${nativeApp ? 'min-h-[calc(100dvh-50px)] max-w-[480px] bg-[var(--studio-surface)]' : 'min-h-[calc(100vh-64px)] max-w-[1180px] overflow-hidden rounded-[32px] border border-white/10 bg-[var(--studio-sidebar)] shadow-[0_30px_100px_rgba(0,0,0,.32)] lg:grid-cols-[1.04fr_.96fr]'}`}>
         <div className="relative hidden overflow-hidden border-r border-white/10 p-12 lg:flex lg:flex-col">
           <div className="flex items-center gap-3">
             <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[var(--studio-accent)] text-[var(--studio-deep)]">
@@ -243,11 +272,11 @@ export default function LoginPanel() {
           </div>
         </div>
 
-        <div className={`flex justify-center bg-[var(--studio-surface)] text-[var(--studio-ink)] ${nativeApp ? 'items-start px-5 py-6' : 'items-center px-6 py-10 sm:px-12'}`}>
+        <div className={`flex justify-center bg-[var(--studio-surface)] text-[var(--studio-ink)] ${nativeApp ? 'items-start py-2' : 'items-center px-6 py-10 sm:px-12'}`}>
           <div className="w-full max-w-[430px]">
-            <div className={`${nativeApp ? 'mb-5' : 'mb-7'} lg:hidden`}>
+            <div className={`${nativeApp ? 'mb-8' : 'mb-7'} lg:hidden`}>
               <div className="inline-flex items-center gap-3">
-                <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[var(--studio-deep)] text-[var(--studio-accent)]">
+                <div className={`${nativeApp ? 'h-12 w-12 rounded-[18px]' : 'h-10 w-10 rounded-2xl'} grid place-items-center bg-[var(--studio-deep)] text-[var(--studio-accent)]`}>
                   <SparklesIcon className="h-5 w-5" />
                 </div>
                 <div>
@@ -277,7 +306,7 @@ export default function LoginPanel() {
             <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--studio-muted)]">
               {mode === 'login' ? 'Welcome back' : mode === 'register' ? 'Create account' : 'Account recovery'}
             </div>
-            <h2 className={`mt-3 font-semibold tracking-[-0.035em] ${nativeApp ? 'text-[26px] leading-9' : 'text-3xl'}`}>
+            <h2 className={`mt-3 font-semibold tracking-[-0.035em] ${nativeApp ? 'text-[30px] leading-10' : 'text-3xl'}`}>
               {mode === 'login' ? '登录你的学习空间' : mode === 'register' ? '创建独立学习账号' : '通过安全问题重置密码'}
             </h2>
             <p className="mt-3 text-sm leading-6 text-[#718078]">

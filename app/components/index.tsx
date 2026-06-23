@@ -54,6 +54,16 @@ const Main: FC<IMainProps> = () => {
   const highlightedMessageRef = useRef('')
   const [showMobileConversationList, setShowMobileConversationList] = useState(true)
   const [shareOpen, setShareOpen] = useState(false)
+
+  useEffect(() => {
+    const detail = isMobile && !showMobileConversationList
+    globalThis.dispatchEvent(new CustomEvent('network-study-chat-detail', { detail: { detail } }))
+    window.NetworkStudyApp?.setConversationMode?.(detail)
+    return () => {
+      globalThis.dispatchEvent(new CustomEvent('network-study-chat-detail', { detail: { detail: false } }))
+      window.NetworkStudyApp?.setConversationMode?.(false)
+    }
+  }, [isMobile, showMobileConversationList])
   const [visionConfig, setVisionConfig] = useState<VisionSettings | undefined>({
     enabled: false,
     number_limits: 2,
@@ -994,13 +1004,13 @@ const Main: FC<IMainProps> = () => {
           )
           : (
             <div className='relative flex min-h-0 flex-grow flex-col overflow-hidden bg-[var(--studio-chat-surface)]'>
-              <div className="sticky top-0 z-20 flex h-12 shrink-0 items-center justify-between border-b border-black/[0.07] bg-[var(--studio-chat-surface)]/90 px-3 backdrop-blur lg:hidden">
+              <div className="sticky top-0 z-20 flex h-11 shrink-0 items-center justify-between border-b border-black/[0.07] bg-[var(--studio-chat-surface)]/92 px-2.5 backdrop-blur lg:hidden">
                 <button
                   onClick={() => setShowMobileConversationList(true)}
                   className="flex min-w-0 items-center gap-1.5 rounded-lg px-1 py-1.5 text-xs font-medium text-[#526159]"
                 >
                   <ChevronLeftIcon className="h-4 w-4 shrink-0" />
-                  <span className="max-w-[180px] truncate">{isNewConversation ? '对话记录' : conversationName}</span>
+                  <span className="max-w-[150px] truncate">{isNewConversation ? '对话记录' : conversationName}</span>
                 </button>
                 <div className="flex items-center gap-2">
                   {!isNewConversation && (
@@ -1008,18 +1018,13 @@ const Main: FC<IMainProps> = () => {
                       <ShareIcon className="h-4 w-4" />
                     </button>
                   )}
-                  <button onClick={() => handleConversationIdChange('-1')} className="rounded-lg bg-[#17342b] px-3 py-1.5 text-xs font-medium text-white">新对话</button>
+                  <button onClick={() => handleConversationIdChange('-1')} className="rounded-lg bg-[#17342b] px-2.5 py-1.5 text-[11px] font-medium text-white">新对话</button>
                 </div>
               </div>
-              {!isMobile && (
-                <div className="flex h-12 shrink-0 items-center justify-between border-b border-black/[0.06] px-5">
-                  <div className="truncate text-xs font-semibold text-[var(--studio-muted)]">{conversationName}</div>
-                  {!isNewConversation && (
-                    <button onClick={() => setShareOpen(true)} className="flex items-center gap-2 rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-semibold">
-                      <ShareIcon className="h-4 w-4" />分享
-                    </button>
-                  )}
-                </div>
+              {!isMobile && !isNewConversation && (
+                <button onClick={() => setShareOpen(true)} className="absolute right-4 top-3 z-30 flex items-center gap-2 rounded-xl border border-black/10 bg-white/95 px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur">
+                  <ShareIcon className="h-4 w-4" />分享
+                </button>
               )}
               {(!isMobile || !hasSetInputs) && (
                 <ConfigSence

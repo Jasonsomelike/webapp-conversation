@@ -4,6 +4,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
 import { deriveAccountDifyUserId } from '@/lib/auth'
+import { getAccountAvatar, setAccountAvatar } from '@/lib/account-extension'
 
 interface QqIdentityPayload {
   client_id: string
@@ -110,11 +111,13 @@ export const resolveQqUser = async ({
   openId,
   unionId,
   nickname,
+  avatarUrl,
 }: {
   appId: string
   openId: string
   unionId?: string
   nickname?: string
+  avatarUrl?: string
 }) => {
   if (!isDatabaseConfigured())
   { throw new Error('DATABASE_NOT_CONFIGURED') }
@@ -126,10 +129,18 @@ export const resolveQqUser = async ({
       include: { user: true },
     })
     if (exactIdentity) {
-      return db.appUser.update({
+      const user = await db.appUser.update({
         where: { id: exactIdentity.appUserId },
-        data: { lastLoginAt: new Date() },
+        data: {
+          lastLoginAt: new Date(),
+          ...(exactIdentity.user.username.startsWith('qq_') && nickname?.trim()
+            ? { displayName: nickname.trim().slice(0, 64) }
+            : {}),
+        },
       })
+      if (avatarUrl && !(await getAccountAvatar(user.id)))
+      { await setAccountAvatar(user.id, avatarUrl) }
+      return user
     }
 
     const unionIdentity = unionId
@@ -143,10 +154,13 @@ export const resolveQqUser = async ({
       await db.qqIdentity.create({
         data: { appUserId: unionIdentity.appUserId, appId, openId, unionId },
       })
-      return db.appUser.update({
+      const user = await db.appUser.update({
         where: { id: unionIdentity.appUserId },
         data: { lastLoginAt: new Date() },
       })
+      if (avatarUrl && !(await getAccountAvatar(user.id)))
+      { await setAccountAvatar(user.id, avatarUrl) }
+      return user
     }
 
     const subject = unionId || `${appId}:${openId}`
@@ -157,7 +171,7 @@ export const resolveQqUser = async ({
       bcrypt.hash(randomBytes(24).toString('base64url'), 12),
     ])
 
-    return db.appUser.create({
+    const user = await db.appUser.create({
       data: {
         username,
         displayName: nickname?.trim().slice(0, 64) || 'QQ 用户',
@@ -171,5 +185,53 @@ export const resolveQqUser = async ({
         },
       },
     })
+    if (avatarUrl)
+    { await setAccountAvatar(user.id, avatarUrl) }
+    return user
   })
 }
+
+export const bindQqIdentityToUser = async ({
+  appUserId,
+  appId,
+  openId,
+  unionId,
+  avatarUrl,
+}: {
+  appUserId: string
+  appId: string
+  openId: string
+  unionId?: string
+  avatarUrl?: string
+}) => {
+  if (!isDatabaseConfigured())
+  { throw new Error('DATABASE_NOT_CONFIGURED') }
+
+  return withDatabaseRetry(async () => {
+    await ensureQqIdentityStorage()
+    const existing = await db.qqIdentity.findFirst({
+      where: {
+        OR: [
+          { appId, openId },
+          ...(unionId ? [{ unionId }] : []),
+        ],
+      },
+    })
+    if (existing && existing.appUserId !== appUserId)
+    { throw new Error('QQ_ALREADY_BOUND') }
+    if (!existing) {
+      await db.qqIdentity.create({
+        data: { appUserId, appId, openId, unionId },
+      })
+    }
+    if (avatarUrl && !(await getAccountAvatar(appUserId)))
+    { await setAccountAvatar(appUserId, avatarUrl) }
+    return { bound: true }
+  })
+}
+
+export const hasQqIdentity = async (appUserId: string) =>
+  withDatabaseRetry(async () => {
+    await ensureQqIdentityStorage()
+    return (await db.qqIdentity.count({ where: { appUserId } })) > 0
+  })

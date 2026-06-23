@@ -98,6 +98,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
   const [pendingHref, setPendingHref] = useState('')
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [nativeApp, setNativeApp] = useState(false)
+  const [chatDetail, setChatDetail] = useState(false)
   const initialTheme = isThemeId(session.theme) ? session.theme : 'forest'
   const [theme, setTheme] = useState<ThemeId>(initialTheme)
   const chatResponding = useChatRuntime(state => state.isResponding)
@@ -137,7 +138,17 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
 
   useEffect(() => {
     setPendingHref('')
+    if (pathname !== '/chat')
+    { setChatDetail(false) }
   }, [pathname])
+
+  useEffect(() => {
+    const handleChatDetail = (event: Event) => {
+      setChatDetail(Boolean((event as CustomEvent<{ detail?: boolean }>).detail?.detail))
+    }
+    globalThis.addEventListener('network-study-chat-detail', handleChatDetail)
+    return () => globalThis.removeEventListener('network-study-chat-detail', handleChatDetail)
+  }, [])
 
   const logout = async () => {
     resetChatRuntime()
@@ -277,7 +288,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
             <div className="h-full w-1/2 animate-pulse rounded-r-full bg-[var(--studio-accent-strong)]" />
           </div>
         )}
-        <header className={`${nativeApp ? 'hidden' : 'relative z-30 flex'} h-[72px] shrink-0 items-center gap-3 border-b border-black/[0.07] bg-[var(--studio-surface)]/90 px-3 backdrop-blur-xl sm:h-[84px] sm:gap-4 sm:px-7`}>
+        <header className={`${nativeApp || pathname === '/chat' ? 'hidden' : 'relative z-30 flex'} h-[58px] shrink-0 items-center gap-3 border-b border-black/[0.07] bg-[var(--studio-surface)]/90 px-3 backdrop-blur-xl sm:h-[68px] sm:gap-4 sm:px-6`}>
           <button
             className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-black/10 bg-white lg:hidden"
             onClick={() => setMobileOpen(true)}
@@ -341,11 +352,11 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
           </div>
         </header>
 
-        <main className={`min-h-0 flex-1 overflow-auto ${nativeApp ? 'pb-0' : 'pb-[calc(72px+env(safe-area-inset-bottom))] lg:pb-0'}`}>
+        <main className={`min-h-0 flex-1 overflow-auto ${nativeApp || chatDetail ? 'pb-0' : 'pb-[calc(68px+env(safe-area-inset-bottom))] lg:pb-0'}`}>
           {children}
         </main>
 
-        <nav className={`${nativeApp ? 'hidden' : 'fixed inset-x-0 bottom-0 z-40 flex'} h-[calc(68px+env(safe-area-inset-bottom))] items-start justify-around overflow-x-auto border-t border-black/10 bg-[var(--studio-surface)]/95 px-1 pb-[env(safe-area-inset-bottom)] pt-1 backdrop-blur-xl lg:hidden`}>
+        <nav className={`${nativeApp || chatDetail ? 'hidden' : 'fixed inset-x-0 bottom-0 z-40 flex'} h-[calc(68px+env(safe-area-inset-bottom))] items-start justify-around overflow-x-auto border-t border-black/10 bg-[var(--studio-surface)]/95 px-1 pb-[env(safe-area-inset-bottom)] pt-1 backdrop-blur-xl lg:hidden`}>
           {navItems.map((item) => {
             const active = pathname === item.href
             const Icon = item.icon

@@ -20,6 +20,7 @@ export default async function SourcePdfPreviewPage({
       referenceId={referenceId}
       filename={query.filename || '知识库来源.pdf'}
       initialPage={page}
+      backHref="/sources"
     />
   )
 }

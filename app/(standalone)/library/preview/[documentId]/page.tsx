@@ -26,6 +26,7 @@ export default async function LibraryPdfPreviewPage({
       initialPage={page}
       sourceUrl={`/api/library/documents/${encodedId}/file?disposition=inline&filename=${encodedFilename}`}
       downloadUrl={`/api/library/documents/${encodedId}/file?disposition=attachment&filename=${encodedFilename}`}
+      backHref="/library"
     />
   )
 }

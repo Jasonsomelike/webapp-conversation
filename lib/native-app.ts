@@ -10,6 +10,12 @@ export interface NativeQqLoginResult {
   accessToken: string
   openId: string
   expiresIn?: string
+  purpose?: 'login' | 'bind'
+}
+
+export interface NativeQqResultEnvelope {
+  status: 'success' | 'error'
+  detail: NativeQqLoginResult & { message?: string }
 }
 
 declare global {
@@ -21,8 +27,11 @@ declare global {
       saveBase64Image: (dataUrl: string, filename: string) => void
       getBridgeVersion?: () => string
       loginWithQQ: () => void
+      bindQQ?: () => void
+      consumePendingQqResult?: () => string
       setShellState: (path: string, title: string, eyebrow: string) => void
       hideShell: () => void
+      setConversationMode?: (detail: boolean) => void
     }
   }
 }

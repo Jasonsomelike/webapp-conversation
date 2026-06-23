@@ -27,6 +27,7 @@ interface PdfReferenceViewerProps {
   initialPage: number
   sourceUrl?: string
   downloadUrl?: string
+  backHref?: string
 }
 
 export default function PdfReferenceViewer({
@@ -35,6 +36,7 @@ export default function PdfReferenceViewer({
   initialPage,
   sourceUrl: explicitSourceUrl,
   downloadUrl: explicitDownloadUrl,
+  backHref = '/library',
 }: PdfReferenceViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewerRef = useRef<HTMLElement>(null)
@@ -151,11 +153,24 @@ export default function PdfReferenceViewer({
   }
   const changeScale = (delta: number) =>
     setScale(value => Math.min(2.4, Math.max(0.65, Number((value + delta).toFixed(2)))))
+  const goBack = () => {
+    try {
+      const referrer = document.referrer ? new URL(document.referrer) : null
+      if (referrer?.origin === globalThis.location.origin && globalThis.history.length > 1) {
+        globalThis.history.back()
+        return
+      }
+    }
+    catch {
+      // Fall through to the explicit workspace route.
+    }
+    globalThis.location.assign(backHref)
+  }
 
   return (
-    <div className="flex h-[100dvh] min-h-0 flex-col bg-[#eef1ef] text-[#18231f]">
+    <div className="relative flex h-[100dvh] min-h-0 flex-col bg-[#eef1ef] text-[#18231f]">
       <header className="flex min-h-16 shrink-0 items-center gap-3 border-b border-black/10 bg-white/95 px-3 py-2 backdrop-blur">
-        <button type="button" onClick={() => globalThis.history.back()} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-black/10 bg-white shadow-sm" aria-label="返回">
+        <button type="button" onClick={goBack} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-black/10 bg-white shadow-sm" aria-label="返回">
           <ArrowLeftIcon className="h-5 w-5" />
         </button>
         <div className="min-w-0 flex-1">
@@ -219,6 +234,29 @@ export default function PdfReferenceViewer({
         </div>
       </main>
 
+      {!loading && !error && pageCount > 1 && (
+        <>
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => updatePage(page - 1)}
+            className="absolute left-5 top-1/2 z-20 hidden h-14 w-14 -translate-y-1/2 place-items-center rounded-full border border-black/10 bg-white/90 shadow-xl backdrop-blur transition hover:bg-white disabled:opacity-25 lg:grid"
+            aria-label="上一页"
+          >
+            <ChevronLeftIcon className="h-6 w-6" />
+          </button>
+          <button
+            type="button"
+            disabled={page >= pageCount}
+            onClick={() => updatePage(page + 1)}
+            className="absolute right-5 top-1/2 z-20 hidden h-14 w-14 -translate-y-1/2 place-items-center rounded-full border border-black/10 bg-white/90 shadow-xl backdrop-blur transition hover:bg-white disabled:opacity-25 lg:grid"
+            aria-label="下一页"
+          >
+            <ChevronRightIcon className="h-6 w-6" />
+          </button>
+        </>
+      )}
+
       {!error && (
         <div className="shrink-0 border-t border-black/10 bg-white/95 px-3 pb-[calc(9px+env(safe-area-inset-bottom))] pt-2.5 backdrop-blur">
           {pageCount > 1 && (
@@ -233,7 +271,7 @@ export default function PdfReferenceViewer({
             />
           )}
           <div className="flex items-center justify-between gap-2">
-            <div className="flex overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
+            <div className="flex overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm lg:hidden">
               <button type="button" disabled={page <= 1} onClick={() => updatePage(page - 1)} className="grid h-11 w-11 place-items-center disabled:opacity-30" aria-label="上一页">
                 <ChevronLeftIcon className="h-5 w-5" />
               </button>

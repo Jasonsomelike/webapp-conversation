@@ -1,17 +1,20 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   AcademicCapIcon,
   AdjustmentsHorizontalIcon,
   ArrowRightStartOnRectangleIcon,
   CalendarDaysIcon,
+  CameraIcon,
   ChartBarSquareIcon,
   CheckIcon,
   ChevronRightIcon,
   Cog6ToothIcon,
   FingerPrintIcon,
   InformationCircleIcon,
+  KeyIcon,
+  LinkIcon,
   PencilSquareIcon,
   ShieldCheckIcon,
   SparklesIcon,
@@ -20,7 +23,7 @@ import PageCard from '@/app/components/workspace/page-card'
 import type { AppSession } from '@/lib/session'
 import Toast from '@/app/components/base/toast'
 import Link from 'next/link'
-import { isNetworkStudyApp } from '@/lib/native-app'
+import { isNetworkStudyApp, type NativeQqLoginResult, type NativeQqResultEnvelope } from '@/lib/native-app'
 import { resetChatRuntime } from '@/app/components/chat/runtime-store'
 
 const stages = ['入门', '系统学习', '复习', '刷题', '备考']
@@ -33,12 +36,16 @@ export default function ProfileView({
   stats,
   joinedAt,
   isAdmin,
+  initialAvatarUrl,
+  initialQqBound,
 }: {
   session: AppSession
   initialProfile: { learningStage?: string | null, preferredStyle?: string | null, target?: string | null } | null
   stats: { conversations: number, references: number, messages: number }
   joinedAt: string
   isAdmin: boolean
+  initialAvatarUrl: string | null
+  initialQqBound: boolean
 }) {
   const initialStage = initialProfile?.learningStage || '系统学习'
   const initialStyle = initialProfile?.preferredStyle || '图示讲解'
@@ -52,12 +59,83 @@ export default function ProfileView({
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl)
+  const [avatarSaving, setAvatarSaving] = useState(false)
+  const [qqBound, setQqBound] = useState(initialQqBound)
+  const [qqBinding, setQqBinding] = useState(false)
+  const [passwordOpen, setPasswordOpen] = useState(false)
+  const [passwordSaving, setPasswordSaving] = useState(false)
+  const qqPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const qqTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { notify } = Toast
   const dirty = stage !== savedProfile.stage || style !== savedProfile.style || target !== savedProfile.target || displayName !== savedProfile.displayName
 
   useEffect(() => {
     setNativeApp(isNetworkStudyApp())
   }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(globalThis.location.search)
+    if (params.get('qq_bound') === '1') {
+      setQqBound(true)
+      notify({ type: 'success', message: 'QQ 账号已绑定' })
+    }
+    else if (params.get('qq_bind_error') === '1')
+    { notify({ type: 'error', message: 'QQ 账号绑定失败，请重试' }) }
+  }, [notify])
+
+  useEffect(() => {
+    const completeBinding = async (event: Event) => {
+      const detail = (event as CustomEvent<NativeQqLoginResult>).detail
+      if (detail?.purpose !== 'bind' || !detail.accessToken || !detail.openId)
+      { return }
+      window.NetworkStudyApp?.consumePendingQqResult?.()
+      if (qqPollRef.current)
+      { clearInterval(qqPollRef.current) }
+      if (qqTimeoutRef.current)
+      { clearTimeout(qqTimeoutRef.current) }
+      try {
+        const response = await fetch('/api/profile/qq/bind', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(detail),
+        })
+        const result = await response.json()
+        if (!response.ok)
+        { throw new Error(result.error || '绑定 QQ 失败') }
+        setQqBound(true)
+        notify({ type: 'success', message: 'QQ 账号已绑定' })
+      }
+      catch (error) {
+        notify({ type: 'error', message: error instanceof Error ? error.message : '绑定 QQ 失败' })
+      }
+      finally {
+        setQqBinding(false)
+      }
+    }
+    const failBinding = (event: Event) => {
+      const detail = (event as CustomEvent<{ message?: string, purpose?: string }>).detail
+      if (detail?.purpose !== 'bind')
+      { return }
+      if (qqPollRef.current)
+      { clearInterval(qqPollRef.current) }
+      if (qqTimeoutRef.current)
+      { clearTimeout(qqTimeoutRef.current) }
+      window.NetworkStudyApp?.consumePendingQqResult?.()
+      setQqBinding(false)
+      notify({ type: 'error', message: detail.message || 'QQ 授权已取消' })
+    }
+    globalThis.addEventListener('network-study-qq-login', completeBinding)
+    globalThis.addEventListener('network-study-qq-login-error', failBinding)
+    return () => {
+      globalThis.removeEventListener('network-study-qq-login', completeBinding)
+      globalThis.removeEventListener('network-study-qq-login-error', failBinding)
+      if (qqPollRef.current)
+      { clearInterval(qqPollRef.current) }
+      if (qqTimeoutRef.current)
+      { clearTimeout(qqTimeoutRef.current) }
+    }
+  }, [notify])
 
   useEffect(() => {
     if (!editing || !dirty)
@@ -131,6 +209,122 @@ export default function ProfileView({
     }
   }
 
+  const startQqBinding = () => {
+    if (!nativeApp) {
+      globalThis.location.href = '/api/auth/qq/web/start?purpose=bind'
+      return
+    }
+    const bridge = window.NetworkStudyApp
+    if (!bridge?.bindQQ) {
+      notify({ type: 'error', message: '当前 App 版本不支持绑定 QQ，请更新后重试' })
+      return
+    }
+    setQqBinding(true)
+    bridge.bindQQ()
+    qqPollRef.current = setInterval(() => {
+      try {
+        const raw = bridge.consumePendingQqResult?.()
+        if (!raw)
+        { return }
+        const result = JSON.parse(raw) as NativeQqResultEnvelope
+        globalThis.dispatchEvent(new CustomEvent(
+          result.status === 'success' ? 'network-study-qq-login' : 'network-study-qq-login-error',
+          { detail: result.detail },
+        ))
+      }
+      catch {
+        // Wait for the QQ activity to fully return to the WebView.
+      }
+    }, 450)
+    qqTimeoutRef.current = setTimeout(() => {
+      if (qqPollRef.current)
+      { clearInterval(qqPollRef.current) }
+      setQqBinding(false)
+      notify({ type: 'error', message: 'QQ 授权响应超时，请重试' })
+    }, 60_000)
+  }
+
+  const uploadAvatar = async (file?: File) => {
+    if (!file)
+    { return }
+    if (!file.type.startsWith('image/')) {
+      notify({ type: 'error', message: '请选择图片文件' })
+      return
+    }
+    setAvatarSaving(true)
+    try {
+      const objectUrl = URL.createObjectURL(file)
+      const image = new Image()
+      const avatar = await new Promise<string>((resolve, reject) => {
+        image.onload = () => {
+          const size = 256
+          const canvas = document.createElement('canvas')
+          canvas.width = size
+          canvas.height = size
+          const context = canvas.getContext('2d')
+          if (!context) {
+            reject(new Error('无法处理头像'))
+            return
+          }
+          const sourceSize = Math.min(image.naturalWidth, image.naturalHeight)
+          const sourceX = (image.naturalWidth - sourceSize) / 2
+          const sourceY = (image.naturalHeight - sourceSize) / 2
+          context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, size, size)
+          resolve(canvas.toDataURL('image/jpeg', 0.84))
+        }
+        image.onerror = () => reject(new Error('头像读取失败'))
+        image.src = objectUrl
+      })
+      URL.revokeObjectURL(objectUrl)
+      const response = await fetch('/api/profile/avatar', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatar }),
+      })
+      const result = await response.json()
+      if (!response.ok)
+      { throw new Error(result.error || '头像保存失败') }
+      setAvatarUrl(result.avatar)
+      notify({ type: 'success', message: '头像已更新' })
+    }
+    catch (error) {
+      notify({ type: 'error', message: error instanceof Error ? error.message : '头像保存失败' })
+    }
+    finally {
+      setAvatarSaving(false)
+    }
+  }
+
+  const changePassword = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setPasswordSaving(true)
+    try {
+      const form = new FormData(event.currentTarget)
+      if (form.get('newPassword') !== form.get('confirmPassword'))
+      { throw new Error('两次输入的新密码不一致') }
+      const response = await fetch('/api/profile/password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentPassword: form.get('currentPassword'),
+          newPassword: form.get('newPassword'),
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok)
+      { throw new Error(result.error || '密码修改失败') }
+      event.currentTarget.reset()
+      setPasswordOpen(false)
+      notify({ type: 'success', message: '密码已修改' })
+    }
+    catch (error) {
+      notify({ type: 'error', message: error instanceof Error ? error.message : '密码修改失败' })
+    }
+    finally {
+      setPasswordSaving(false)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1350px] p-4 sm:p-6">
       <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
@@ -150,7 +344,21 @@ export default function ProfileView({
                 </button>
               </div>
               <div className="mt-7 flex items-center gap-4">
-                <div className="grid h-16 w-16 place-items-center rounded-2xl bg-[var(--studio-accent)] text-2xl font-semibold text-[var(--studio-deep)]">{session.name.slice(0, 1)}</div>
+                <label className="group relative block h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-2xl bg-[var(--studio-accent)] text-[var(--studio-deep)]">
+                  {avatarUrl
+                    ? <img src={avatarUrl} alt="用户头像" className="h-full w-full object-cover" />
+                    : <span className="grid h-full w-full place-items-center text-2xl font-semibold">{savedProfile.displayName.slice(0, 1)}</span>}
+                  <span className="absolute inset-0 grid place-items-center bg-black/45 opacity-0 transition group-hover:opacity-100">
+                    <CameraIcon className="h-5 w-5 text-white" />
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    disabled={avatarSaving}
+                    onChange={event => void uploadAvatar(event.target.files?.[0])}
+                    className="sr-only"
+                  />
+                </label>
                 <div>
                   {editing
                     ? (
@@ -309,6 +517,48 @@ export default function ProfileView({
               </div>
             </div>
           </div>
+
+          <PageCard className="overflow-hidden">
+            <div className="px-5 pb-2 pt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#748179]">
+              账户安全
+            </div>
+            <button
+              type="button"
+              onClick={startQqBinding}
+              disabled={qqBound || qqBinding}
+              className="flex w-full items-center gap-3 border-b border-black/[0.06] px-5 py-4 text-left transition hover:bg-black/[0.02] disabled:cursor-default"
+            >
+              <LinkIcon className="h-5 w-5 text-[#12aee2]" />
+              <span className="flex-1">
+                <span className="block text-sm font-semibold">{qqBound ? 'QQ 账号已绑定' : '绑定 QQ 账号'}</span>
+                <span className="mt-1 block text-[10px] text-black/40">{qqBound ? '可以使用 QQ 快速登录当前账号' : '保留现有学习数据并增加 QQ 登录方式'}</span>
+              </span>
+              <span className="text-xs text-black/35">{qqBinding ? '授权中…' : qqBound ? '已绑定' : '去绑定'}</span>
+            </button>
+            {!session.username.startsWith('qq_') && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setPasswordOpen(open => !open)}
+                  className="flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-black/[0.02]"
+                >
+                  <KeyIcon className="h-5 w-5 text-[var(--studio-accent-strong)]" />
+                  <span className="flex-1 text-sm font-semibold">修改登录密码</span>
+                  <ChevronRightIcon className={`h-4 w-4 text-black/30 transition ${passwordOpen ? 'rotate-90' : ''}`} />
+                </button>
+                {passwordOpen && (
+                  <form onSubmit={changePassword} className="space-y-3 border-t border-black/[0.06] bg-black/[0.018] p-5">
+                    <input name="currentPassword" type="password" required placeholder="当前密码" className="h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm outline-none" />
+                    <input name="newPassword" type="password" required placeholder="新密码：至少 8 位字母和数字" className="h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm outline-none" />
+                    <input name="confirmPassword" type="password" required placeholder="再次输入新密码" className="h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm outline-none" />
+                    <button disabled={passwordSaving} className="h-11 w-full rounded-xl bg-[var(--studio-deep)] text-xs font-semibold text-white disabled:opacity-60">
+                      {passwordSaving ? '保存中…' : '确认修改密码'}
+                    </button>
+                  </form>
+                )}
+              </>
+            )}
+          </PageCard>
 
           <PageCard className="overflow-hidden">
             <div className="px-5 pb-2 pt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#748179]">

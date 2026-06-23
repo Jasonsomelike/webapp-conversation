@@ -1,9 +1,14 @@
 import { randomBytes } from 'node:crypto'
 import { NextResponse } from 'next/server'
+import { getSession } from '@/lib/session'
 
 const stateCookie = 'qq_oauth_state'
+const purposeCookie = 'qq_oauth_purpose'
 
 export async function GET(request: Request) {
+  const purpose = new URL(request.url).searchParams.get('purpose') === 'bind' ? 'bind' : 'login'
+  if (purpose === 'bind' && !(await getSession()))
+  { return NextResponse.redirect(new URL('/login', request.url)) }
   const appId = process.env.QQ_WEB_APP_ID || '1904523799'
   const origin = process.env.AUTH_URL || new URL(request.url).origin
   const redirectUri = `${origin.replace(/\/$/, '')}/api/auth/qq/web/callback`
@@ -17,6 +22,13 @@ export async function GET(request: Request) {
 
   const response = NextResponse.redirect(authorize)
   response.cookies.set(stateCookie, state, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: true,
+    path: '/',
+    maxAge: 10 * 60,
+  })
+  response.cookies.set(purposeCookie, purpose, {
     httpOnly: true,
     sameSite: 'lax',
     secure: true,
