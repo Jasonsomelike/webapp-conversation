@@ -6,6 +6,12 @@ export interface NativeDownloadSettings {
   appVersion: string
 }
 
+export interface NativeQqLoginResult {
+  accessToken: string
+  openId: string
+  expiresIn?: string
+}
+
 declare global {
   interface Window {
     NetworkStudyApp?: {
@@ -13,6 +19,9 @@ declare global {
       chooseDownloadDirectory: () => void
       resetDownloadDirectory: () => void
       saveBase64Image: (dataUrl: string, filename: string) => void
+      loginWithQQ: () => void
+      setShellState: (path: string, title: string, eyebrow: string) => void
+      hideShell: () => void
     }
   }
 }

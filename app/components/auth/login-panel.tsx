@@ -14,6 +14,7 @@ import {
   UserPlusIcon,
 } from '@heroicons/react/24/outline'
 import { securityQuestions } from '@/lib/account-policy'
+import { isNetworkStudyApp, type NativeQqLoginResult } from '@/lib/native-app'
 
 type Mode = 'login' | 'register' | 'forgot'
 
@@ -27,9 +28,53 @@ export default function LoginPanel() {
   const [notice, setNotice] = useState('')
   const [securityQuestion, setSecurityQuestion] = useState('')
   const [resetUsername, setResetUsername] = useState('')
+  const [nativeApp, setNativeApp] = useState(false)
 
   useEffect(() => {
     router.prefetch('/chat')
+    setNativeApp(isNetworkStudyApp())
+    const error = new URLSearchParams(globalThis.location.search).get('qq_error')
+    if (error)
+    { setError(error === 'config' ? 'QQ 登录服务尚未完成配置' : 'QQ 登录失败，请重试') }
+  }, [router])
+
+  useEffect(() => {
+    const completeNativeQqLogin = async (event: Event) => {
+      const detail = (event as CustomEvent<NativeQqLoginResult>).detail
+      if (!detail?.accessToken || !detail.openId)
+      { return }
+      setLoading(true)
+      setError('')
+      try {
+        const response = await fetch('/api/auth/qq/native', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(detail),
+        })
+        const result = await response.json()
+        if (!response.ok)
+        { throw new Error(result.error || 'QQ 登录失败') }
+        router.replace('/chat')
+        router.refresh()
+      }
+      catch (loginError) {
+        setError(loginError instanceof Error ? loginError.message : 'QQ 登录失败，请重试')
+      }
+      finally {
+        setLoading(false)
+      }
+    }
+    const failNativeQqLogin = (event: Event) => {
+      const message = (event as CustomEvent<{ message?: string }>).detail?.message
+      setError(message || 'QQ 登录已取消或失败')
+      setLoading(false)
+    }
+    globalThis.addEventListener('network-study-qq-login', completeNativeQqLogin)
+    globalThis.addEventListener('network-study-qq-login-error', failNativeQqLogin)
+    return () => {
+      globalThis.removeEventListener('network-study-qq-login', completeNativeQqLogin)
+      globalThis.removeEventListener('network-study-qq-login-error', failNativeQqLogin)
+    }
   }, [router])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -276,6 +321,41 @@ export default function LoginPanel() {
                 )}
             </div>
 
+            {mode === 'login' && (
+              <div className="mt-7">
+                <div className="mb-4 flex items-center gap-3 text-[11px] text-black/35">
+                  <span className="h-px flex-1 bg-black/10" />
+                  其他登录方式
+                  <span className="h-px flex-1 bg-black/10" />
+                </div>
+                {nativeApp
+                  ? (
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => {
+                        setLoading(true)
+                        setError('')
+                        window.NetworkStudyApp?.loginWithQQ()
+                      }}
+                      className="flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-[#12b7f5]/25 bg-[#12b7f5]/[0.08] text-sm font-semibold text-[#087ca7] transition hover:bg-[#12b7f5]/[0.13] disabled:opacity-50"
+                    >
+                      <span className="grid h-7 w-7 place-items-center rounded-full bg-[#12b7f5] text-[10px] font-black text-white">QQ</span>
+                      使用 QQ 安全登录
+                    </button>
+                  )
+                  : (
+                    <a
+                      href="/api/auth/qq/web/start"
+                      className="flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-[#12b7f5]/25 bg-[#12b7f5]/[0.08] text-sm font-semibold text-[#087ca7] transition hover:bg-[#12b7f5]/[0.13]"
+                    >
+                      <span className="grid h-7 w-7 place-items-center rounded-full bg-[#12b7f5] text-[10px] font-black text-white">QQ</span>
+                      使用 QQ 登录
+                    </a>
+                  )}
+              </div>
+            )}
+
             <div className="mt-8 space-y-3">
               {[
                 '密码采用加盐哈希保存，服务端不会存储明文',
@@ -291,7 +371,7 @@ export default function LoginPanel() {
 
             <div className="mt-8 flex items-center justify-center gap-2 text-[10px] text-[#9da59f]">
               <ShieldCheckIcon className="h-3.5 w-3.5" />
-              当前版本使用账号密码登录，不接入第三方社交账号
+              QQ 凭证仅用于身份校验，App Key 只保存在服务端
             </div>
           </div>
         </div>

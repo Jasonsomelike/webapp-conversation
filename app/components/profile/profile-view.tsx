@@ -5,6 +5,7 @@ import {
   AcademicCapIcon,
   AdjustmentsHorizontalIcon,
   CalendarDaysIcon,
+  ChartBarSquareIcon,
   CheckIcon,
   ChevronRightIcon,
   Cog6ToothIcon,
@@ -144,7 +145,7 @@ export default function ProfileView({
                       />
                     )
                     : <h2 className="text-xl font-semibold">{savedProfile.displayName}</h2>}
-                  <div className="mt-1 text-xs text-white/45">@{session.username} · 账号密码用户</div>
+                  <div className="mt-1 text-xs text-white/45">@{session.username} · {session.provider === 'qq' ? 'QQ 登录用户' : '账号密码用户'}</div>
                 </div>
               </div>
 
@@ -302,6 +303,11 @@ export default function ProfileView({
                 <ChevronRightIcon className="h-4 w-4 text-black/30" />
               </Link>
             )}
+            <Link href="/analysis" className="flex items-center gap-3 border-b border-black/[0.06] px-5 py-4 transition hover:bg-black/[0.02]">
+              <ChartBarSquareIcon className="h-5 w-5 text-[var(--studio-accent-strong)]" />
+              <span className="flex-1 text-sm font-semibold">个性化学习分析</span>
+              <ChevronRightIcon className="h-4 w-4 text-black/30" />
+            </Link>
             {isAdmin && (
               <Link href="/admin" className="flex items-center gap-3 border-b border-black/[0.06] px-5 py-4 transition hover:bg-black/[0.02]">
                 <ShieldCheckIcon className="h-5 w-5 text-[var(--studio-accent-strong)]" />

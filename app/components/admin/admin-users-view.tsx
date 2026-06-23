@@ -68,7 +68,7 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
   }
 
   return (
-    <div className="mx-auto max-w-[1450px] p-4 sm:p-6">
+    <div className="mx-auto max-w-[1450px] p-4 pb-10 sm:p-6 sm:pb-12">
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
         {[
           ['注册用户', users.length],

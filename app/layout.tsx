@@ -1,5 +1,6 @@
 import { getLocaleOnServer } from '@/i18n/server'
 import type { Metadata } from 'next'
+import type { Viewport } from 'next'
 
 import './styles/globals.css'
 import './styles/markdown.scss'
@@ -10,6 +11,12 @@ export const metadata: Metadata = {
     template: '%s · 知行网络学堂',
   },
   description: '基于 Dify 的计算机网络个性化学习空间',
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 }
 
 const LocaleLayout = async ({

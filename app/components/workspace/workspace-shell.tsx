@@ -25,6 +25,7 @@ import type { AppSession } from '@/lib/session'
 import { isThemeId, themes, type ThemeId } from '@/lib/themes'
 import { resetChatRuntime, useChatRuntime } from '@/app/components/chat/runtime-store'
 import { isAdminSession } from '@/lib/admin'
+import { isNetworkStudyApp } from '@/lib/native-app'
 
 const navItems = [
   { href: '/chat', label: 'AI 学习助手', shortLabel: '对话', icon: ChatBubbleLeftRightIcon },
@@ -96,6 +97,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
   const [themeOpen, setThemeOpen] = useState(false)
   const [pendingHref, setPendingHref] = useState('')
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [nativeApp, setNativeApp] = useState(false)
   const initialTheme = isThemeId(session.theme) ? session.theme : 'forest'
   const [theme, setTheme] = useState<ThemeId>(initialTheme)
   const chatResponding = useChatRuntime(state => state.isResponding)
@@ -105,6 +107,33 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
+
+  useEffect(() => {
+    const isNative = isNetworkStudyApp()
+    setNativeApp(isNative)
+    if (!isNative)
+    { return }
+
+    document.documentElement.dataset.nativeApp = 'true'
+    const handleNativeNavigation = (event: Event) => {
+      const href = (event as CustomEvent<{ href?: string }>).detail?.href
+      if (!href)
+      { return }
+      setPendingHref(href)
+      router.push(href)
+    }
+    globalThis.addEventListener('network-study-native-nav', handleNativeNavigation)
+    return () => {
+      globalThis.removeEventListener('network-study-native-nav', handleNativeNavigation)
+      window.NetworkStudyApp?.hideShell()
+      delete document.documentElement.dataset.nativeApp
+    }
+  }, [router])
+
+  useEffect(() => {
+    if (nativeApp)
+    { window.NetworkStudyApp?.setShellState(pathname, current.title, current.eyebrow) }
+  }, [current.eyebrow, current.title, nativeApp, pathname])
 
   useEffect(() => {
     setPendingHref('')
@@ -248,7 +277,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
             <div className="h-full w-1/2 animate-pulse rounded-r-full bg-[var(--studio-accent-strong)]" />
           </div>
         )}
-        <header className="relative z-30 flex h-[72px] shrink-0 items-center gap-3 border-b border-black/[0.07] bg-[var(--studio-surface)]/90 px-3 backdrop-blur-xl sm:h-[84px] sm:gap-4 sm:px-7">
+        <header className={`${nativeApp ? 'hidden' : 'relative z-30 flex'} h-[72px] shrink-0 items-center gap-3 border-b border-black/[0.07] bg-[var(--studio-surface)]/90 px-3 backdrop-blur-xl sm:h-[84px] sm:gap-4 sm:px-7`}>
           <button
             className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-black/10 bg-white lg:hidden"
             onClick={() => setMobileOpen(true)}
@@ -312,11 +341,11 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
           </div>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-auto pb-[calc(72px+env(safe-area-inset-bottom))] lg:pb-0">
+        <main className={`min-h-0 flex-1 overflow-auto ${nativeApp ? 'pb-0' : 'pb-[calc(72px+env(safe-area-inset-bottom))] lg:pb-0'}`}>
           {children}
         </main>
 
-        <nav className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(68px+env(safe-area-inset-bottom))] items-start justify-around overflow-x-auto border-t border-black/10 bg-[var(--studio-surface)]/95 px-1 pb-[env(safe-area-inset-bottom)] pt-1 backdrop-blur-xl lg:hidden">
+        <nav className={`${nativeApp ? 'hidden' : 'fixed inset-x-0 bottom-0 z-40 flex'} h-[calc(68px+env(safe-area-inset-bottom))] items-start justify-around overflow-x-auto border-t border-black/10 bg-[var(--studio-surface)]/95 px-1 pb-[env(safe-area-inset-bottom)] pt-1 backdrop-blur-xl lg:hidden`}>
           {navItems.map((item) => {
             const active = pathname === item.href
             const Icon = item.icon

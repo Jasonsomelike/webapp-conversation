@@ -30,8 +30,26 @@ model AppUser {
   profile       UserProfile?
   reports       UserAnalysisReport[]
   parsedUploads ParsedUpload[]
+  qqIdentities  QqIdentity[]
 
   @@map("app_users")
+}
+
+model QqIdentity {
+  id        String   @id @default(uuid()) @db.Uuid
+  appUserId String   @map("app_user_id") @db.Uuid
+  appId     String   @map("app_id") @db.VarChar(32)
+  openId    String   @map("open_id") @db.VarChar(128)
+  unionId   String?  @map("union_id") @db.VarChar(128)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user AppUser @relation(fields: [appUserId], references: [id], onDelete: Cascade)
+
+  @@unique([appId, openId])
+  @@index([unionId])
+  @@index([appUserId])
+  @@map("qq_identities")
 }
 
 model ChatConversation {

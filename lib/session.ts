@@ -12,7 +12,7 @@ export interface AppSession {
   username: string
   name: string
   theme: string
-  provider: 'account'
+  provider: 'account' | 'qq'
   createdAt: number
 }
 
@@ -50,7 +50,7 @@ export const verifySessionToken = (token?: string | null): AppSession | null => 
   try {
     const session = JSON.parse(decode(payload)) as AppSession
     if (
-      session.provider !== 'account'
+      !['account', 'qq'].includes(session.provider)
       || !session.id
       || !session.difyUserId
       || !session.username
