@@ -9,12 +9,13 @@ export const difyApiBaseUrl = (
 export const difyApiKey = process.env.DIFY_API_KEY
 
 const transientStatuses = new Set([408, 425, 429, 500, 502, 503, 504])
+const fallbackStatuses = new Set([404])
 const difyApiBaseUrls = [...new Set([
   difyApiBaseUrl,
   ...(process.env.DIFY_API_FALLBACK_URLS || '').split(',').map(value => value.trim()).filter(Boolean),
+  'https://dify.jasonsome.cn:22380/v1',
   'https://www.jasonsome.cn/v1',
   'https://jasonsome.cn/v1',
-  'https://dify.jasonsome.cn:22380/v1',
 ].map(value => value.replace(/\/$/, '')))]
 
 const wait = (milliseconds: number) =>
@@ -53,10 +54,13 @@ export const fetchDify = async (
         })
         clearTimeout(timeout)
 
-        if (response.ok || !transientStatuses.has(response.status))
+        const shouldTryNextBase = fallbackStatuses.has(response.status)
+        if (response.ok || (!transientStatuses.has(response.status) && !shouldTryNextBase))
         { return response }
-        lastError = new Error(`DIFY_TRANSIENT_STATUS:${response.status}`)
+        lastError = new Error(`DIFY_RETRYABLE_STATUS:${response.status}`)
         await response.body?.cancel()
+        if (shouldTryNextBase)
+        { break }
       }
       catch (error) {
         clearTimeout(timeout)
