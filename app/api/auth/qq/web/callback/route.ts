@@ -7,6 +7,54 @@ const stateCookie = 'qq_oauth_state'
 const purposeCookie = 'qq_oauth_purpose'
 const defaultCallbackPath = '/api/auth/qq/callback'
 
+interface QqTokenPayload {
+  access_token?: string
+  openid?: string
+  expires_in?: string | number
+  refresh_token?: string
+  error?: number | string
+  error_description?: string
+}
+
+const parseQqTokenPayload = async (response: Response): Promise<QqTokenPayload> => {
+  const text = await response.text()
+  const trimmed = text.trim()
+  if (!trimmed)
+  { return {} }
+
+  try {
+    if (trimmed.startsWith('{'))
+    { return JSON.parse(trimmed) as QqTokenPayload }
+  }
+  catch {
+    // Fall through to form parsing. QQ may still return x-www-form-urlencoded
+    // even when fmt=json is requested, depending on error path and app status.
+  }
+
+  const params = new URLSearchParams(trimmed)
+  const payload: QqTokenPayload = {}
+  params.forEach((value, key) => {
+    ;(payload as Record<string, string>)[key] = value
+  })
+  return payload
+}
+
+const qqErrorParam = (error: unknown) => {
+  if (!(error instanceof Error))
+  { return 'failed' }
+  if (error.message === 'QQ_NOT_BOUND')
+  { return 'unbound' }
+  if (error.message.startsWith('QQ_TOKEN_EXCHANGE_FAILED'))
+  { return 'token' }
+  if (error.message === 'QQ_OPENID_MISMATCH' || error.message === 'QQ_TOKEN_INVALID')
+  { return 'openid' }
+  if (error.message === 'QQ_PROFILE_FAILED')
+  { return 'profile' }
+  if (error.message === 'QQ_BIND_SESSION_MISSING')
+  { return 'session' }
+  return 'failed'
+}
+
 export async function GET(request: NextRequest) {
   const origin = process.env.AUTH_URL || request.nextUrl.origin
   const loginUrl = new URL('/login', origin)
@@ -22,6 +70,12 @@ export async function GET(request: NextRequest) {
   const appId = process.env.QQ_WEB_APP_ID || '1904523799'
   const appKey = process.env.QQ_WEB_APP_KEY
   if (!appKey) {
+    console.error('[qq-web-auth] failed', {
+      stage: 'config',
+      appId,
+      callback: defaultCallbackPath,
+      reason: 'QQ_WEB_APP_KEY missing',
+    })
     loginUrl.searchParams.set('qq_error', 'config')
     return NextResponse.redirect(loginUrl)
   }
@@ -43,13 +97,18 @@ export async function GET(request: NextRequest) {
       cache: 'no-store',
       signal: AbortSignal.timeout(12_000),
     })
-    const token = await tokenResponse.json() as {
-      access_token?: string
-      openid?: string
-      error?: number
+    const token = await parseQqTokenPayload(tokenResponse)
+    if (!tokenResponse.ok || token.error || !token.access_token) {
+      console.error('[qq-web-auth] token exchange failed', {
+        stage: 'token',
+        appId,
+        status: tokenResponse.status,
+        qqError: token.error,
+        qqErrorDescription: token.error_description,
+        redirectUri,
+      })
+      throw new Error(`QQ_TOKEN_EXCHANGE_FAILED:${token.error || tokenResponse.status}`)
     }
-    if (!tokenResponse.ok || token.error || !token.access_token)
-    { throw new Error('QQ_TOKEN_EXCHANGE_FAILED') }
 
     const identity = token.openid
       ? { client_id: appId, openid: token.openid }
@@ -95,12 +154,17 @@ export async function GET(request: NextRequest) {
     return response
   }
   catch (error) {
-    console.error('[qq-web-auth] failed', error)
+    console.error('[qq-web-auth] failed', {
+      stage: qqErrorParam(error),
+      appId,
+      callbackPath,
+      error: error instanceof Error ? error.message : String(error),
+    })
     const failureUrl = purpose === 'bind' ? new URL('/profile?qq_bind_error=1', origin) : loginUrl
     if (purpose !== 'bind') {
       failureUrl.searchParams.set(
         'qq_error',
-        error instanceof Error && error.message === 'QQ_NOT_BOUND' ? 'unbound' : 'failed',
+        qqErrorParam(error),
       )
     }
     const response = NextResponse.redirect(failureUrl)

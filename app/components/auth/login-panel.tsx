@@ -20,6 +20,22 @@ type Mode = 'login' | 'register' | 'forgot'
 
 const passwordHint = '至少 8 位，同时包含字母和数字'
 
+const qqLoginErrorMessage = (error: string) => {
+  if (error === 'config')
+  { return 'QQ 登录服务尚未完成配置' }
+  if (error === 'token')
+  { return 'QQ 授权已返回，但换取登录令牌失败，请检查网站应用 App Key 与回调地址。' }
+  if (error === 'openid')
+  { return 'QQ 身份校验失败，请重新授权登录。' }
+  if (error === 'profile')
+  { return 'QQ 头像/昵称信息读取失败，请稍后重试。' }
+  if (error === 'session')
+  { return '绑定 QQ 前登录状态已失效，请重新登录后再绑定。' }
+  if (error === 'unbound')
+  { return '该 QQ 尚未绑定学习账号，请先使用账号密码登录/注册，再到“我的画像”中绑定 QQ。' }
+  return 'QQ 登录失败，请重试'
+}
+
 export default function LoginPanel() {
   const router = useRouter()
   const [mode, setMode] = useState<Mode>('login')
@@ -39,13 +55,7 @@ export default function LoginPanel() {
     setNativeApp(isNetworkStudyApp())
     const error = new URLSearchParams(globalThis.location.search).get('qq_error')
     if (error) {
-      setError(
-        error === 'config'
-          ? 'QQ 登录服务尚未完成配置'
-          : error === 'unbound'
-            ? '该 QQ 尚未绑定学习账号，请先使用账号密码登录/注册，再到“我的画像”中绑定 QQ。'
-            : 'QQ 登录失败，请重试',
-      )
+      setError(qqLoginErrorMessage(error))
     }
   }, [router])
 
