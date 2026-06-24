@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db, withDatabaseRetry } from '@/lib/db'
-import { createConversationShareToken } from '@/lib/conversation-share'
+import { createStoredConversationShare } from '@/lib/conversation-share'
 import { getSessionFromRequest } from '@/lib/session'
 
 const schema = z.object({
@@ -68,15 +68,15 @@ export async function POST(
     { return NextResponse.json({ error: '分享内容已变化，请刷新后重试' }, { status: 409 }) }
   }
 
-  const token = createConversationShareToken({
+  const share = await createStoredConversationShare({
     appUserId: session.id,
     conversationId,
     scope: parsed.data.scope,
     messageIds,
   })
   return NextResponse.json({
-    token,
-    url: `${request.nextUrl.origin}/share/${token}`,
+    token: share.token,
+    url: `${request.nextUrl.origin}/share/${share.token}`,
     expiresInDays: 30,
   })
 }

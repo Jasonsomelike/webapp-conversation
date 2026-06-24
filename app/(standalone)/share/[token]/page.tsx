@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { AcademicCapIcon, CalendarDaysIcon } from '@heroicons/react/24/outline'
 import { db, withDatabaseRetry } from '@/lib/db'
-import { verifyConversationShareToken } from '@/lib/conversation-share'
+import { getConversationSharePayload } from '@/lib/conversation-share'
 import SharedMarkdown from '@/app/components/base/shared-markdown'
 
 const visibleMarkdown = (content: string) =>
@@ -16,7 +16,7 @@ export default async function SharedConversationPage({
   params: Promise<{ token: string }>
 }) {
   const { token } = await params
-  const payload = verifyConversationShareToken(token)
+  const payload = await getConversationSharePayload(token)
   if (!payload)
   { notFound() }
 
