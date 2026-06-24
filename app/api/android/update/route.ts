@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
-export const revalidate = 300
+export const dynamic = 'force-dynamic'
 
 const owner = 'Jasonsomelike'
 const repo = 'network-study-android'
@@ -21,7 +21,7 @@ export async function GET() {
         'Accept': 'application/vnd.github+json',
         'User-Agent': 'network-study-update-checker',
       },
-      next: { revalidate },
+      cache: 'no-store',
     })
     if (!response.ok)
     { throw new Error(`GITHUB_RELEASE_LOOKUP_FAILED:${response.status}`) }
@@ -34,7 +34,10 @@ export async function GET() {
       published_at?: string
       assets?: Array<{ name?: string, browser_download_url?: string, size?: number }>
     }
-    const apk = release.assets?.find(asset => /\.apk$/i.test(asset.name || ''))
+    const apkAssets = release.assets?.filter(asset => /\.apk$/i.test(asset.name || '')) || []
+    const apk = apkAssets.find(asset => /^network-study-android/i.test(asset.name || ''))
+      || apkAssets.find(asset => /知行网络学堂/i.test(asset.name || ''))
+      || apkAssets[0]
     const tagName = release.tag_name || ''
     const versionName = versionFromTag(tagName)
 
@@ -55,7 +58,7 @@ export async function GET() {
       checkedAt: new Date().toISOString(),
     }, {
       headers: {
-        'Cache-Control': 'public, max-age=300, stale-while-revalidate=900',
+        'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
       },
     })
   }
