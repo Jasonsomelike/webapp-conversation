@@ -52,8 +52,10 @@ const Main: FC<IMainProps> = () => {
   const [targetMessageId, setTargetMessageId] = useState('')
   const targetConversationIdRef = useRef('')
   const highlightedMessageRef = useRef('')
+  const prefillOpenHandledRef = useRef(false)
   const [showMobileConversationList, setShowMobileConversationList] = useState(true)
   const [shareOpen, setShareOpen] = useState(false)
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false)
 
   useEffect(() => {
     const detail = isMobile && !showMobileConversationList
@@ -191,6 +193,18 @@ const Main: FC<IMainProps> = () => {
     setShowMobileConversationList(false)
   }
 
+  useEffect(() => {
+    if (!inited || prefillOpenHandledRef.current)
+    { return }
+    const shouldOpen = sessionStorage.getItem('network-study-open-chat-detail') === '1'
+    const prefill = sessionStorage.getItem('network-study-prefill-chat')
+    if (!shouldOpen || !prefill)
+    { return }
+    prefillOpenHandledRef.current = true
+    sessionStorage.removeItem('network-study-open-chat-detail')
+    handleConversationIdChange('-1')
+  }, [inited])
+
   /*
   * chat info. chat is under conversation.
   */
@@ -204,6 +218,16 @@ const Main: FC<IMainProps> = () => {
   const touchYRef = useRef<number | null>(null)
   const userScrollIntentUntilRef = useRef(0)
   const autoScrollTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null)
+  const scrollToChatBottom = (behavior: ScrollBehavior = 'smooth') => {
+    const scrollParent = findScrollParent(chatListDomRef.current)
+    if (!scrollParent)
+    { return }
+    userPausedFollowRef.current = false
+    followOutputRef.current = true
+    setShowJumpToBottom(false)
+    scrollParent.scrollTo({ top: scrollParent.scrollHeight, behavior })
+    lastScrollTopRef.current = scrollParent.scrollTop
+  }
 
   const findScrollParent = (element: HTMLElement | null) => {
     if (element) {
@@ -229,6 +253,7 @@ const Main: FC<IMainProps> = () => {
     const pauseFollowing = () => {
       userPausedFollowRef.current = true
       followOutputRef.current = false
+      setShowJumpToBottom(true)
       if (autoScrollTimerRef.current) {
         globalThis.clearTimeout(autoScrollTimerRef.current)
         autoScrollTimerRef.current = null
@@ -248,13 +273,13 @@ const Main: FC<IMainProps> = () => {
       const currentTop = scrollParent.scrollTop
       const distanceToBottom = scrollParent.scrollHeight - currentTop - scrollParent.clientHeight
       const movedUp = currentTop < lastScrollTopRef.current - 1
-      const returnedToBottom = distanceToBottom < 24
-        && Date.now() <= userScrollIntentUntilRef.current
-      if (movedUp)
+      const nearBottom = distanceToBottom < 36
+      if (movedUp && !nearBottom)
       { pauseFollowing() }
-      else if (returnedToBottom) {
+      else if (nearBottom) {
         userPausedFollowRef.current = false
         followOutputRef.current = true
+        setShowJumpToBottom(false)
       }
       lastScrollTopRef.current = currentTop
     }
@@ -322,6 +347,7 @@ const Main: FC<IMainProps> = () => {
       if (scrollParent) {
         scrollParent.scrollTop = scrollParent.scrollHeight
         lastScrollTopRef.current = scrollParent.scrollTop
+        setShowJumpToBottom(false)
       }
     }, 50)
     return () => {
@@ -681,7 +707,7 @@ const Main: FC<IMainProps> = () => {
   const handleSend = async (message: string, files?: VisionFile[]) => {
     if (isResponding) {
       notify({ type: 'info', message: t('app.errorMessage.waitForResponse') })
-      return
+      return false
     }
     const toServerInputs: Record<string, any> = {}
     if (currInputs) {
@@ -754,7 +780,7 @@ const Main: FC<IMainProps> = () => {
     let tempNewConversationId = ''
 
     setRespondingTrue()
-    sendChatMessage(data, {
+    return await sendChatMessage(data, {
       getAbortController: (abortController) => {
         setAbortController(abortController)
       },
@@ -1083,6 +1109,15 @@ const Main: FC<IMainProps> = () => {
                       fileConfig={fileConfig}
                       scrollContainerRef={chatListDomRef}
                     />
+                    {showJumpToBottom && (
+                      <button
+                        type="button"
+                        onClick={() => scrollToChatBottom()}
+                        className="absolute bottom-[86px] right-4 z-30 rounded-full border border-black/10 bg-white/95 px-3 py-2 text-xs font-semibold text-[#17342b] shadow-[0_10px_30px_rgba(20,40,31,.16)] backdrop-blur transition active:scale-95"
+                      >
+                        回到底部
+                      </button>
+                    )}
                   </div>)
               }
             </div>

@@ -4,6 +4,7 @@ export interface NativeDownloadSettings {
   customDirectory: boolean
   directoryName: string
   appVersion: string
+  appVersionCode?: number
 }
 
 export interface NativeQqLoginResult {
@@ -26,6 +27,8 @@ declare global {
       resetDownloadDirectory: () => void
       saveBase64Image: (dataUrl: string, filename: string) => void
       saveBase64File?: (dataUrl: string, filename: string, mimeType?: string) => void
+      downloadUrl?: (url: string, filename?: string) => void
+      openExternalUrl?: (url: string) => void
       getBridgeVersion?: () => string
       loginWithQQ: () => void
       bindQQ?: () => void

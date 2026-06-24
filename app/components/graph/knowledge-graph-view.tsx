@@ -437,6 +437,7 @@ export default function KnowledgeGraphView({ nodes: initialNodes, edges: initial
                   'network-study-prefill-chat',
                   `围绕“${selectedNode.label}”安排今天的计算机网络学习任务，并结合我的历史学习记录给出练习建议。`,
                 )
+                sessionStorage.setItem('network-study-open-chat-detail', '1')
                 router.push('/chat')
               }}
               className="mt-4 rounded-xl bg-[#dff67a] px-4 py-2 text-[11px] font-semibold text-[#17342b]"

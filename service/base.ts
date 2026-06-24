@@ -420,7 +420,7 @@ export const ssePost = (
   const { body } = options
   if (body) { options.body = JSON.stringify(body) }
 
-  globalThis.fetch(urlWithPrefix, options)
+  return globalThis.fetch(urlWithPrefix, options)
     .then(async (res: Response) => {
       if (!/^(2|3)\d{2}$/.test(String(res.status))) {
         const text = await res.text().catch(() => '')
@@ -436,9 +436,9 @@ export const ssePost = (
         const message = requestId ? `${baseMessage}（请求 ID：${requestId}）` : baseMessage
         Toast.notify({ type: 'error', message })
         onError?.(message, data.code)
-        return
+        return false
       }
-      return handleStream(res, (str: string, isFirstMessage: boolean, moreInfo: IOnDataMoreInfo) => {
+      handleStream(res, (str: string, isFirstMessage: boolean, moreInfo: IOnDataMoreInfo) => {
         if (moreInfo.errorMessage) {
           Toast.notify({ type: 'error', message: moreInfo.errorMessage })
           return
@@ -447,11 +447,13 @@ export const ssePost = (
       }, () => {
         onCompleted?.()
       }, onThought, onMessageEnd, onMessageReplace, onFile, onWorkflowStarted, onWorkflowFinished, onNodeStarted, onNodeFinished)
+      return true
     })
     .catch((e) => {
       const message = toFriendlyNetworkError(e)
       Toast.notify({ type: 'error', message })
       onError?.(message)
+      return false
     })
 }
 

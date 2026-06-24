@@ -31,7 +31,7 @@ const signedPageImageRedirect = (path: string, requestId: string) => {
     status: 307,
     headers: {
       'Location': url.toString(),
-      'Cache-Control': 'private, no-store',
+      'Cache-Control': 'private, max-age=300, stale-while-revalidate=900',
       'X-Request-Id': requestId,
       'X-Dify-Asset-Source': 'signed-page-image-redirect',
     },
@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
     headers: {
       'Content-Type': upstream.headers.get('Content-Type') || 'application/octet-stream',
       'Content-Disposition': contentDisposition(filename, shouldDownload),
-      'Cache-Control': 'private, no-store',
+      'Cache-Control': 'private, max-age=600, stale-while-revalidate=1800',
       'X-Content-Type-Options': 'nosniff',
       'X-Request-Id': requestId,
       'Accept-Ranges': upstream.headers.get('Accept-Ranges') || 'bytes',

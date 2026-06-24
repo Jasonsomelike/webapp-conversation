@@ -307,7 +307,7 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
   )
 
   return (
-    <div className="flex h-screen h-[100dvh] min-h-0 overflow-hidden bg-[var(--studio-paper)] text-[var(--studio-ink)] lg:min-h-[620px]">
+    <div className="flex h-[100svh] h-[100dvh] min-h-0 overflow-hidden bg-[var(--studio-paper)] text-[var(--studio-ink)] lg:min-h-[620px]">
       <aside className="hidden w-[252px] shrink-0 lg:block">{sidebar}</aside>
 
       {mobileOpen && (

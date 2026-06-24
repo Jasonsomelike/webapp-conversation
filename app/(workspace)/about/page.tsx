@@ -53,6 +53,10 @@ export default function AboutPage() {
             www.jasonsome.cn
             <ArrowTopRightOnSquareIcon className="h-4 w-4" />
           </a>
+          <a href="https://github.com/Jasonsomelike/webapp-conversation/tree/codex/custom-learning-webapp" target="_blank" rel="noreferrer" className="flex items-center justify-between rounded-2xl border border-black/10 px-4 py-3 text-sm font-semibold">
+            Web 项目源码
+            <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+          </a>
           <a href="https://github.com/Jasonsomelike/network-study-android" target="_blank" rel="noreferrer" className="flex items-center justify-between rounded-2xl border border-black/10 px-4 py-3 text-sm font-semibold">
             Android 客户端源码
             <ArrowTopRightOnSquareIcon className="h-4 w-4" />

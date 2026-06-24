@@ -19,6 +19,8 @@ import FileUploaderInAttachmentWrapper from '@/app/components/base/file-uploader
 import type { FileEntity, FileUpload } from '@/app/components/base/file-uploader-in-attachment/types'
 import { getProcessedFiles } from '@/app/components/base/file-uploader-in-attachment/utils'
 
+type SendResult = boolean | void | Promise<boolean | void>
+
 export interface IChatProps {
   chatList: ChatItem[]
   /**
@@ -31,7 +33,7 @@ export interface IChatProps {
   isHideSendInput?: boolean
   onFeedback?: FeedbackFunc
   checkCanSend?: () => boolean
-  onSend?: (message: string, files: VisionFile[]) => void
+  onSend?: (message: string, files: VisionFile[]) => SendResult
   useCurrentUserAvatar?: boolean
   isResponding?: boolean
   controlClearQuery?: number
@@ -59,6 +61,7 @@ const Chat: FC<IChatProps> = ({
   const isUseInputMethod = useRef(false)
 
   const [query, setQuery] = React.useState('')
+  const [isSending, setIsSending] = React.useState(false)
   const queryRef = useRef('')
 
   const handleContentChange = (e: any) => {
@@ -106,7 +109,9 @@ const Chat: FC<IChatProps> = ({
 
   const [attachmentFiles, setAttachmentFiles] = React.useState<FileEntity[]>([])
 
-  const handleSend = () => {
+  const handleSend = async () => {
+    if (isSending || isResponding)
+    { return }
     if (!valid() || (checkCanSend && !checkCanSend())) { return }
     const hasPendingImageUploads = files.some(file => file.progress !== -1 && file.progress < 100)
     const hasPendingAttachmentUploads = attachmentFiles.some(file => file.progress !== -1 && file.progress < 100)
@@ -122,27 +127,34 @@ const Chat: FC<IChatProps> = ({
     }))
     const docAndOtherFiles: VisionFile[] = getProcessedFiles(attachmentFiles)
     const combinedFiles: VisionFile[] = [...imageFiles, ...docAndOtherFiles]
-    onSend(queryRef.current, combinedFiles)
+    const message = queryRef.current
+    setIsSending(true)
+    const accepted = await Promise.resolve(onSend(message, combinedFiles)).catch(() => false)
+    setIsSending(false)
+    if (accepted === false)
+    { return }
     if (!files.find(item => item.type === TransferMethod.local_file && !item.fileId)) {
       if (files.length) { onClear() }
-      if (!isResponding) {
-        setQuery('')
-        queryRef.current = ''
-      }
+      setQuery('')
+      queryRef.current = ''
     }
     if (!attachmentFiles.find(item => item.transferMethod === TransferMethod.local_file && !item.uploadedId)) { setAttachmentFiles([]) }
   }
 
   const handleKeyUp = (e: any) => {
+    if (e.nativeEvent.isComposing || isUseInputMethod.current)
+    { return }
     if (e.code === 'Enter') {
       e.preventDefault()
       // prevent send message when using input method enter
-      if (!e.shiftKey && !isUseInputMethod.current) { handleSend() }
+      if (!e.shiftKey) { void handleSend() }
     }
   }
 
   const handleKeyDown = (e: any) => {
     isUseInputMethod.current = e.nativeEvent.isComposing
+    if (e.nativeEvent.isComposing)
+    { return }
     if (e.code === 'Enter' && !e.shiftKey) {
       const result = query.replace(/\n$/, '')
       setQuery(result)
@@ -154,7 +166,7 @@ const Chat: FC<IChatProps> = ({
   const suggestionClick = (suggestion: string) => {
     setQuery(suggestion)
     queryRef.current = suggestion
-    handleSend()
+    void handleSend()
   }
 
   return (
@@ -215,6 +227,15 @@ const Chat: FC<IChatProps> = ({
                   placeholder="发消息…"
                   value={query}
                   onChange={handleContentChange}
+                  onCompositionStart={() => {
+                    isUseInputMethod.current = true
+                  }}
+                  onCompositionEnd={(event: any) => {
+                    isUseInputMethod.current = false
+                    const value = event.currentTarget.value
+                    setQuery(value)
+                    queryRef.current = value
+                  }}
                   onKeyUp={handleKeyUp}
                   onKeyDown={handleKeyDown}
                   onPaste={event => onPaste(event, visionConfig?.number_limits || 5)}
@@ -233,8 +254,8 @@ const Chat: FC<IChatProps> = ({
                   >
                     <button
                       type="button"
-                      onClick={handleSend}
-                      disabled={!query.trim() || isResponding}
+                      onClick={() => void handleSend()}
+                      disabled={!query.trim() || isResponding || isSending}
                       className="grid h-9 w-9 place-items-center rounded-full bg-[var(--studio-deep)] text-white shadow-sm transition active:scale-95 disabled:bg-black/10 disabled:text-black/25"
                       aria-label="发送消息"
                     >

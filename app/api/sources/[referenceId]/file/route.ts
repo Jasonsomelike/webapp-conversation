@@ -49,7 +49,7 @@ const signedReferenceFileRedirect = ({
     status: 307,
     headers: {
       'Location': url.toString(),
-      'Cache-Control': 'private, no-store',
+      'Cache-Control': 'private, max-age=300, stale-while-revalidate=900',
       'X-Request-Id': requestId,
       'X-Library-File-Source': 'signed-reference-name-redirect',
     },
@@ -90,7 +90,7 @@ const signedReferenceDocumentRedirect = ({
     status: 307,
     headers: {
       'Location': url.toString(),
-      'Cache-Control': 'private, no-store',
+      'Cache-Control': 'private, max-age=300, stale-while-revalidate=900',
       'X-Request-Id': requestId,
       'X-Library-File-Source': 'signed-reference-document-redirect',
     },
@@ -204,7 +204,7 @@ const proxiedReferenceFile = async ({
   const headers = new Headers({
     'Content-Type': upstream.headers.get('Content-Type') || 'application/pdf',
     'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(filename)}`,
-    'Cache-Control': 'private, no-store',
+    'Cache-Control': 'private, max-age=600, stale-while-revalidate=1800',
     'Accept-Ranges': upstream.headers.get('Accept-Ranges') || 'bytes',
     'X-Content-Type-Options': 'nosniff',
     'X-Request-Id': requestId,

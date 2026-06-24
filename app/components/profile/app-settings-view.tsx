@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import {
+  ArrowDownTrayIcon,
   ArrowPathIcon,
+  ArrowTopRightOnSquareIcon,
   CheckCircleIcon,
   FolderOpenIcon,
   InformationCircleIcon,
@@ -12,11 +14,51 @@ import PageCard from '@/app/components/workspace/page-card'
 import { isNetworkStudyApp, readNativeDownloadSettings, type NativeDownloadSettings } from '@/lib/native-app'
 import { isThemeId, themes, type ThemeId } from '@/lib/themes'
 
+interface AndroidUpdateInfo {
+  latest: {
+    tagName: string
+    versionName: string
+    versionCode: number | null
+    name: string
+    notes: string
+    htmlUrl: string
+    apkUrl: string
+    apkName: string
+    apkSize: number
+    publishedAt: string
+    mandatory: boolean
+  }
+  checkedAt: string
+}
+
+const compareVersions = (left = '', right = '') => {
+  const a = left.split(/[.-]/).map(value => Number(value) || 0)
+  const b = right.split(/[.-]/).map(value => Number(value) || 0)
+  const length = Math.max(a.length, b.length)
+  for (let index = 0; index < length; index += 1) {
+    const diff = (a[index] || 0) - (b[index] || 0)
+    if (diff !== 0)
+    { return diff }
+  }
+  return 0
+}
+
+const formatBytes = (bytes: number) => {
+  if (!bytes)
+  { return '' }
+  if (bytes < 1024 * 1024)
+  { return `${Math.max(1, Math.round(bytes / 1024))} KB` }
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
 export default function AppSettingsView({ initialTheme }: { initialTheme: string }) {
   const [settings, setSettings] = useState<NativeDownloadSettings | null>(null)
   const [isApp, setIsApp] = useState(true)
   const [theme, setTheme] = useState<ThemeId>(isThemeId(initialTheme) ? initialTheme : 'forest')
   const [themeSaving, setThemeSaving] = useState(false)
+  const [updateInfo, setUpdateInfo] = useState<AndroidUpdateInfo | null>(null)
+  const [updateError, setUpdateError] = useState('')
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
 
   const refresh = useCallback(() => {
     setIsApp(isNetworkStudyApp())
@@ -28,6 +70,29 @@ export default function AppSettingsView({ initialTheme }: { initialTheme: string
     globalThis.addEventListener('network-study-download-directory-changed', refresh)
     return () => globalThis.removeEventListener('network-study-download-directory-changed', refresh)
   }, [refresh])
+
+  const checkUpdate = useCallback(async () => {
+    setCheckingUpdate(true)
+    setUpdateError('')
+    try {
+      const response = await fetch('/api/android/update', { cache: 'no-store' })
+      const data = await response.json().catch(() => null)
+      if (!response.ok || !data)
+      { throw new Error(data?.error || '检查更新失败') }
+      setUpdateInfo(data as AndroidUpdateInfo)
+    }
+    catch (error) {
+      setUpdateError(error instanceof Error ? error.message : '检查更新失败')
+    }
+    finally {
+      setCheckingUpdate(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isNetworkStudyApp())
+    { void checkUpdate() }
+  }, [checkUpdate])
 
   const changeTheme = async (nextTheme: ThemeId) => {
     const previous = theme
@@ -52,6 +117,29 @@ export default function AppSettingsView({ initialTheme }: { initialTheme: string
     finally {
       setThemeSaving(false)
     }
+  }
+
+  const latest = updateInfo?.latest
+  const hasNewVersion = Boolean(latest && settings && (
+    latest.versionCode && settings.appVersionCode
+      ? latest.versionCode > settings.appVersionCode
+      : compareVersions(latest.versionName, settings.appVersion) > 0
+  ))
+  const openExternal = (url: string) => {
+    if (!url)
+    { return }
+    if (window.NetworkStudyApp?.openExternalUrl)
+    { window.NetworkStudyApp.openExternalUrl(url) }
+    else
+    { globalThis.open(url, '_blank', 'noopener,noreferrer') }
+  }
+  const downloadUpdate = () => {
+    if (!latest?.apkUrl)
+    { return }
+    if (window.NetworkStudyApp?.downloadUrl)
+    { window.NetworkStudyApp.downloadUrl(latest.apkUrl, latest.apkName || `知行网络学堂-${latest.tagName}.apk`) }
+    else
+    { openExternal(latest.apkUrl) }
   }
 
   return (
@@ -83,6 +171,68 @@ export default function AppSettingsView({ initialTheme }: { initialTheme: string
               <span className="mt-2 block truncate text-[10px] font-semibold">{item.name}</span>
             </button>
           ))}
+        </div>
+      </PageCard>
+
+      <PageCard className="mt-5 p-6">
+        <div className="flex items-start gap-4">
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[var(--studio-accent)]/30 text-[var(--studio-accent-strong)]">
+            <ArrowPathIcon className={`h-6 w-6 ${checkingUpdate ? 'animate-spin' : ''}`} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-semibold">版本更新</h2>
+            <p className="mt-1 text-xs leading-6 text-[var(--studio-muted)]">
+              当前版本 {settings?.appVersion || '未知'}{settings?.appVersionCode ? `（${settings.appVersionCode}）` : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={checkingUpdate}
+            onClick={() => void checkUpdate()}
+            className="rounded-2xl border border-black/10 px-3 py-2 text-xs font-semibold disabled:opacity-40"
+          >
+            检查更新
+          </button>
+        </div>
+        <div className="mt-5 rounded-2xl border border-black/[0.07] bg-black/[0.02] p-4 text-sm">
+          {checkingUpdate && <div className="text-[var(--studio-muted)]">正在检查最新版本…</div>}
+          {!checkingUpdate && updateError && <div className="text-red-600">{updateError}</div>}
+          {!checkingUpdate && !updateError && latest && (
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold">最新版本 {latest.versionName || latest.tagName}</span>
+                <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${hasNewVersion ? 'bg-emerald-100 text-emerald-700' : 'bg-black/[0.06] text-black/45'}`}>
+                  {hasNewVersion ? '发现新版本' : '已是最新'}
+                </span>
+                {latest.apkSize > 0 && <span className="text-xs text-[var(--studio-muted)]">{formatBytes(latest.apkSize)}</span>}
+              </div>
+              {latest.publishedAt && (
+                <div className="mt-2 text-xs text-[var(--studio-muted)]">
+                  发布时间 {new Date(latest.publishedAt).toLocaleString('zh-CN')}
+                </div>
+              )}
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  disabled={!latest.apkUrl}
+                  onClick={downloadUpdate}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-[var(--studio-deep)] px-4 text-sm font-semibold text-white disabled:opacity-40"
+                >
+                  <ArrowDownTrayIcon className="h-5 w-5" />
+                  下载更新
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openExternal(latest.htmlUrl)}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-black/10 px-4 text-sm font-semibold"
+                >
+                  <ArrowTopRightOnSquareIcon className="h-5 w-5" />
+                  查看发布说明
+                </button>
+              </div>
+            </div>
+          )}
+          {!checkingUpdate && !updateError && !latest && <div className="text-[var(--studio-muted)]">点击“检查更新”获取最新版本。</div>}
         </div>
       </PageCard>
 

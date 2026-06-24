@@ -32,7 +32,7 @@ const streamedResponse = (
     // Respect the action selected in our UI. Some upstream services always
     // return "attachment", which made Android WebView download a preview.
     'Content-Disposition': dispositionHeader(disposition, filename),
-    'Cache-Control': 'private, no-store',
+    'Cache-Control': 'private, max-age=300, stale-while-revalidate=900',
     'X-Content-Type-Options': 'nosniff',
     'X-Request-Id': requestId,
     'X-Library-File-Source': source,
@@ -61,7 +61,7 @@ const byteResponse = (
   const commonHeaders = {
     'Content-Type': contentType,
     'Content-Disposition': dispositionHeader(disposition, filename),
-    'Cache-Control': 'private, no-store',
+    'Cache-Control': 'private, max-age=600, stale-while-revalidate=1800',
     'X-Content-Type-Options': 'nosniff',
     'X-Dify-Document-Fallback': fallback,
     'X-Library-File-Source': fallback,
@@ -219,7 +219,7 @@ const signedLibraryFileRedirect = ({
   { url.hash = `page=${page}` }
 
   const headers = new Headers({
-    'Cache-Control': 'private, no-store',
+    'Cache-Control': 'private, max-age=600, stale-while-revalidate=1800',
     'X-Request-Id': requestId,
     'X-Library-File-Source': 'signed-browser-redirect',
   })
@@ -312,7 +312,7 @@ export async function GET(
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Content-Disposition': dispositionHeader(disposition, fallbackFilename),
-        'Cache-Control': 'private, no-store',
+        'Cache-Control': 'private, max-age=300, stale-while-revalidate=900',
         'X-Content-Type-Options': 'nosniff',
         'X-Dify-Document-Fallback': 'indexed-text',
         'X-Library-File-Source': 'indexed-text',

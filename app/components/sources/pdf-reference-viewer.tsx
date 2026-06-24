@@ -53,7 +53,7 @@ export default function PdfReferenceViewer({
   // to the file service. The browser then downloads the PDF directly instead
   // of making Vercel relay a large byte-range stream through a non-standard
   // upstream port.
-  const sourceUrl = explicitSourceUrl || `/api/sources/${encodeURIComponent(referenceId || '')}/file?disposition=inline&filename=${encodeURIComponent(filename)}`
+  const sourceUrl = explicitSourceUrl || `/api/sources/${encodeURIComponent(referenceId || '')}/file?disposition=inline&proxy=1&filename=${encodeURIComponent(filename)}`
   const downloadUrl = explicitDownloadUrl || `/api/sources/${encodeURIComponent(referenceId || '')}/file?disposition=attachment&filename=${encodeURIComponent(filename)}`
 
   useEffect(() => {
@@ -153,6 +153,36 @@ export default function PdfReferenceViewer({
   }
   const changeScale = (delta: number) =>
     setScale(value => Math.min(2.4, Math.max(0.65, Number((value + delta).toFixed(2)))))
+
+  useEffect(() => {
+    if (!pageCount)
+    { return }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]'))
+      { return }
+      const key = event.key.toLowerCase()
+      if (key === 'arrowleft' || key === 'a') {
+        event.preventDefault()
+        updatePage(page - 1)
+      }
+      else if (key === 'arrowright' || key === 'd') {
+        event.preventDefault()
+        updatePage(page + 1)
+      }
+    }
+    globalThis.addEventListener('keydown', handleKeyDown)
+    return () => globalThis.removeEventListener('keydown', handleKeyDown)
+  }, [page, pageCount])
+
+  useEffect(() => {
+    if (!pdf || !pageCount)
+    { return }
+    ;[page - 1, page + 1]
+      .filter(nextPage => nextPage >= 1 && nextPage <= pageCount)
+      .forEach(nextPage => void pdf.getPage(nextPage).catch(() => undefined))
+  }, [page, pageCount, pdf])
+
   const goBack = () => {
     if (backHref && backHref !== '/library' && backHref !== '/sources') {
       globalThis.location.assign(backHref)
@@ -279,14 +309,14 @@ export default function PdfReferenceViewer({
               <button type="button" disabled={page <= 1} onClick={() => updatePage(page - 1)} className="grid h-11 w-11 place-items-center disabled:opacity-30" aria-label="上一页">
                 <ChevronLeftIcon className="h-5 w-5" />
               </button>
-              <label className="flex min-w-[104px] items-center justify-center gap-1 border-x border-black/10 px-2 text-xs font-semibold">
+              <label className="flex min-w-[112px] items-center justify-center gap-1 border-x border-black/10 px-2 text-xs font-semibold">
                 <input
                   type="number"
                   min={1}
                   max={pageCount || 1}
                   value={page}
                   onChange={event => updatePage(Number(event.target.value))}
-                  className="w-10 bg-transparent text-right outline-none"
+                  className="w-12 bg-transparent text-center outline-none"
                   aria-label="当前页码"
                 />
                 <span className="text-black/35">/ {pageCount || '—'}</span>
