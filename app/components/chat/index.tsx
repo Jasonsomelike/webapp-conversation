@@ -86,6 +86,14 @@ const Chat: FC<IChatProps> = ({
       queryRef.current = ''
     }
   }, [controlClearQuery])
+  useEffect(() => {
+    const prefill = sessionStorage.getItem('network-study-prefill-chat')
+    if (!prefill)
+    { return }
+    setQuery(prefill)
+    queryRef.current = prefill
+    sessionStorage.removeItem('network-study-prefill-chat')
+  }, [])
   const {
     files,
     onRemove,

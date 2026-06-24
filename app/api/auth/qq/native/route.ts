@@ -25,7 +25,6 @@ export async function POST(request: Request) {
       openId: identity.openid,
       unionId: identity.unionid,
       nickname: profile.nickname,
-      avatarUrl: profile.figureurl_qq_2 || profile.figureurl_2,
     })
     const response = NextResponse.json({ ok: true })
     setSessionCookie(response, {
@@ -41,6 +40,12 @@ export async function POST(request: Request) {
   }
   catch (error) {
     console.error('[qq-native-auth] failed', error)
+    if (error instanceof Error && error.message === 'QQ_NOT_BOUND') {
+      return NextResponse.json({
+        error: '该 QQ 尚未绑定学习账号，请先使用账号密码登录/注册后在“我的画像”中绑定 QQ。',
+        needBinding: true,
+      }, { status: 409 })
+    }
     return NextResponse.json({ error: 'QQ 登录失败，请稍后重试' }, { status: 401 })
   }
 }

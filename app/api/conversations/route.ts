@@ -2,7 +2,6 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { getInfo, setSession } from '@/app/api/utils/common'
 import { db, isDatabaseConfigured } from '@/lib/db'
-import { toConversationPreview } from '@/lib/message-preview'
 
 export async function GET(request: NextRequest) {
   const { sessionId, session } = getInfo(request)
@@ -37,7 +36,9 @@ export async function GET(request: NextRequest) {
     })
     : []
   const previews = new Map<string, { content: string, createdAt: Date }>()
+  const messageCounts = new Map<string, number>()
   recentMessages.forEach((message) => {
+    messageCounts.set(message.difyConversationId, (messageCounts.get(message.difyConversationId) || 0) + 1)
     if (!previews.has(message.difyConversationId)) {
       previews.set(message.difyConversationId, {
         content: message.content,
@@ -49,13 +50,14 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     data: conversations.map((conversation) => {
       const preview = previews.get(conversation.difyConversationId)
+      const exchangeCount = Math.max(1, Math.ceil((messageCounts.get(conversation.difyConversationId) || 0) / 2))
       return {
         id: conversation.difyConversationId,
         name: conversation.title || '网络学习会话',
         inputs: null,
         introduction: '',
         suggested_questions: [],
-        preview: preview ? toConversationPreview(preview.content) || '点击继续本次学习对话' : '点击继续本次学习对话',
+        preview: preview ? `共 ${exchangeCount} 轮学习 · 点击继续本次对话` : '点击继续本次学习对话',
         updatedAt: (preview?.createdAt || conversation.lastMessageAt || conversation.createdAt).toISOString(),
       }
     }),

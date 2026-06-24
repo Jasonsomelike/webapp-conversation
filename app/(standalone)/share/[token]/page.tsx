@@ -1,11 +1,14 @@
 import { notFound } from 'next/navigation'
 import { AcademicCapIcon, CalendarDaysIcon } from '@heroicons/react/24/outline'
-import { db } from '@/lib/db'
+import { db, withDatabaseRetry } from '@/lib/db'
 import { verifyConversationShareToken } from '@/lib/conversation-share'
 import SharedMarkdown from '@/app/components/base/shared-markdown'
 
 const visibleMarkdown = (content: string) =>
-  content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+  content
+    .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
+    .replace(/<think\b[^>]*>[\s\S]*$/gi, '')
+    .trim()
 
 export default async function SharedConversationPage({
   params,
@@ -17,7 +20,7 @@ export default async function SharedConversationPage({
   if (!payload)
   { notFound() }
 
-  const [conversation, owner, messages] = await Promise.all([
+  const [conversation, owner, messages] = await withDatabaseRetry(() => Promise.all([
     db.chatConversation.findFirst({
       where: {
         appUserId: payload.appUserId,
@@ -36,7 +39,14 @@ export default async function SharedConversationPage({
       },
       orderBy: { createdAt: 'asc' },
     }),
-  ])
+  ])).catch((error) => {
+    console.error('[share-page] failed to load conversation', {
+      appUserId: payload.appUserId,
+      conversationId: payload.conversationId,
+      error,
+    })
+    return [null, null, []] as const
+  })
   if (!conversation)
   { notFound() }
 

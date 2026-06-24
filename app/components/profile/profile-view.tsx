@@ -18,6 +18,7 @@ import {
   PencilSquareIcon,
   ShieldCheckIcon,
   SparklesIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
 import type { AppSession } from '@/lib/session'
@@ -223,6 +224,7 @@ export default function ProfileView({
     bridge.bindQQ()
     qqPollRef.current = setInterval(() => {
       try {
+        bridge.getQqLoginStatus?.()
         const raw = bridge.consumePendingQqResult?.()
         if (!raw)
         { return }
@@ -286,6 +288,7 @@ export default function ProfileView({
       if (!response.ok)
       { throw new Error(result.error || '头像保存失败') }
       setAvatarUrl(result.avatar)
+      globalThis.dispatchEvent(new CustomEvent('network-study-avatar-changed', { detail: { avatar: result.avatar } }))
       notify({ type: 'success', message: '头像已更新' })
     }
     catch (error) {
@@ -336,12 +339,16 @@ export default function ProfileView({
               <div className="flex items-center justify-between">
                 <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--studio-accent)]">Learner profile</div>
                 <button
-                  onClick={() => setEditing(true)}
-                  disabled={editing}
-                  className="flex h-8 items-center gap-1.5 rounded-xl bg-white/10 px-3 text-[10px] font-semibold transition hover:bg-white/15 disabled:cursor-default"
+                  onClick={() => {
+                    if (editing)
+                    { cancel() }
+                    else
+                    { setEditing(true) }
+                  }}
+                  className="flex h-8 items-center gap-1.5 rounded-xl bg-white/10 px-3 text-[10px] font-semibold transition hover:bg-white/15"
                 >
-                  {editing ? <CheckIcon className="h-3.5 w-3.5" /> : <PencilSquareIcon className="h-3.5 w-3.5" />}
-                  {editing ? '编辑中' : '编辑'}
+                  {editing ? <XMarkIcon className="h-3.5 w-3.5" /> : <PencilSquareIcon className="h-3.5 w-3.5" />}
+                  {editing ? '取消' : '编辑'}
                 </button>
               </div>
               <div className="mt-7 flex items-center gap-4">
@@ -372,7 +379,7 @@ export default function ProfileView({
                       />
                     )
                     : <h2 className="text-xl font-semibold">{savedProfile.displayName}</h2>}
-                  <div className="mt-1 text-xs text-white/45">@{session.username} · {session.provider === 'qq' ? 'QQ 登录用户' : '账号密码用户'}</div>
+                  <div className="mt-1 text-xs text-white/45">@{session.username}</div>
                 </div>
               </div>
 

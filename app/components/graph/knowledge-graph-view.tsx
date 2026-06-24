@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   ArrowsPointingOutIcon,
   BookOpenIcon,
@@ -26,6 +27,7 @@ const tones: Record<string, string> = {
 }
 
 export default function KnowledgeGraphView({ nodes: initialNodes, edges: initialEdges }: { nodes: KnowledgeGraphNode[], edges: KnowledgeGraphEdge[] }) {
+  const router = useRouter()
   const [nodes, setNodes] = useState(initialNodes)
   const [edges, setEdges] = useState(initialEdges)
   const [selected, setSelected] = useState(initialNodes.find(node => node.type === 'weakness')?.id || initialNodes[0]?.id || '')
@@ -208,8 +210,6 @@ export default function KnowledgeGraphView({ nodes: initialNodes, edges: initial
     if (!viewport)
     { return }
     const isolateGraphZoom = (event: WheelEvent) => {
-      if (!event.ctrlKey)
-      { return }
       event.preventDefault()
       event.stopPropagation()
       const rect = viewport.getBoundingClientRect()
@@ -315,7 +315,7 @@ export default function KnowledgeGraphView({ nodes: initialNodes, edges: initial
           <div className="absolute left-5 top-5 z-20 rounded-xl border border-[#183129]/10 bg-white/90 px-3 py-2 text-[10px] text-[#728078] shadow-sm backdrop-blur">
             <CursorArrowRaysIcon className="mr-1.5 inline h-3.5 w-3.5" />
             <span className="sm:hidden">单指拖动 · 双指缩放 · 点击节点</span>
-            <span className="hidden sm:inline">拖动画布 · Ctrl + 滚轮缩放 · 点击节点查看证据</span>
+            <span className="hidden sm:inline">拖动画布 · 滚轮缩放 · 点击节点查看证据</span>
           </div>
           <div data-graph-control className="absolute bottom-5 right-5 z-20 flex overflow-hidden rounded-xl border border-[#183129]/10 bg-white shadow-sm">
             <button onClick={() => zoomFromCenter(1.15)} className="grid h-11 w-11 place-items-center border-r border-[#183129]/10 sm:h-9 sm:w-9">
@@ -430,7 +430,19 @@ export default function KnowledgeGraphView({ nodes: initialNodes, edges: initial
             <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#dff67a]">AI 建议</div>
             <div className="mt-2 text-sm font-semibold">围绕当前薄弱点继续学习</div>
             <p className="mt-2 text-[11px] leading-5 text-white/55">从当前选中的知识点出发，结合相邻问题、引用文档和推荐节点完成下一轮巩固。</p>
-            <button className="mt-4 rounded-xl bg-[#dff67a] px-4 py-2 text-[11px] font-semibold text-[#17342b]">开始今日任务</button>
+            <button
+              type="button"
+              onClick={() => {
+                sessionStorage.setItem(
+                  'network-study-prefill-chat',
+                  `围绕“${selectedNode.label}”安排今天的计算机网络学习任务，并结合我的历史学习记录给出练习建议。`,
+                )
+                router.push('/chat')
+              }}
+              className="mt-4 rounded-xl bg-[#dff67a] px-4 py-2 text-[11px] font-semibold text-[#17342b]"
+            >
+              开始今日任务
+            </button>
           </div>
         </div>
       </div>

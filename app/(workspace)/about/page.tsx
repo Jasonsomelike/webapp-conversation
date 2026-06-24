@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import {
   AcademicCapIcon,
   ArrowTopRightOnSquareIcon,
@@ -11,9 +10,9 @@ import PageCard from '@/app/components/workspace/page-card'
 
 export default function AboutPage() {
   return (
-    <div className="mx-auto max-w-3xl p-4 sm:p-7">
+    <div className="mx-auto max-w-5xl p-4 sm:p-7">
       <PageCard className="overflow-hidden">
-        <div className="bg-[var(--studio-deep)] px-6 py-10 text-center text-white">
+        <div className="bg-[var(--studio-deep)] px-6 py-9 text-center text-white sm:py-12">
           <div className="mx-auto grid h-20 w-20 place-items-center rounded-[26px] bg-[var(--studio-accent)] text-[var(--studio-deep)]">
             <AcademicCapIcon className="h-10 w-10" />
           </div>
@@ -21,7 +20,7 @@ export default function AboutPage() {
           <p className="mt-2 text-sm text-white/55">计算机网络个性化 AI 学习空间</p>
           <div className="mt-3 text-xs text-white/35">Web / Android · 版本 1.6</div>
         </div>
-        <div className="space-y-5 p-6">
+        <div className="space-y-5 p-5 sm:p-7">
           <p className="text-sm leading-7 text-[var(--studio-muted)]">
             基于 Dify Chatflow、课程知识库和账号隔离学习数据构建。每位用户的对话、文档引用、学习画像与知识图谱相互独立。
           </p>
@@ -50,18 +49,18 @@ export default function AboutPage() {
           <div className="rounded-2xl border border-black/[0.07] bg-black/[0.018] p-4 text-xs leading-6 text-[var(--studio-muted)]">
             安装包体积较小是架构选择的结果：应用不携带 Chromium、离线大模型或重复课程资源。核心体验由原生外壳、系统 WebView、服务端学习数据与按需加载的页面共同组成。
           </div>
-          <Link href="https://www.jasonsome.cn" className="flex items-center justify-between rounded-2xl border border-black/10 px-4 py-3 text-sm font-semibold">
+          <a href="https://www.jasonsome.cn" target="_blank" rel="noreferrer" className="flex items-center justify-between rounded-2xl border border-black/10 px-4 py-3 text-sm font-semibold">
             www.jasonsome.cn
             <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-          </Link>
-          <Link href="https://github.com/Jasonsomelike/network-study-android" className="flex items-center justify-between rounded-2xl border border-black/10 px-4 py-3 text-sm font-semibold">
+          </a>
+          <a href="https://github.com/Jasonsomelike/network-study-android" target="_blank" rel="noreferrer" className="flex items-center justify-between rounded-2xl border border-black/10 px-4 py-3 text-sm font-semibold">
             Android 客户端源码
             <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-          </Link>
-          <Link href="https://github.com/Jasonsomelike/pdf-page-processor" className="flex items-center justify-between rounded-2xl border border-black/10 px-4 py-3 text-sm font-semibold">
+          </a>
+          <a href="https://github.com/Jasonsomelike/pdf-page-processor" target="_blank" rel="noreferrer" className="flex items-center justify-between rounded-2xl border border-black/10 px-4 py-3 text-sm font-semibold">
             PDF 分页处理插件源码
             <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-          </Link>
+          </a>
           <div className="text-center text-[11px] text-black/35">© 2026 知行网络学堂</div>
         </div>
       </PageCard>

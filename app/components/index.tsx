@@ -390,6 +390,36 @@ const Main: FC<IMainProps> = () => {
       highlightedElement?.classList.remove('message-highlight')
     }
   }, [chatList, currConversationId, targetMessageId])
+
+  useEffect(() => {
+    let raw = ''
+    try {
+      raw = sessionStorage.getItem('network-study-source-return') || ''
+      if (!raw)
+      { return }
+      const state = JSON.parse(raw) as { href?: string, y?: number, at?: number }
+      const currentHref = `${globalThis.location.pathname}${globalThis.location.search}${globalThis.location.hash}`
+      if (!state.href || state.href !== currentHref || Date.now() - Number(state.at || 0) > 10 * 60 * 1000)
+      { return }
+      const scrollParent = findScrollParent(chatListDomRef.current)
+      if (!scrollParent)
+      { return }
+      followOutputRef.current = false
+      userPausedFollowRef.current = true
+      const restore = () => {
+        scrollParent.scrollTo({ top: Math.max(0, Number(state.y || 0)), behavior: 'auto' })
+        lastScrollTopRef.current = scrollParent.scrollTop
+      }
+      restore()
+      const timers = [120, 420, 900].map(delay => globalThis.setTimeout(restore, delay))
+      sessionStorage.removeItem('network-study-source-return')
+      return () => timers.forEach(timer => globalThis.clearTimeout(timer))
+    }
+    catch {
+      if (raw)
+      { sessionStorage.removeItem('network-study-source-return') }
+    }
+  }, [chatList, currConversationId])
   // user can not edit inputs if user had send message
   const canEditInputs = !chatList.some(item => item.isAnswer === false) && isNewConversation
   const createNewChat = () => {

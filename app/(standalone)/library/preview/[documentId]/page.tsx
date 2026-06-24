@@ -7,7 +7,7 @@ export default async function LibraryPdfPreviewPage({
   searchParams,
 }: {
   params: Promise<{ documentId: string }>
-  searchParams: Promise<{ filename?: string, page?: string }>
+  searchParams: Promise<{ filename?: string, page?: string, returnTo?: string }>
 }) {
   const session = await getSession()
   if (!session)
@@ -26,7 +26,7 @@ export default async function LibraryPdfPreviewPage({
       initialPage={page}
       sourceUrl={`/api/library/documents/${encodedId}/file?disposition=inline&filename=${encodedFilename}`}
       downloadUrl={`/api/library/documents/${encodedId}/file?disposition=attachment&filename=${encodedFilename}`}
-      backHref="/library"
+      backHref={query.returnTo?.startsWith('/') ? query.returnTo : '/library'}
     />
   )
 }

@@ -55,6 +55,9 @@ export async function GET(request: NextRequest) {
   const previewUrl = new URL(`/sources/preview/${encodeURIComponent(reference.id)}`, request.url)
   previewUrl.searchParams.set('page', String(pageNumber))
   previewUrl.searchParams.set('filename', documentName)
+  const returnTo = request.nextUrl.searchParams.get('returnTo')
+  if (returnTo?.startsWith('/'))
+  { previewUrl.searchParams.set('returnTo', returnTo) }
 
   if (request.nextUrl.searchParams.get('redirect') === '1')
   { return NextResponse.redirect(previewUrl) }

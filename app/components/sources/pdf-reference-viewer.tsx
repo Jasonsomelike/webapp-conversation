@@ -154,6 +154,10 @@ export default function PdfReferenceViewer({
   const changeScale = (delta: number) =>
     setScale(value => Math.min(2.4, Math.max(0.65, Number((value + delta).toFixed(2)))))
   const goBack = () => {
+    if (backHref && backHref !== '/library' && backHref !== '/sources') {
+      globalThis.location.assign(backHref)
+      return
+    }
     try {
       const referrer = document.referrer ? new URL(document.referrer) : null
       if (referrer?.origin === globalThis.location.origin && globalThis.history.length > 1) {

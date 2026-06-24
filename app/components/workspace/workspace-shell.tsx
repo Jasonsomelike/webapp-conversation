@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -88,9 +88,12 @@ const routeMeta: Record<string, { eyebrow: string, title: string, description: s
 interface WorkspaceShellProps {
   children: ReactNode
   session: AppSession
+  avatarUrl?: string | null
 }
 
-export default function WorkspaceShell({ children, session }: WorkspaceShellProps) {
+const guestAllowedRoutes = new Set(['/chat', '/library'])
+
+export default function WorkspaceShell({ children, session, avatarUrl: initialAvatarUrl = null }: WorkspaceShellProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -99,11 +102,14 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [nativeApp, setNativeApp] = useState(false)
   const [chatDetail, setChatDetail] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl)
+  const [loginPromptOpen, setLoginPromptOpen] = useState(false)
   const initialTheme = isThemeId(session.theme) ? session.theme : 'forest'
   const [theme, setTheme] = useState<ThemeId>(initialTheme)
   const chatResponding = useChatRuntime(state => state.isResponding)
   const current = routeMeta[pathname] || routeMeta['/chat']
   const sidebarNavItems = isAdminSession(session) ? [...navItems, adminNavItem] : navItems
+  const isGuest = session.provider === 'guest'
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -130,6 +136,10 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
       const href = (event as CustomEvent<{ href?: string }>).detail?.href
       if (!href)
       { return }
+      if (isGuest && !guestAllowedRoutes.has(href)) {
+        setLoginPromptOpen(true)
+        return
+      }
       setPendingHref(href)
       router.push(href)
     }
@@ -139,7 +149,23 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
       window.NetworkStudyApp?.hideShell()
       delete document.documentElement.dataset.nativeApp
     }
-  }, [router])
+  }, [isGuest, router])
+
+  useEffect(() => {
+    if (isGuest && !guestAllowedRoutes.has(pathname)) {
+      setLoginPromptOpen(true)
+      router.replace('/chat')
+    }
+  }, [isGuest, pathname, router])
+
+  useEffect(() => {
+    const handleAvatarChanged = (event: Event) => {
+      const nextAvatar = (event as CustomEvent<{ avatar?: string | null }>).detail?.avatar
+      setAvatarUrl(nextAvatar || null)
+    }
+    globalThis.addEventListener('network-study-avatar-changed', handleAvatarChanged)
+    return () => globalThis.removeEventListener('network-study-avatar-changed', handleAvatarChanged)
+  }, [])
 
   useEffect(() => {
     if (nativeApp)
@@ -165,6 +191,18 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
     await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/login')
     router.refresh()
+  }
+
+  const handleNavClick = (event: MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (isGuest && !guestAllowedRoutes.has(href)) {
+      event.preventDefault()
+      setMobileOpen(false)
+      setLoginPromptOpen(true)
+      return
+    }
+    setMobileOpen(false)
+    if (pathname !== href)
+    { setPendingHref(href) }
   }
 
   const changeTheme = async (nextTheme: ThemeId) => {
@@ -203,11 +241,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
                 href={item.href}
                 key={item.href}
                 aria-current={active ? 'page' : undefined}
-                onClick={() => {
-                  setMobileOpen(false)
-                  if (pathname !== item.href)
-                  { setPendingHref(item.href) }
-                }}
+                onClick={event => handleNavClick(event, item.href)}
                 className={`group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm transition-all ${
                   active
                     ? 'bg-[var(--studio-accent)] font-semibold text-[var(--studio-deep)] shadow-[0_10px_30px_rgba(0,0,0,0.16)]'
@@ -236,7 +270,9 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
           </div>
           <div>
             <div className="text-xs font-semibold">专属学习数据空间</div>
-            <div className="mt-1 text-[11px] leading-4 text-white/45">对话、引用与分析均绑定账号 {session.username}</div>
+            <div className="mt-1 text-[11px] leading-4 text-white/45">
+              {isGuest ? '游客可体验对话与文档，登录后解锁完整学习数据空间' : `对话、引用与分析均绑定账号 ${session.username}`}
+            </div>
           </div>
         </div>
       </div>
@@ -244,16 +280,14 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
       <div className="flex items-center gap-1 border-t border-white/10 p-3">
         <Link
           href="/profile"
-          onClick={() => {
-            setMobileOpen(false)
-            if (pathname !== '/profile')
-            { setPendingHref('/profile') }
-          }}
+          onClick={event => handleNavClick(event, '/profile')}
           className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-white/[0.06]"
           title="进入我的画像"
         >
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--studio-accent)] font-semibold text-[var(--studio-deep)]">
-            {session.name.slice(0, 1)}
+          <div className="grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-[var(--studio-accent)] font-semibold text-[var(--studio-deep)]">
+            {avatarUrl
+              ? <img src={avatarUrl} alt="" className="h-full w-full object-cover" onError={() => setAvatarUrl(null)} />
+              : session.name.slice(0, 1)}
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-xs font-semibold">{session.name}</div>
@@ -375,10 +409,7 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
                 key={item.href}
                 href={item.href}
                 aria-current={active ? 'page' : undefined}
-                onClick={() => {
-                  if (pathname !== item.href)
-                  { setPendingHref(item.href) }
-                }}
+                onClick={event => handleNavClick(event, item.href)}
                 className={`flex min-w-[53px] flex-col items-center gap-1 text-[10px] font-medium ${active ? 'text-[var(--studio-deep)]' : 'text-black/45'}`}
               >
                 <span className={`relative grid h-8 w-10 place-items-center rounded-xl ${active ? 'bg-[var(--studio-accent)]' : ''}`}>
@@ -392,6 +423,35 @@ export default function WorkspaceShell({ children, session }: WorkspaceShellProp
             )
           })}
         </nav>
+        {loginPromptOpen && (
+          <div className="fixed inset-0 z-[90] grid place-items-center bg-black/45 p-5 backdrop-blur-sm">
+            <div className="w-full max-w-sm rounded-[26px] bg-[var(--studio-surface)] p-6 text-center shadow-2xl">
+              <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[var(--studio-accent)]/45 text-[var(--studio-accent-strong)]">
+                <UserCircleIcon className="h-7 w-7" />
+              </div>
+              <h2 className="mt-4 text-lg font-semibold">登录后继续使用</h2>
+              <p className="mt-2 text-sm leading-6 text-[var(--studio-muted)]">
+                游客模式可体验 AI 对话和知识库文档。引用、图谱、分析与画像需要登录后按账号保存。
+              </p>
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setLoginPromptOpen(false)}
+                  className="h-11 rounded-2xl border border-black/10 text-sm font-semibold"
+                >
+                  继续体验
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push('/login')}
+                  className="h-11 rounded-2xl bg-[var(--studio-deep)] text-sm font-semibold text-white"
+                >
+                  去登录
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

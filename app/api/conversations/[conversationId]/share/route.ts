@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { db } from '@/lib/db'
+import { db, withDatabaseRetry } from '@/lib/db'
 import { createConversationShareToken } from '@/lib/conversation-share'
 import { getSessionFromRequest } from '@/lib/session'
 
@@ -31,9 +31,16 @@ export async function POST(
   if (!parsed.success)
   { return NextResponse.json({ error: '分享范围无效' }, { status: 400 }) }
 
-  const conversation = await db.chatConversation.findFirst({
+  const conversation = await withDatabaseRetry(() => db.chatConversation.findFirst({
     where: { appUserId: session.id, difyConversationId: conversationId, deletedAt: null },
     select: { id: true },
+  })).catch((error) => {
+    console.error('[conversation-share] failed to load conversation', {
+      appUserId: session.id,
+      conversationId,
+      error,
+    })
+    return null
   })
   if (!conversation)
   { return NextResponse.json({ error: 'Conversation not found' }, { status: 404 }) }
@@ -42,13 +49,20 @@ export async function POST(
     ? [...new Set(parsed.data.messageIds)]
     : undefined
   if (messageIds?.length) {
-    const ownedMessages = await db.chatMessage.count({
+    const ownedMessages = await withDatabaseRetry(() => db.chatMessage.count({
       where: {
         appUserId: session.id,
         difyConversationId: conversationId,
         role: 'assistant',
         difyMessageId: { in: messageIds },
       },
+    })).catch((error) => {
+      console.error('[conversation-share] failed to verify selected messages', {
+        appUserId: session.id,
+        conversationId,
+        error,
+      })
+      return -1
     })
     if (ownedMessages !== messageIds.length)
     { return NextResponse.json({ error: '分享内容已变化，请刷新后重试' }, { status: 409 }) }

@@ -26,7 +26,7 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
   const selected = initialReferences.find(item => item.id === selectedId) || filtered[0]
   const documentCount = new Set(initialReferences.map(item => item.documentName)).size
   const documentPreviewUrl = selected
-    ? `/sources/preview/${selected.id}?page=${selected.pageNumber || 1}&filename=${encodeURIComponent(selected.documentName)}`
+    ? `/sources/preview/${selected.id}?page=${selected.originalPageNumber || selected.pageNumber || 1}&filename=${encodeURIComponent(selected.documentName)}&returnTo=${encodeURIComponent('/sources')}`
     : ''
   const documentDownloadUrl = selected
     ? `/api/sources/${selected.id}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`
@@ -71,6 +71,17 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
       ]),
     ]
     const csv = rows.map(row => row.map(value => `"${value.replaceAll('"', '""')}"`).join(',')).join('\n')
+    if (window.NetworkStudyApp?.saveBase64File) {
+      const bytes = new TextEncoder().encode(`\uFEFF${csv}`)
+      let binary = ''
+      bytes.forEach((byte) => { binary += String.fromCharCode(byte) })
+      window.NetworkStudyApp.saveBase64File(
+        `data:text/csv;charset=utf-8;base64,${btoa(binary)}`,
+        '我的知识库引用.csv',
+        'text/csv',
+      )
+      return
+    }
     const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }))
     const anchor = document.createElement('a')
     anchor.href = url
@@ -96,8 +107,6 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
         )}
         <a
           href={documentPreviewUrl}
-          target="_blank"
-          rel="noreferrer"
           className={`inline-flex items-center justify-center gap-1.5 font-semibold ${mobile ? 'h-11 rounded-2xl border border-black/10 bg-white px-2 text-[11px]' : 'rounded-xl border border-black/10 px-4 py-2.5 text-xs'}`}
         >
           预览 PDF <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
@@ -120,8 +129,6 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
       ? (
         <a
           href={documentPreviewUrl || pageImageHref}
-          target="_blank"
-          rel="noreferrer"
           className={`group mt-5 inline-block max-w-full overflow-hidden rounded-2xl border border-black/10 bg-black/[0.025] p-2 text-left shadow-sm ${mobile ? 'w-full' : 'sm:max-w-[50%]'}`}
         >
           <img

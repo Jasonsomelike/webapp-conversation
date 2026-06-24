@@ -7,6 +7,7 @@ import {
   ChevronRightIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
+import { stripReasoningContent } from '@/lib/message-preview'
 
 interface AdminConversation {
   difyConversationId: string
@@ -175,7 +176,9 @@ export default function AdminUserConversations({
                                 <span className="font-semibold">{message.role === 'user' ? '用户' : '计网Agent'}</span>
                                 <span>{new Date(message.createdAt).toLocaleString('zh-CN')}</span>
                               </div>
-                              <div className="whitespace-pre-wrap break-words text-xs leading-6 [overflow-wrap:anywhere]">{message.content}</div>
+                              <div className="whitespace-pre-wrap break-words text-xs leading-6 [overflow-wrap:anywhere]">
+                                {stripReasoningContent(message.content)}
+                              </div>
                             </article>
                           ))}
                           {!messages.length && <div className="py-16 text-center text-sm text-black/40">该会话暂无已保存消息</div>}

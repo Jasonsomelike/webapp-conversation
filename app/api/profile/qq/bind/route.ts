@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getSession } from '@/lib/session'
-import { bindQqIdentityToUser, getQqIdentity, getQqProfile } from '@/lib/qq-auth'
+import { bindQqIdentityToUser, getQqIdentity } from '@/lib/qq-auth'
 
 const schema = z.object({
   accessToken: z.string().min(16).max(512),
@@ -22,15 +22,13 @@ export async function POST(request: Request) {
     const identity = await getQqIdentity(parsed.data.accessToken, appId)
     if (identity.openid !== parsed.data.openId)
     { return NextResponse.json({ error: 'QQ 登录身份校验失败' }, { status: 401 }) }
-    const profile = await getQqProfile(parsed.data.accessToken, appId, identity.openid)
     await bindQqIdentityToUser({
       appUserId: session.id,
       appId,
       openId: identity.openid,
       unionId: identity.unionid,
-      avatarUrl: profile.figureurl_qq_2 || profile.figureurl_2,
     })
-    return NextResponse.json({ ok: true, nickname: profile.nickname || '' })
+    return NextResponse.json({ ok: true })
   }
   catch (error) {
     if (error instanceof Error && error.message === 'QQ_ALREADY_BOUND')

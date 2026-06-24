@@ -38,8 +38,15 @@ export default function LoginPanel() {
     router.prefetch('/chat')
     setNativeApp(isNetworkStudyApp())
     const error = new URLSearchParams(globalThis.location.search).get('qq_error')
-    if (error)
-    { setError(error === 'config' ? 'QQ 登录服务尚未完成配置' : 'QQ 登录失败，请重试') }
+    if (error) {
+      setError(
+        error === 'config'
+          ? 'QQ 登录服务尚未完成配置'
+          : error === 'unbound'
+            ? '该 QQ 尚未绑定学习账号，请先使用账号密码登录/注册，再到“我的画像”中绑定 QQ。'
+            : 'QQ 登录失败，请重试',
+      )
+    }
   }, [router])
 
   useEffect(() => {
@@ -109,6 +116,7 @@ export default function LoginPanel() {
       bridge.loginWithQQ()
       qqPollRef.current = setInterval(() => {
         try {
+          bridge.getQqLoginStatus?.()
           const raw = bridge.consumePendingQqResult?.()
           if (!raw)
           { return }
@@ -215,6 +223,26 @@ export default function LoginPanel() {
     setError('')
     setNotice('')
     setSecurityQuestion('')
+  }
+
+  const enterGuestMode = async () => {
+    setLoading(true)
+    setError('')
+    setNotice('')
+    try {
+      const response = await fetch('/api/auth/guest', { method: 'POST' })
+      const result = await response.json()
+      if (!response.ok)
+      { throw new Error(result.error || '游客模式暂时不可用') }
+      router.replace('/chat')
+      router.refresh()
+    }
+    catch (guestError) {
+      setError(guestError instanceof Error ? guestError.message : '游客模式暂时不可用')
+    }
+    finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -412,6 +440,14 @@ export default function LoginPanel() {
                       使用 QQ 登录
                     </a>
                   )}
+                <button
+                  type="button"
+                  disabled={loading || qqLoading}
+                  onClick={() => void enterGuestMode()}
+                  className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl border border-black/10 bg-white text-sm font-semibold text-[#526159] transition hover:bg-black/[0.025] disabled:opacity-55"
+                >
+                  先以游客模式体验
+                </button>
               </div>
             )}
 
@@ -432,6 +468,16 @@ export default function LoginPanel() {
               <ShieldCheckIcon className="h-3.5 w-3.5" />
               QQ 凭证仅用于身份校验，App Key 只保存在服务端
             </div>
+            {!nativeApp && (
+              <a
+                href="https://beian.miit.gov.cn/"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 block text-center text-[10px] text-[#9da59f] transition hover:text-[#526159]"
+              >
+                蜀ICP备2024115658号-1
+              </a>
+            )}
           </div>
         </div>
       </div>

@@ -8,7 +8,7 @@ import { extractKnowledgeReferences } from '@/lib/reference-extractor'
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
-const signedChatRelayRedirect = ({
+const signedChatRelayUrl = ({
   rawBody,
   appUserId,
   difyUserId,
@@ -36,14 +36,7 @@ const signedChatRelayRedirect = ({
   url.searchParams.set('expires', expires)
   url.searchParams.set('signature', signature)
 
-  return new Response(null, {
-    status: 307,
-    headers: {
-      'Location': url.toString(),
-      'Cache-Control': 'private, no-store',
-      'X-Request-Id': requestId,
-    },
-  })
+  return url
 }
 export async function POST(request: NextRequest) {
   const requestId = randomUUID()
@@ -81,14 +74,50 @@ export async function POST(request: NextRequest) {
       { status: 400, headers: { 'X-Request-Id': requestId } },
     )
   }
-  const relayRedirect = signedChatRelayRedirect({
+  const relayUrl = signedChatRelayUrl({
     rawBody,
     appUserId: session.id,
     difyUserId: session.difyUserId,
     requestId,
   })
-  if (relayRedirect)
-  { return relayRedirect }
+  if (relayUrl) {
+    try {
+      const relayResponse = await fetch(relayUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': request.headers.get('content-type') || 'application/json',
+          'Accept': request.headers.get('accept') || 'text/event-stream',
+        },
+        body: rawBody,
+        cache: 'no-store',
+      })
+      if (!relayResponse.ok || !relayResponse.body) {
+        const detail = await relayResponse.text().catch(() => '')
+        console.error('[dify-chat] relay failed, falling back to direct upstream', {
+          requestId,
+          status: relayResponse.status,
+          statusText: relayResponse.statusText,
+          body: detail.slice(0, 1000),
+        })
+      }
+      else {
+        return new Response(relayResponse.body, {
+          status: relayResponse.status,
+          headers: {
+            'Content-Type': relayResponse.headers.get('content-type') || 'text/event-stream; charset=utf-8',
+            'Cache-Control': 'no-cache, no-transform',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
+            'X-Request-Id': requestId,
+          },
+        })
+      }
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error('[dify-chat] relay unavailable, falling back to direct upstream', { requestId, error: message })
+    }
+  }
 
   const currentDate = new Intl.DateTimeFormat('zh-CN', {
     timeZone: 'Asia/Shanghai',

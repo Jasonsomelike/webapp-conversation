@@ -25,6 +25,7 @@ declare global {
       chooseDownloadDirectory: () => void
       resetDownloadDirectory: () => void
       saveBase64Image: (dataUrl: string, filename: string) => void
+      saveBase64File?: (dataUrl: string, filename: string, mimeType?: string) => void
       getBridgeVersion?: () => string
       loginWithQQ: () => void
       bindQQ?: () => void

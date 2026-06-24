@@ -5,6 +5,7 @@ import { getSession, setSessionCookie } from '@/lib/session'
 
 const stateCookie = 'qq_oauth_state'
 const purposeCookie = 'qq_oauth_purpose'
+const defaultCallbackPath = '/api/auth/qq/callback'
 
 export async function GET(request: NextRequest) {
   const origin = process.env.AUTH_URL || request.nextUrl.origin
@@ -25,7 +26,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  const redirectUri = `${origin.replace(/\/$/, '')}/api/auth/qq/web/callback`
+  const callbackPath = request.nextUrl.pathname.endsWith('/web/callback')
+    ? '/api/auth/qq/web/callback'
+    : defaultCallbackPath
+  const redirectUri = `${origin.replace(/\/$/, '')}${callbackPath}`
   try {
     const tokenUrl = new URL('https://graph.qq.com/oauth2.0/token')
     tokenUrl.searchParams.set('grant_type', 'authorization_code')
@@ -63,7 +67,6 @@ export async function GET(request: NextRequest) {
         appId,
         openId: verifiedIdentity.openid,
         unionId: verifiedIdentity.unionid,
-        avatarUrl: profile.figureurl_qq_2 || profile.figureurl_2,
       })
       const response = NextResponse.redirect(new URL('/profile?qq_bound=1', origin))
       response.cookies.set(stateCookie, '', { path: '/', maxAge: 0 })
@@ -75,7 +78,6 @@ export async function GET(request: NextRequest) {
       openId: verifiedIdentity.openid,
       unionId: verifiedIdentity.unionid,
       nickname: profile.nickname,
-      avatarUrl: profile.figureurl_qq_2 || profile.figureurl_2,
     })
 
     const response = NextResponse.redirect(new URL('/chat', origin))
@@ -95,8 +97,12 @@ export async function GET(request: NextRequest) {
   catch (error) {
     console.error('[qq-web-auth] failed', error)
     const failureUrl = purpose === 'bind' ? new URL('/profile?qq_bind_error=1', origin) : loginUrl
-    if (purpose !== 'bind')
-    { failureUrl.searchParams.set('qq_error', 'failed') }
+    if (purpose !== 'bind') {
+      failureUrl.searchParams.set(
+        'qq_error',
+        error instanceof Error && error.message === 'QQ_NOT_BOUND' ? 'unbound' : 'failed',
+      )
+    }
     const response = NextResponse.redirect(failureUrl)
     response.cookies.set(stateCookie, '', { path: '/', maxAge: 0 })
     response.cookies.set(purposeCookie, '', { path: '/', maxAge: 0 })

@@ -45,6 +45,32 @@ const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElemen
   const sourceHref = isKnowledgeSource
     ? sourceInfo?.previewUrl || `/api/sources/image-info?redirect=1&url=${encodeURIComponent(absoluteSourceUrl)}`
     : imageUrl
+  const sourceHrefWithReturn = () => {
+    if (!isKnowledgeSource || typeof window === 'undefined')
+    { return sourceHref }
+    const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`
+    const separator = sourceHref.includes('?') ? '&' : '?'
+    return `${sourceHref}${separator}returnTo=${encodeURIComponent(returnTo)}`
+  }
+  const rememberReturnPosition = (element?: HTMLElement | null) => {
+    if (!isKnowledgeSource || typeof window === 'undefined')
+    { return }
+    const scrollParent = (() => {
+      let current = element?.parentElement || null
+      while (current) {
+        const style = window.getComputedStyle(current)
+        if (/(auto|scroll)/.test(style.overflowY))
+        { return current }
+        current = current.parentElement
+      }
+      return null
+    })()
+    sessionStorage.setItem('network-study-source-return', JSON.stringify({
+      href: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+      y: scrollParent?.scrollTop ?? window.scrollY,
+      at: Date.now(),
+    }))
+  }
 
   useEffect(() => {
     if (!absoluteSourceUrl.includes('/page-images/'))
@@ -79,7 +105,7 @@ const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElemen
       <span className='markdown-media-error'>
         <span>{sourceLabel} · 图片加载失败</span>
         <button type='button' onClick={() => setFailed(false)}>重试</button>
-        <a href={sourceHref} target='_blank' rel='noreferrer'>{originalLabel}</a>
+        <a href={sourceHrefWithReturn()} onClick={event => rememberReturnPosition(event.currentTarget)}>{originalLabel}</a>
       </span>
     )
   }
@@ -104,7 +130,15 @@ const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElemen
         </span>
         <figcaption className='flex flex-wrap items-center justify-between gap-2 border-t border-black/10 px-3 py-2 text-[11px] text-[var(--studio-muted)]'>
           <span>{sourceLabel}</span>
-          <a href={sourceHref} target='_blank' rel='noreferrer' onClick={event => event.stopPropagation()} className='font-semibold text-[var(--studio-accent-strong)]'>
+          <a
+            href={sourceHrefWithReturn()}
+            rel='noreferrer'
+            onClick={(event) => {
+              event.stopPropagation()
+              rememberReturnPosition(event.currentTarget)
+            }}
+            className='font-semibold text-[var(--studio-accent-strong)]'
+          >
             {originalLabel}
           </a>
         </figcaption>

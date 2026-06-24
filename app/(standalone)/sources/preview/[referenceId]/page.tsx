@@ -7,7 +7,7 @@ export default async function SourcePdfPreviewPage({
   searchParams,
 }: {
   params: Promise<{ referenceId: string }>
-  searchParams: Promise<{ filename?: string, page?: string }>
+  searchParams: Promise<{ filename?: string, page?: string, returnTo?: string }>
 }) {
   const session = await getSession()
   if (!session)
@@ -20,7 +20,7 @@ export default async function SourcePdfPreviewPage({
       referenceId={referenceId}
       filename={query.filename || '知识库来源.pdf'}
       initialPage={page}
-      backHref="/sources"
+      backHref={query.returnTo?.startsWith('/') ? query.returnTo : '/sources'}
     />
   )
 }

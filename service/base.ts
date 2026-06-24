@@ -22,6 +22,13 @@ const baseOptions = {
   redirect: 'follow',
 }
 
+const toFriendlyNetworkError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/failed\s*to\s*fetch|networkerror|load failed|request timeout/i.test(message))
+  { return '网络连接失败，请检查网络或稍后重试' }
+  return message
+}
+
 export interface WorkflowStartedResponse {
   task_id: string
   workflow_run_id: string
@@ -347,7 +354,7 @@ const baseFetch = (url: string, fetchOptions: any, { needAllResponseContent }: I
           resolve(needAllResponseContent ? resClone : data)
         })
         .catch((err) => {
-          Toast.notify({ type: 'error', message: err })
+          Toast.notify({ type: 'error', message: toFriendlyNetworkError(err) })
           reject(err)
         })
     }),
@@ -442,7 +449,7 @@ export const ssePost = (
       }, onThought, onMessageEnd, onMessageReplace, onFile, onWorkflowStarted, onWorkflowFinished, onNodeStarted, onNodeFinished)
     })
     .catch((e) => {
-      const message = e instanceof Error ? e.message : String(e)
+      const message = toFriendlyNetworkError(e)
       Toast.notify({ type: 'error', message })
       onError?.(message)
     })
