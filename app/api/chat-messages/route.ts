@@ -38,6 +38,15 @@ const signedChatRelayUrl = ({
 
   return url
 }
+
+const asRecord = (value: unknown): Record<string, any> | undefined =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, any>
+    : undefined
+
+const asRecordArray = (value: unknown): Record<string, unknown>[] =>
+  Array.isArray(value) ? value.filter(item => asRecord(item)) as Record<string, unknown>[] : []
+
 export async function POST(request: NextRequest) {
   const requestId = randomUUID()
   const session = getSessionFromRequest(request)
@@ -101,7 +110,181 @@ export async function POST(request: NextRequest) {
         })
       }
       else {
-        return new Response(relayResponse.body, {
+        const relayReader = relayResponse.body.getReader()
+        const relayDecoder = new TextDecoder()
+        let relayBuffer = ''
+        let relayAnswer = ''
+        let relayConversationId = body.conversation_id || ''
+        let relayMessageId = ''
+        let relayMetadata: Record<string, any> | undefined
+        const relayAgentLogs: unknown[] = []
+        const relayAssistantFiles: Record<string, unknown>[] = []
+        let relayAgentLogBytes = 0
+        let relayWorkflowProcess: {
+          status: string
+          tracing: Record<string, any>[]
+          expand?: boolean
+        } | undefined
+        let relayPersistPayload: Record<string, any> | undefined
+
+        const readRelayEvents = (text: string) => {
+          relayBuffer += text
+          const blocks = relayBuffer.split(/\r?\n\r?\n/)
+          relayBuffer = blocks.pop() || ''
+          blocks.forEach((block) => {
+            const data = block
+              .split(/\r?\n/)
+              .filter(line => line.startsWith('data:'))
+              .map(line => line.slice(5).trim())
+              .join('\n')
+            if (!data || data === '[DONE]')
+            { return }
+            try {
+              const event = JSON.parse(data)
+              if (event.event === 'relay_persist') {
+                relayPersistPayload = asRecord(event.data) || event
+                return
+              }
+
+              relayConversationId = event.conversation_id || relayConversationId
+              relayMessageId = event.message_id || event.id || relayMessageId
+              if ((event.event === 'message' || event.event === 'agent_message') && typeof event.answer === 'string')
+              { relayAnswer += event.answer }
+              if (event.event === 'message_replace' && typeof event.answer === 'string')
+              { relayAnswer = event.answer }
+              if (event.event === 'message_end')
+              { relayMetadata = event.metadata || relayMetadata }
+              if (event.event === 'agent_log' && relayAgentLogBytes < 2_000_000) {
+                const log = event.data || event
+                const serialized = JSON.stringify(log)
+                relayAgentLogBytes += serialized.length
+                if (relayAgentLogBytes < 2_000_000)
+                { relayAgentLogs.push(log) }
+              }
+              if (event.event === 'message_file') {
+                relayAssistantFiles.push({
+                  ...event,
+                  url: event.url || event.file_url,
+                  name: event.name || event.filename,
+                })
+              }
+              if (event.event === 'workflow_started') {
+                relayWorkflowProcess = {
+                  status: 'running',
+                  tracing: [],
+                  expand: true,
+                }
+              }
+              if (event.event === 'node_started' && event.data) {
+                relayWorkflowProcess ||= { status: 'running', tracing: [], expand: true }
+                const node = {
+                  ...event.data,
+                  status: event.data.status || 'running',
+                  elapsed_time: event.data.elapsed_time || 0,
+                  title: event.data.title || event.data.node_type,
+                }
+                const index = relayWorkflowProcess.tracing.findIndex(item => item.node_id === node.node_id)
+                if (index >= 0)
+                { relayWorkflowProcess.tracing[index] = node }
+                else
+                { relayWorkflowProcess.tracing.push(node) }
+              }
+              if (event.event === 'node_finished' && event.data) {
+                relayWorkflowProcess ||= { status: 'running', tracing: [], expand: true }
+                const index = relayWorkflowProcess.tracing.findIndex(item => item.node_id === event.data.node_id)
+                if (index >= 0)
+                { relayWorkflowProcess.tracing[index] = event.data }
+                else
+                { relayWorkflowProcess.tracing.push(event.data) }
+              }
+              if (event.event === 'workflow_finished' && event.data) {
+                relayWorkflowProcess ||= { status: event.data.status || 'succeeded', tracing: [] }
+                relayWorkflowProcess.status = event.data.status || 'succeeded'
+              }
+            }
+            catch {
+              // Keep proxying malformed or future event types without blocking the chat stream.
+            }
+          })
+        }
+
+        let relayClientConnected = true
+        const relayStream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            const pump = async () => {
+              try {
+                while (true) {
+                  const { done, value } = await relayReader.read()
+                  if (done)
+                  { break }
+                  if (relayClientConnected)
+                  { controller.enqueue(value) }
+                  readRelayEvents(relayDecoder.decode(value, { stream: true }))
+                }
+
+                readRelayEvents(relayDecoder.decode())
+                const relayPayload = relayPersistPayload || {}
+                const finalQuery = String(relayPayload.query || query)
+                const finalAnswer = String(relayPayload.answer || relayAnswer)
+                const finalConversationId = String(
+                  relayPayload.conversationId
+                  || relayPayload.conversation_id
+                  || relayConversationId
+                  || '',
+                )
+                const finalMessageId = String(
+                  relayPayload.messageId
+                  || relayPayload.message_id
+                  || relayMessageId
+                  || '',
+                )
+                const finalMetadata = asRecord(relayPayload.metadata) || relayMetadata
+                const finalWorkflowProcess = asRecord(relayPayload.workflowProcess || relayPayload.workflow_process) as typeof relayWorkflowProcess
+                  || relayWorkflowProcess
+                const finalAgentLogs = Array.isArray(relayPayload.agentLogs)
+                  ? relayPayload.agentLogs
+                  : Array.isArray(relayPayload.agent_logs)
+                    ? relayPayload.agent_logs
+                    : relayAgentLogs
+                const finalAssistantFiles = asRecordArray(relayPayload.assistantFiles || relayPayload.assistant_files)
+                await persistChatExchange({
+                  appUserId: session.id,
+                  query: finalQuery,
+                  answer: finalAnswer,
+                  conversationId: finalConversationId,
+                  messageId: finalMessageId,
+                  metadata: finalMetadata,
+                  workflowProcess: finalWorkflowProcess,
+                  references: extractKnowledgeReferences({
+                    metadata: finalMetadata,
+                    agentLogs: finalAgentLogs,
+                    answer: finalAnswer,
+                  }),
+                  assistantFiles: finalAssistantFiles.length ? finalAssistantFiles : relayAssistantFiles,
+                }).catch(error => console.error('[dify-chat] relay persist failed', { requestId, error }))
+                if (relayClientConnected)
+                { controller.close() }
+              }
+              catch (error) {
+                console.error('[dify-chat] relay stream failed', {
+                  requestId,
+                  status: 502,
+                  statusText: 'Relay stream interrupted',
+                  body: error instanceof Error ? error.message.slice(0, 1000) : String(error).slice(0, 1000),
+                })
+                if (relayClientConnected)
+                { controller.error(error) }
+              }
+            }
+            void pump()
+          },
+          cancel() {
+            // Keep draining and persisting the relay response after route navigation.
+            relayClientConnected = false
+          },
+        })
+
+        return new Response(relayStream, {
           status: relayResponse.status,
           headers: {
             'Content-Type': relayResponse.headers.get('content-type') || 'text/event-stream; charset=utf-8',
