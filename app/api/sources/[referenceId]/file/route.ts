@@ -260,7 +260,15 @@ export async function GET(
     })).catch(() => null)
     const documents = Array.isArray(catalog?.documents) ? catalog.documents as Array<Record<string, unknown>> : []
     const targetNameKey = documentNameKey(documentName)
-    const matched = documents.find(item => documentNameKey(item.name) === targetNameKey)
+    const candidates = documents
+      .map(item => ({ item, key: documentNameKey(item.name) }))
+      .filter(({ key }) => key && (
+        key === targetNameKey
+        || key.includes(targetNameKey)
+        || targetNameKey.includes(key)
+      ))
+      .sort((left, right) => right.key.length - left.key.length)
+    const matched = candidates[0]?.item
     if (matched && typeof matched.id === 'string')
     { documentId = matched.id }
   }

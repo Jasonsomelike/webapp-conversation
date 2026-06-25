@@ -86,10 +86,27 @@ const Chat: FC<IChatProps> = ({
     )
   }
 
+  const setTextareaDomValue = (value: string) => {
+    const textarea = textareaRef.current?.resizableTextArea?.textArea
+      ?? textareaRef.current?.textArea
+      ?? null
+    if (textarea && textarea.value !== value)
+    { textarea.value = value }
+  }
+
   const refreshDraftFromDom = () => {
     const draft = getDraftValue()
     syncDraftValue(draft)
     return draft
+  }
+
+  const clearComposerImmediately = () => {
+    setTextareaDomValue('')
+    syncDraftValue('')
+    if (files.length)
+    { onClear() }
+    if (attachmentFiles.length)
+    { setAttachmentFiles([]) }
   }
 
   const handleContentChange = (e: any) => {
@@ -185,23 +202,17 @@ const Chat: FC<IChatProps> = ({
     const imageFiles: VisionFile[] = files.filter(file => file.progress !== -1).map(fileItem => ({
       type: 'image',
       transfer_method: fileItem.type,
-      url: fileItem.url,
+      url: fileItem.type === TransferMethod.local_file ? (fileItem.base64Url || fileItem.url) : fileItem.url,
       upload_file_id: fileItem.fileId,
     }))
     const docAndOtherFiles: VisionFile[] = getProcessedFiles(attachmentFiles)
     const combinedFiles: VisionFile[] = [...imageFiles, ...docAndOtherFiles]
     const message = refreshDraftFromDom()
     syncDraftValue(message)
+    clearComposerImmediately()
     setIsSending(true)
-    const accepted = await Promise.resolve(onSend(message, combinedFiles)).catch(() => false)
+    await Promise.resolve(onSend(message, combinedFiles)).catch(() => false)
     setIsSending(false)
-    if (accepted === false)
-    { return }
-    if (!files.find(item => item.type === TransferMethod.local_file && !item.fileId)) {
-      if (files.length) { onClear() }
-      syncDraftValue('')
-    }
-    if (!attachmentFiles.find(item => item.transferMethod === TransferMethod.local_file && !item.uploadedId)) { setAttachmentFiles([]) }
   }
 
   const handleKeyUp = (e: any) => {

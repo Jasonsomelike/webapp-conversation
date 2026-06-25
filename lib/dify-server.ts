@@ -10,13 +10,30 @@ export const difyApiKey = process.env.DIFY_API_KEY
 
 const transientStatuses = new Set([408, 425, 429, 500, 502, 503, 504])
 const fallbackStatuses = new Set([404])
+const knownDifyApiBaseUrl = 'https://dify.jasonsome.cn:22380/v1'
+const normalizeDifyApiBaseUrl = (value: string) => value.trim().replace(/\/$/, '')
+const isUsableDifyApiBaseUrl = (value: string) => {
+  try {
+    const url = new URL(value)
+    if (!url.pathname.replace(/\/$/, '').endsWith('/v1'))
+    { return false }
+    // www.jasonsome.cn / jasonsome.cn serve this Next.js frontend. They may
+    // return HTML 404 pages for /v1/* and must not mask the real Dify API.
+    if (['www.jasonsome.cn', 'jasonsome.cn'].includes(url.hostname))
+    { return false }
+    return true
+  }
+  catch {
+    return false
+  }
+}
 const difyApiBaseUrls = [...new Set([
   difyApiBaseUrl,
   ...(process.env.DIFY_API_FALLBACK_URLS || '').split(',').map(value => value.trim()).filter(Boolean),
-  'https://dify.jasonsome.cn:22380/v1',
-  'https://www.jasonsome.cn/v1',
-  'https://jasonsome.cn/v1',
-].map(value => value.replace(/\/$/, '')))]
+  knownDifyApiBaseUrl,
+]
+  .map(normalizeDifyApiBaseUrl)
+  .filter(isUsableDifyApiBaseUrl))]
 
 const wait = (milliseconds: number) =>
   new Promise(resolve => setTimeout(resolve, milliseconds))

@@ -1045,24 +1045,15 @@ const Main: FC<IMainProps> = () => {
       },
       onError() {
         setRespondingFalse()
-        // roll back the optimistic question and placeholder when the Dify request
-        // fails before a durable assistant message is produced, so the composer can
-        // keep the draft for retry without duplicating the user bubble.
         setChatList(produce(getChatList(), (draft) => {
-          const placeholderIndex = draft.findIndex(item => item.id === placeholderAnswerId)
-          if (placeholderIndex >= 0)
-          { draft.splice(placeholderIndex, 1) }
-          const hasAssistantPayload = Boolean(
-            responseItem.content
-            || responseItem.workflowProcess
-            || responseItem.agent_thoughts?.length
-            || responseItem.message_files?.length,
-          )
-          if (!hasAssistantPayload) {
-            const questionIndex = draft.findIndex(item => item.id === questionId)
-            if (questionIndex >= 0)
-            { draft.splice(questionIndex, 1) }
+          const placeholder = draft.find(item => item.id === placeholderAnswerId)
+          if (placeholder) {
+            placeholder.content = '连接中断，已保留你的提问。请稍后重试或检查网络。'
+            placeholder.isAnswer = true
+            ;(placeholder as any).isError = true
           }
+          if (!draft.find(item => item.id === questionId))
+          { draft.push({ ...questionItem }) }
         }))
       },
       onWorkflowStarted: ({ workflow_run_id }) => {

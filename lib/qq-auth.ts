@@ -153,6 +153,35 @@ const fetchQqJson = async <T>(url: URL): Promise<T> => {
   }
 }
 
+const normalizeQqIdentityPart = (value?: string | null) => {
+  const normalized = String(value || '').trim()
+  return normalized || undefined
+}
+
+const getQqUnionId = async (accessToken: string) => {
+  const candidates = [
+    'https://graph.qq.com/oauth2.0/get_unionid',
+    'https://graph.qq.com/oauth2.0/get_unionid_by_token',
+  ]
+
+  for (const endpoint of candidates) {
+    try {
+      const url = new URL(endpoint)
+      url.searchParams.set('access_token', accessToken)
+      url.searchParams.set('fmt', 'json')
+      const payload = await fetchQqJson<{ unionid?: string, error?: number | string }>(url)
+      if (!payload.error && payload.unionid)
+      { return normalizeQqIdentityPart(payload.unionid) }
+    }
+    catch {
+      // QQ has returned unionid through different endpoints across SDK
+      // versions/app types. Treat this as best-effort; openid still verifies
+      // the token, while unionid is the cross-app account key when available.
+    }
+  }
+  return undefined
+}
+
 export const getQqIdentity = async (accessToken: string, expectedAppId: string) => {
   const url = new URL('https://graph.qq.com/oauth2.0/me')
   url.searchParams.set('access_token', accessToken)
@@ -161,7 +190,11 @@ export const getQqIdentity = async (accessToken: string, expectedAppId: string) 
   const identity = await fetchQqJson<QqIdentityPayload>(url)
   if (identity.error || !identity.openid || String(identity.client_id) !== expectedAppId)
   { throw new Error('QQ_TOKEN_INVALID') }
-  return identity
+  return {
+    ...identity,
+    openid: normalizeQqIdentityPart(identity.openid)!,
+    unionid: normalizeQqIdentityPart(identity.unionid) || await getQqUnionId(accessToken),
+  }
 }
 
 export const getQqProfile = async (accessToken: string, appId: string, openId: string) => {
@@ -190,20 +223,25 @@ export const resolveQqUser = async ({
   if (!isDatabaseConfigured())
   { throw new Error('DATABASE_NOT_CONFIGURED') }
 
+  const normalizedOpenId = normalizeQqIdentityPart(openId)
+  const normalizedUnionId = normalizeQqIdentityPart(unionId)
+  if (!normalizedOpenId)
+  { throw new Error('QQ_TOKEN_INVALID') }
+
   return withDatabaseRetry(async () => {
     await ensureQqIdentityStorage()
     await ensureAccountLifecycleStorage()
     const exactIdentity = await db.qqIdentity.findUnique({
-      where: { appId_openId: { appId, openId } },
+      where: { appId_openId: { appId, openId: normalizedOpenId } },
       include: { user: true },
     })
     if (exactIdentity) {
       if (await isAppUserDeleted(exactIdentity.appUserId))
       { throw new Error('QQ_ACCOUNT_DELETED') }
-      if (unionId && exactIdentity.unionId !== unionId) {
+      if (normalizedUnionId && exactIdentity.unionId !== normalizedUnionId) {
         await db.qqIdentity.update({
-          where: { appId_openId: { appId, openId } },
-          data: { unionId },
+          where: { appId_openId: { appId, openId: normalizedOpenId } },
+          data: { unionId: normalizedUnionId },
         })
       }
       const user = await db.appUser.update({
@@ -218,9 +256,9 @@ export const resolveQqUser = async ({
       return user
     }
 
-    const unionIdentity = unionId
+    const unionIdentity = normalizedUnionId
       ? await db.qqIdentity.findFirst({
-        where: { unionId },
+        where: { unionId: normalizedUnionId },
         include: { user: true },
       })
       : null
@@ -229,9 +267,9 @@ export const resolveQqUser = async ({
       if (await isAppUserDeleted(unionIdentity.appUserId))
       { throw new Error('QQ_ACCOUNT_DELETED') }
       await db.qqIdentity.upsert({
-        where: { appId_openId: { appId, openId } },
-        update: { unionId },
-        create: { appUserId: unionIdentity.appUserId, appId, openId, unionId },
+        where: { appId_openId: { appId, openId: normalizedOpenId } },
+        update: { unionId: normalizedUnionId },
+        create: { appUserId: unionIdentity.appUserId, appId, openId: normalizedOpenId, unionId: normalizedUnionId },
       })
       const user = await db.appUser.update({
         where: { id: unionIdentity.appUserId },
@@ -258,15 +296,20 @@ export const bindQqIdentityToUser = async ({
   if (!isDatabaseConfigured())
   { throw new Error('DATABASE_NOT_CONFIGURED') }
 
+  const normalizedOpenId = normalizeQqIdentityPart(openId)
+  const normalizedUnionId = normalizeQqIdentityPart(unionId)
+  if (!normalizedOpenId)
+  { throw new Error('QQ_TOKEN_INVALID') }
+
   return withDatabaseRetry(async () => {
     await ensureQqIdentityStorage()
     await assertAppUserActive(appUserId)
     const [exactIdentity, unionIdentity] = await Promise.all([
       db.qqIdentity.findUnique({
-        where: { appId_openId: { appId, openId } },
+        where: { appId_openId: { appId, openId: normalizedOpenId } },
       }),
-      unionId
-        ? db.qqIdentity.findFirst({ where: { unionId } })
+      normalizedUnionId
+        ? db.qqIdentity.findFirst({ where: { unionId: normalizedUnionId } })
         : Promise.resolve(null),
     ])
     const conflict = [exactIdentity, unionIdentity].find(identity => identity && identity.appUserId !== appUserId)
@@ -274,12 +317,12 @@ export const bindQqIdentityToUser = async ({
     { throw new Error('QQ_ALREADY_BOUND') }
 
     const saved = await db.qqIdentity.upsert({
-      where: { appId_openId: { appId, openId } },
+      where: { appId_openId: { appId, openId: normalizedOpenId } },
       update: {
         appUserId,
-        ...(unionId ? { unionId } : {}),
+        ...(normalizedUnionId ? { unionId: normalizedUnionId } : {}),
       },
-      create: { appUserId, appId, openId, unionId },
+      create: { appUserId, appId, openId: normalizedOpenId, unionId: normalizedUnionId },
     })
     return { bound: true, identity: saved }
   })
@@ -303,9 +346,10 @@ export const getQqIdentitySummary = async (appUserId: string): Promise<QqIdentit
     if (!primary)
     { return { bound: false, appIds: [] } }
     const openIdTail = primary.openId.slice(-8)
+    const unionTail = primary.unionId?.slice(-10)
     return {
       bound: true,
-      displayId: primary.unionId || `openid…${openIdTail}`,
+      displayId: primary.unionId ? `QQ …${unionTail || primary.unionId}` : `openid…${openIdTail}`,
       openIdTail,
       unionId: primary.unionId || undefined,
       appIds: Array.from(new Set(identities.map(identity => identity.appId))),
