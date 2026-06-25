@@ -21,6 +21,23 @@ const loadPdfJs = () => {
   return pdfJsPromise
 }
 
+const withProxyFallback = (url: string) => {
+  try {
+    const parsed = new URL(url, globalThis.location.origin)
+    if (parsed.origin !== globalThis.location.origin)
+    { return undefined }
+    if (!/\/api\/(?:library\/documents|sources)\/.+\/file$/.test(parsed.pathname))
+    { return undefined }
+    if (parsed.searchParams.get('proxy') === '1')
+    { return undefined }
+    parsed.searchParams.set('proxy', '1')
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`
+  }
+  catch {
+    return undefined
+  }
+}
+
 interface PdfReferenceViewerProps {
   referenceId?: string
   filename: string
@@ -76,14 +93,28 @@ export default function PdfReferenceViewer({
         setLoading(true)
         setError('')
         const pdfjs = await loadPdfJs()
-        loadingTask = pdfjs.getDocument({
-          url: sourceUrl,
-          withCredentials: true,
-          rangeChunkSize: 256 * 1024,
-          disableAutoFetch: true,
-          disableStream: false,
-        })
-        const document = await loadingTask.promise
+        const loadDocument = async (url: string) => {
+          loadingTask = pdfjs.getDocument({
+            url,
+            withCredentials: true,
+            rangeChunkSize: 256 * 1024,
+            disableAutoFetch: true,
+            disableStream: false,
+          })
+          return await loadingTask.promise
+        }
+        let document
+        try {
+          document = await loadDocument(sourceUrl)
+        }
+        catch (directError) {
+          const proxyUrl = withProxyFallback(sourceUrl)
+          if (!proxyUrl)
+          { throw directError }
+          void loadingTask?.destroy()
+          loadingTask = undefined
+          document = await loadDocument(proxyUrl)
+        }
         if (disposed)
         { return }
         setPdf(document)

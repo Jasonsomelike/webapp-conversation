@@ -158,6 +158,71 @@ const normalizeQqIdentityPart = (value?: string | null) => {
   return normalized || undefined
 }
 
+const insensitiveEquals = (value: string) =>
+  ({ equals: value, mode: 'insensitive' as const })
+
+const findQqIdentityByAppOpenId = async (
+  appId: string,
+  openId: string,
+) => {
+  const exact = await db.qqIdentity.findUnique({
+    where: { appId_openId: { appId, openId } },
+  })
+  if (exact)
+  { return exact }
+
+  return await db.qqIdentity.findFirst({
+    where: { appId, openId: insensitiveEquals(openId) },
+    orderBy: { updatedAt: 'desc' },
+  })
+}
+
+const findQqIdentityWithUserByAppOpenId = async (
+  appId: string,
+  openId: string,
+) => {
+  const exact = await db.qqIdentity.findUnique({
+    where: { appId_openId: { appId, openId } },
+    include: { user: true },
+  })
+  if (exact)
+  { return exact }
+
+  return await db.qqIdentity.findFirst({
+    where: { appId, openId: insensitiveEquals(openId) },
+    include: { user: true },
+    orderBy: { updatedAt: 'desc' },
+  })
+}
+
+const saveQqIdentityForUser = async ({
+  appUserId,
+  appId,
+  openId,
+  unionId,
+}: {
+  appUserId: string
+  appId: string
+  openId: string
+  unionId?: string
+}) => {
+  const existing = await findQqIdentityByAppOpenId(appId, openId)
+  if (existing) {
+    return db.qqIdentity.update({
+      where: { id: existing.id },
+      data: {
+        appUserId,
+        openId,
+        ...(unionId ? { unionId } : {}),
+      },
+    })
+  }
+
+  return db.qqIdentity.create({
+    data: { appUserId, appId, openId, unionId },
+  })
+}
+
 const getQqUnionId = async (accessToken: string) => {
   const candidates = [
     'https://graph.qq.com/oauth2.0/get_unionid',
@@ -231,17 +296,17 @@ export const resolveQqUser = async ({
   return withDatabaseRetry(async () => {
     await ensureQqIdentityStorage()
     await ensureAccountLifecycleStorage()
-    const exactIdentity = await db.qqIdentity.findUnique({
-      where: { appId_openId: { appId, openId: normalizedOpenId } },
-      include: { user: true },
-    })
+    const exactIdentity = await findQqIdentityWithUserByAppOpenId(appId, normalizedOpenId)
     if (exactIdentity) {
       if (await isAppUserDeleted(exactIdentity.appUserId))
       { throw new Error('QQ_ACCOUNT_DELETED') }
-      if (normalizedUnionId && exactIdentity.unionId !== normalizedUnionId) {
+      if (
+        normalizedUnionId
+        && exactIdentity.unionId?.toLocaleLowerCase() !== normalizedUnionId.toLocaleLowerCase()
+      ) {
         await db.qqIdentity.update({
-          where: { appId_openId: { appId, openId: normalizedOpenId } },
-          data: { unionId: normalizedUnionId },
+          where: { id: exactIdentity.id },
+          data: { openId: normalizedOpenId, unionId: normalizedUnionId },
         })
       }
       const user = await db.appUser.update({
@@ -258,18 +323,20 @@ export const resolveQqUser = async ({
 
     const unionIdentity = normalizedUnionId
       ? await db.qqIdentity.findFirst({
-        where: { unionId: normalizedUnionId },
+        where: { unionId: insensitiveEquals(normalizedUnionId) },
         include: { user: true },
+        orderBy: { updatedAt: 'desc' },
       })
       : null
 
     if (unionIdentity) {
       if (await isAppUserDeleted(unionIdentity.appUserId))
       { throw new Error('QQ_ACCOUNT_DELETED') }
-      await db.qqIdentity.upsert({
-        where: { appId_openId: { appId, openId: normalizedOpenId } },
-        update: { unionId: normalizedUnionId },
-        create: { appUserId: unionIdentity.appUserId, appId, openId: normalizedOpenId, unionId: normalizedUnionId },
+      await saveQqIdentityForUser({
+        appUserId: unionIdentity.appUserId,
+        appId,
+        openId: normalizedOpenId,
+        unionId: normalizedUnionId,
       })
       const user = await db.appUser.update({
         where: { id: unionIdentity.appUserId },
@@ -284,16 +351,18 @@ export const resolveQqUser = async ({
     // already-bound account log in from the other client and records the new
     // app ID for future exact matches.
     const sameOpenIdIdentity = await db.qqIdentity.findFirst({
-      where: { openId: normalizedOpenId },
+      where: { openId: insensitiveEquals(normalizedOpenId) },
       include: { user: true },
+      orderBy: { updatedAt: 'desc' },
     })
     if (sameOpenIdIdentity) {
       if (await isAppUserDeleted(sameOpenIdIdentity.appUserId))
       { throw new Error('QQ_ACCOUNT_DELETED') }
-      await db.qqIdentity.upsert({
-        where: { appId_openId: { appId, openId: normalizedOpenId } },
-        update: normalizedUnionId ? { unionId: normalizedUnionId } : {},
-        create: { appUserId: sameOpenIdIdentity.appUserId, appId, openId: normalizedOpenId, unionId: normalizedUnionId },
+      await saveQqIdentityForUser({
+        appUserId: sameOpenIdIdentity.appUserId,
+        appId,
+        openId: normalizedOpenId,
+        unionId: normalizedUnionId,
       })
       const user = await db.appUser.update({
         where: { id: sameOpenIdIdentity.appUserId },
@@ -329,24 +398,23 @@ export const bindQqIdentityToUser = async ({
     await ensureQqIdentityStorage()
     await assertAppUserActive(appUserId)
     const [exactIdentity, unionIdentity] = await Promise.all([
-      db.qqIdentity.findUnique({
-        where: { appId_openId: { appId, openId: normalizedOpenId } },
-      }),
+      findQqIdentityByAppOpenId(appId, normalizedOpenId),
       normalizedUnionId
-        ? db.qqIdentity.findFirst({ where: { unionId: normalizedUnionId } })
+        ? db.qqIdentity.findFirst({
+          where: { unionId: insensitiveEquals(normalizedUnionId) },
+          orderBy: { updatedAt: 'desc' },
+        })
         : Promise.resolve(null),
     ])
     const conflict = [exactIdentity, unionIdentity].find(identity => identity && identity.appUserId !== appUserId)
     if (conflict)
     { throw new Error('QQ_ALREADY_BOUND') }
 
-    const saved = await db.qqIdentity.upsert({
-      where: { appId_openId: { appId, openId: normalizedOpenId } },
-      update: {
-        appUserId,
-        ...(normalizedUnionId ? { unionId: normalizedUnionId } : {}),
-      },
-      create: { appUserId, appId, openId: normalizedOpenId, unionId: normalizedUnionId },
+    const saved = await saveQqIdentityForUser({
+      appUserId,
+      appId,
+      openId: normalizedOpenId,
+      unionId: normalizedUnionId,
     })
     return { bound: true, identity: saved }
   })
