@@ -278,6 +278,30 @@ export const resolveQqUser = async ({
       return user
     }
 
+    // Some QQ Connect combinations return the same OpenID for Android and Web
+    // but with different app IDs, while UnionID may be missing or delayed. In
+    // that case, treating the identical OpenID as the same QQ identity lets an
+    // already-bound account log in from the other client and records the new
+    // app ID for future exact matches.
+    const sameOpenIdIdentity = await db.qqIdentity.findFirst({
+      where: { openId: normalizedOpenId },
+      include: { user: true },
+    })
+    if (sameOpenIdIdentity) {
+      if (await isAppUserDeleted(sameOpenIdIdentity.appUserId))
+      { throw new Error('QQ_ACCOUNT_DELETED') }
+      await db.qqIdentity.upsert({
+        where: { appId_openId: { appId, openId: normalizedOpenId } },
+        update: normalizedUnionId ? { unionId: normalizedUnionId } : {},
+        create: { appUserId: sameOpenIdIdentity.appUserId, appId, openId: normalizedOpenId, unionId: normalizedUnionId },
+      })
+      const user = await db.appUser.update({
+        where: { id: sameOpenIdIdentity.appUserId },
+        data: { lastLoginAt: new Date() },
+      })
+      return user
+    }
+
     throw new Error('QQ_NOT_BOUND')
   })
 }
