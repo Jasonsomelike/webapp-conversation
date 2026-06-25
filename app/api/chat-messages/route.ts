@@ -89,6 +89,18 @@ export async function POST(request: NextRequest) {
     difyUserId: session.difyUserId,
     requestId,
   })
+  if (relayUrl && request.nextUrl.searchParams.get('serverRelay') !== '1') {
+    return new Response(null, {
+      status: 307,
+      headers: {
+        'Location': relayUrl.toString(),
+        'Cache-Control': 'no-store',
+        'X-Request-Id': requestId,
+        'X-Dify-Chat-Relay': 'browser-redirect',
+      },
+    })
+  }
+
   if (relayUrl) {
     try {
       const relayResponse = await fetch(relayUrl, {
