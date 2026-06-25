@@ -61,6 +61,7 @@ const Chat: FC<IChatProps> = ({
   const isUseInputMethod = useRef(false)
 
   const [query, setQuery] = React.useState('')
+  const [draftState, setDraftState] = React.useState({ hasContent: false, length: 0 })
   const [isSending, setIsSending] = React.useState(false)
   const queryRef = useRef('')
   const textareaRef = useRef<any>(null)
@@ -77,6 +78,18 @@ const Chat: FC<IChatProps> = ({
   const syncDraftValue = (value: string) => {
     setQuery(value)
     queryRef.current = value
+    const length = value.trim().length
+    setDraftState(previous =>
+      previous.length === length && previous.hasContent === (length > 0)
+        ? previous
+        : { hasContent: length > 0, length },
+    )
+  }
+
+  const refreshDraftFromDom = () => {
+    const draft = getDraftValue()
+    syncDraftValue(draft)
+    return draft
   }
 
   const handleContentChange = (e: any) => {
@@ -88,8 +101,7 @@ const Chat: FC<IChatProps> = ({
   }
 
   const valid = () => {
-    const draft = getDraftValue()
-    syncDraftValue(draft)
+    const draft = refreshDraftFromDom()
     if (!draft || draft.trim() === '') {
       logError(t('app.errorMessage.valueOfVarRequired'))
       return false
@@ -99,17 +111,54 @@ const Chat: FC<IChatProps> = ({
 
   useEffect(() => {
     if (controlClearQuery) {
-      setQuery('')
-      queryRef.current = ''
+      syncDraftValue('')
     }
   }, [controlClearQuery])
   useEffect(() => {
     const prefill = sessionStorage.getItem('network-study-prefill-chat')
     if (!prefill)
     { return }
-    setQuery(prefill)
-    queryRef.current = prefill
+    syncDraftValue(prefill)
     sessionStorage.removeItem('network-study-prefill-chat')
+  }, [])
+  useEffect(() => {
+    let boundTextarea: HTMLTextAreaElement | null = null
+    const refresh = () => {
+      const textarea = textareaRef.current?.resizableTextArea?.textArea
+        ?? textareaRef.current?.textArea
+        ?? null
+      if (textarea && textarea !== boundTextarea) {
+        if (boundTextarea) {
+          boundTextarea.removeEventListener('input', refresh)
+          boundTextarea.removeEventListener('change', refresh)
+          boundTextarea.removeEventListener('keyup', refresh)
+          boundTextarea.removeEventListener('compositionend', refresh)
+          boundTextarea.removeEventListener('blur', refresh)
+        }
+        boundTextarea = textarea
+        textarea.addEventListener('input', refresh)
+        textarea.addEventListener('change', refresh)
+        textarea.addEventListener('keyup', refresh)
+        textarea.addEventListener('compositionend', refresh)
+        textarea.addEventListener('blur', refresh)
+      }
+      if (textarea && textarea.value !== queryRef.current)
+      { syncDraftValue(textarea.value) }
+      else if (textarea)
+      { syncDraftValue(textarea.value) }
+    }
+    const timer = window.setInterval(refresh, 250)
+    refresh()
+    return () => {
+      window.clearInterval(timer)
+      if (boundTextarea) {
+        boundTextarea.removeEventListener('input', refresh)
+        boundTextarea.removeEventListener('change', refresh)
+        boundTextarea.removeEventListener('keyup', refresh)
+        boundTextarea.removeEventListener('compositionend', refresh)
+        boundTextarea.removeEventListener('blur', refresh)
+      }
+    }
   }, [])
   const {
     files,
@@ -141,7 +190,7 @@ const Chat: FC<IChatProps> = ({
     }))
     const docAndOtherFiles: VisionFile[] = getProcessedFiles(attachmentFiles)
     const combinedFiles: VisionFile[] = [...imageFiles, ...docAndOtherFiles]
-    const message = getDraftValue()
+    const message = refreshDraftFromDom()
     syncDraftValue(message)
     setIsSending(true)
     const accepted = await Promise.resolve(onSend(message, combinedFiles)).catch(() => false)
@@ -170,7 +219,7 @@ const Chat: FC<IChatProps> = ({
     if (e.nativeEvent.isComposing)
     { return }
     if (e.code === 'Enter' && !e.shiftKey) {
-      const result = query.replace(/\n$/, '')
+      const result = getDraftValue().replace(/\n$/, '')
       syncDraftValue(result)
       e.preventDefault()
     }
@@ -180,7 +229,7 @@ const Chat: FC<IChatProps> = ({
     syncDraftValue(suggestion)
     void handleSend()
   }
-  const canSendText = (queryRef.current || query).trim().length > 0
+  const canSendText = draftState.hasContent
 
   return (
     <div className={cn(!feedbackDisabled && 'px-1 sm:px-3.5', 'flex h-full min-h-0 flex-col')}>
@@ -258,7 +307,7 @@ const Chat: FC<IChatProps> = ({
                   autoSize
                 />
                 <div className="flex h-9 shrink-0 items-center gap-1">
-                  {canSendText && <div className={`${s.count} rounded-full bg-gray-50 px-1.5 text-[10px] leading-5 text-gray-400`}>{(queryRef.current || query).trim().length}</div>}
+                  {canSendText && <div className={`${s.count} rounded-full bg-gray-50 px-1.5 text-[10px] leading-5 text-gray-400`}>{draftState.length}</div>}
                   <Tooltip
                     selector='send-tip'
                     htmlContent={

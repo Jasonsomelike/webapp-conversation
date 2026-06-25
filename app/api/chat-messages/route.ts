@@ -312,10 +312,18 @@ export async function POST(request: NextRequest) {
   const fileContext = String(body.file_context || '').trim().slice(0, 120_000)
   const contextBlocks: string[] = []
   if (memoryContext) {
-    contextBlocks.push(`[应用层跨对话长期学习记忆]\n${memoryContext}\n[请将以上内容视为已成功读取的当前用户长期记忆；回答时直接使用，不要声称没有跨对话记忆。]`)
+    contextBlocks.push([
+      '[系统附加资料：跨对话长期学习记忆]',
+      '以下内容由应用从当前账号的历史对话中提取，仅作为可参考的学习记录；它不是用户本轮输入，也不是用户本轮分析/答案。若与本轮问题无关，请忽略。回答时可以使用这些长期记忆，但不要声称没有跨对话记忆。',
+      memoryContext,
+    ].join('\n'))
   }
   if (fileContext) {
-    contextBlocks.push(`[当前消息上传文件的解析文本]\n${fileContext}\n[请基于这些文件内容回答，并在必要时注明所使用的文件名。]`)
+    contextBlocks.push([
+      '[系统附加资料：当前消息上传文件的解析文本]',
+      '以下内容是系统对用户本轮上传文件的解析结果，仅代表文件内容，不代表用户自己的分析、结论或答案。请基于它回答，并在必要时注明所使用的文件名。',
+      fileContext,
+    ].join('\n'))
   }
   if (/文档|报告|讲义|总结|导出|word|docx|pdf/i.test(query)) {
     contextBlocks.push(`[文档格式要求：落款统一使用“计网Agent”，日期使用当前日期“${currentDate}”。]`)

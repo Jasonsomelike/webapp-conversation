@@ -10,6 +10,7 @@ export interface NativeDownloadSettings {
 export interface NativeQqLoginResult {
   accessToken: string
   openId: string
+  unionId?: string
   expiresIn?: string
   purpose?: 'login' | 'bind'
 }

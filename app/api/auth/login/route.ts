@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { authenticateUser, credentialsSchema } from '@/lib/auth'
 import { setSessionCookie } from '@/lib/session'
+import { PENDING_QQ_COOKIE, bindQqIdentityToUser, verifyPendingQqToken } from '@/lib/qq-auth'
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const parsed = credentialsSchema.safeParse(await request.json())
   if (!parsed.success)
   { return NextResponse.json({ error: parsed.error.issues[0]?.message || '请输入有效的账号和密码' }, { status: 400 }) }
@@ -13,6 +15,25 @@ export async function POST(request: Request) {
     { return NextResponse.json({ error: '账号或密码不正确' }, { status: 401 }) }
 
     const response = NextResponse.json({ ok: true })
+    const pendingQq = verifyPendingQqToken(request.cookies.get(PENDING_QQ_COOKIE)?.value)
+    if (pendingQq) {
+      try {
+        await bindQqIdentityToUser({
+          appUserId: user.id,
+          appId: pendingQq.appId,
+          openId: pendingQq.openId,
+          unionId: pendingQq.unionId,
+        })
+        response.cookies.set(PENDING_QQ_COOKIE, '', { path: '/', maxAge: 0 })
+      }
+      catch (bindError) {
+        console.warn('[auth-login] pending QQ auto-bind failed', {
+          appUserId: user.id,
+          error: bindError instanceof Error ? bindError.message : String(bindError),
+        })
+        response.cookies.set(PENDING_QQ_COOKIE, '', { path: '/', maxAge: 0 })
+      }
+    }
     setSessionCookie(response, {
       id: user.id,
       difyUserId: user.difyUserId,

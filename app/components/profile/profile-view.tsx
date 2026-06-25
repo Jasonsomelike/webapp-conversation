@@ -31,6 +31,14 @@ const stages = ['入门', '系统学习', '复习', '刷题', '备考']
 const styles = ['图示讲解', '公式推导', '例题驱动', '简洁回答']
 const targets = ['期末考试', '课程作业', '竞赛', '自学提升']
 
+interface QqIdentitySummary {
+  bound: boolean
+  displayId?: string
+  openIdTail?: string
+  unionId?: string
+  appIds: string[]
+}
+
 export default function ProfileView({
   session,
   initialProfile,
@@ -38,7 +46,7 @@ export default function ProfileView({
   joinedAt,
   isAdmin,
   initialAvatarUrl,
-  initialQqBound,
+  initialQqIdentity,
 }: {
   session: AppSession
   initialProfile: { learningStage?: string | null, preferredStyle?: string | null, target?: string | null } | null
@@ -46,7 +54,7 @@ export default function ProfileView({
   joinedAt: string
   isAdmin: boolean
   initialAvatarUrl: string | null
-  initialQqBound: boolean
+  initialQqIdentity: QqIdentitySummary
 }) {
   const initialStage = initialProfile?.learningStage || '系统学习'
   const initialStyle = initialProfile?.preferredStyle || '图示讲解'
@@ -63,7 +71,7 @@ export default function ProfileView({
   const [deletingAccount, setDeletingAccount] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl)
   const [avatarSaving, setAvatarSaving] = useState(false)
-  const [qqBound, setQqBound] = useState(initialQqBound)
+  const [qqIdentity, setQqIdentity] = useState<QqIdentitySummary>(initialQqIdentity)
   const [qqBinding, setQqBinding] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
   const [passwordSaving, setPasswordSaving] = useState(false)
@@ -71,6 +79,12 @@ export default function ProfileView({
   const qqTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { notify } = Toast
   const dirty = stage !== savedProfile.stage || style !== savedProfile.style || target !== savedProfile.target || displayName !== savedProfile.displayName
+  const qqBound = qqIdentity.bound
+  const qqDisplay = qqIdentity.displayId
+    ? `QQ 标识：${qqIdentity.displayId}`
+    : qqIdentity.openIdTail
+      ? `QQ 标识尾号：${qqIdentity.openIdTail}`
+      : '可以使用 QQ 快速登录当前账号'
 
   useEffect(() => {
     setNativeApp(isNetworkStudyApp())
@@ -79,7 +93,7 @@ export default function ProfileView({
   useEffect(() => {
     const params = new URLSearchParams(globalThis.location.search)
     if (params.get('qq_bound') === '1') {
-      setQqBound(true)
+      setQqIdentity(identity => ({ ...identity, bound: true }))
       notify({ type: 'success', message: 'QQ 账号已绑定' })
     }
     else if (params.get('qq_bind_error') === '1')
@@ -105,7 +119,10 @@ export default function ProfileView({
         const result = await response.json()
         if (!response.ok)
         { throw new Error(result.error || '绑定 QQ 失败') }
-        setQqBound(true)
+        if (result.qq)
+        { setQqIdentity(result.qq) }
+        else
+        { setQqIdentity(identity => ({ ...identity, bound: true })) }
         notify({ type: 'success', message: 'QQ 账号已绑定' })
       }
       catch (error) {
@@ -560,7 +577,7 @@ export default function ProfileView({
               <LinkIcon className="h-5 w-5 text-[#12aee2]" />
               <span className="flex-1">
                 <span className="block text-sm font-semibold">{qqBound ? 'QQ 账号已绑定' : '绑定 QQ 账号'}</span>
-                <span className="mt-1 block text-[10px] text-black/40">{qqBound ? '可以使用 QQ 快速登录当前账号' : '保留现有学习数据并增加 QQ 登录方式'}</span>
+                <span className="mt-1 block text-[10px] text-black/40">{qqBound ? qqDisplay : '保留现有学习数据并增加 QQ 登录方式'}</span>
               </span>
               <span className="text-xs text-black/35">{qqBinding ? '授权中…' : qqBound ? '已绑定' : '去绑定'}</span>
             </button>

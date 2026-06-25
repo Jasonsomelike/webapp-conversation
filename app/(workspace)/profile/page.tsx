@@ -4,7 +4,7 @@ import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
 import { getSession } from '@/lib/session'
 import { isAdminSession } from '@/lib/admin'
 import { getAccountAvatar } from '@/lib/account-extension'
-import { hasQqIdentity } from '@/lib/qq-auth'
+import { getQqIdentitySummary } from '@/lib/qq-auth'
 
 export default async function ProfilePage() {
   const session = await getSession()
@@ -16,24 +16,24 @@ export default async function ProfilePage() {
   let currentDisplayName = session.name
   let stats = { conversations: 0, references: 0, messages: 0 }
   let avatarUrl: string | null = null
-  let qqBound = false
+  let qqIdentity = { bound: false, appIds: [] as string[] }
   if (isDatabaseConfigured()) {
     try {
-      const [user, savedProfile, conversations, references, messages, accountAvatar, hasQq] = await withDatabaseRetry(() => Promise.all([
+      const [user, savedProfile, conversations, references, messages, accountAvatar, qqSummary] = await withDatabaseRetry(() => Promise.all([
         db.appUser.findUnique({ where: { id: session.id }, select: { createdAt: true, displayName: true } }),
         db.userProfile.findUnique({ where: { appUserId: session.id } }),
         db.chatConversation.count({ where: { appUserId: session.id, deletedAt: null } }),
         db.messageReference.count({ where: { appUserId: session.id } }),
         db.chatMessage.count({ where: { appUserId: session.id, role: 'user' } }),
         getAccountAvatar(session.id),
-        hasQqIdentity(session.id),
+        getQqIdentitySummary(session.id),
       ]))
       profile = savedProfile
       joinedAt = user?.createdAt.toISOString() || joinedAt
       currentDisplayName = user?.displayName || currentDisplayName
       stats = { conversations, references, messages }
       avatarUrl = accountAvatar
-      qqBound = hasQq
+      qqIdentity = qqSummary
     }
     catch (error) {
       console.error('[profile-page] database unavailable', { appUserId: session.id, error })
@@ -48,7 +48,7 @@ export default async function ProfilePage() {
       joinedAt={joinedAt}
       isAdmin={isAdminSession(session)}
       initialAvatarUrl={avatarUrl}
-      initialQqBound={qqBound}
+      initialQqIdentity={qqIdentity}
     />
   )
 }

@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { bindQqIdentityToUser, getQqIdentity, getQqProfile, resolveQqUser } from '@/lib/qq-auth'
+import {
+  PENDING_QQ_COOKIE,
+  PENDING_QQ_COOKIE_MAX_AGE,
+  bindQqIdentityToUser,
+  createPendingQqToken,
+  getQqIdentity,
+  getQqProfile,
+  resolveQqUser,
+} from '@/lib/qq-auth'
 import { getSession, setSessionCookie } from '@/lib/session'
 
 const stateCookie = 'qq_oauth_state'
@@ -152,12 +160,39 @@ export async function GET(request: NextRequest) {
       response.cookies.set(purposeCookie, '', { path: '/', maxAge: 0 })
       return response
     }
-    const user = await resolveQqUser({
-      appId,
-      openId: verifiedIdentity.openid,
-      unionId: verifiedIdentity.unionid,
-      nickname: profile.nickname,
-    })
+    let user
+    try {
+      user = await resolveQqUser({
+        appId,
+        openId: verifiedIdentity.openid,
+        unionId: verifiedIdentity.unionid,
+        nickname: profile.nickname,
+      })
+    }
+    catch (resolveError) {
+      if (resolveError instanceof Error && resolveError.message === 'QQ_NOT_BOUND') {
+        const failureUrl = new URL('/login', origin)
+        failureUrl.searchParams.set('qq_error', 'unbound')
+        const response = NextResponse.redirect(failureUrl)
+        response.cookies.set(PENDING_QQ_COOKIE, createPendingQqToken({
+          appId,
+          openId: verifiedIdentity.openid,
+          unionId: verifiedIdentity.unionid,
+          nickname: profile.nickname,
+          avatarUrl: profile.figureurl_qq_2 || profile.figureurl_2,
+        }), {
+          httpOnly: true,
+          sameSite: 'lax',
+          secure: origin.startsWith('https://'),
+          path: '/',
+          maxAge: PENDING_QQ_COOKIE_MAX_AGE,
+        })
+        response.cookies.set(stateCookie, '', { path: '/', maxAge: 0 })
+        response.cookies.set(purposeCookie, '', { path: '/', maxAge: 0 })
+        return response
+      }
+      throw resolveError
+    }
 
     const response = NextResponse.redirect(new URL('/chat', origin))
     response.cookies.set(stateCookie, '', { path: '/', maxAge: 0 })

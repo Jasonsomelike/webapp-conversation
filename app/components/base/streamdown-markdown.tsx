@@ -45,16 +45,36 @@ const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElemen
   const sourceHref = isKnowledgeSource
     ? sourceInfo?.previewUrl || `/api/sources/image-info?redirect=1&url=${encodeURIComponent(absoluteSourceUrl)}`
     : imageUrl
-  const sourceHrefWithReturn = () => {
+  const getReturnContext = (element?: HTMLElement | null) => {
+    if (typeof window === 'undefined')
+    { return { returnTo: '', messageId: '', conversationId: '' } }
+    const messageElement = element?.closest<HTMLElement>('.chat-message-target')
+    const messageId = messageElement?.dataset.messageId
+      || messageElement?.id?.replace(/^message-/, '')
+      || ''
+    const conversationId = String((window as any).__NETWORK_STUDY_CURRENT_CONVERSATION_ID || '')
+    const returnUrl = new URL(window.location.href)
+    if (conversationId)
+    { returnUrl.searchParams.set('conversationId', conversationId) }
+    if (messageId)
+    { returnUrl.searchParams.set('messageId', messageId) }
+    return {
+      returnTo: `${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`,
+      messageId,
+      conversationId,
+    }
+  }
+  const sourceHrefWithReturn = (element?: HTMLElement | null) => {
     if (!isKnowledgeSource || typeof window === 'undefined')
     { return sourceHref }
-    const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`
+    const { returnTo } = getReturnContext(element)
     const separator = sourceHref.includes('?') ? '&' : '?'
     return `${sourceHref}${separator}returnTo=${encodeURIComponent(returnTo)}`
   }
   const rememberReturnPosition = (element?: HTMLElement | null) => {
     if (!isKnowledgeSource || typeof window === 'undefined')
     { return }
+    const { returnTo, messageId, conversationId } = getReturnContext(element)
     const scrollParent = (() => {
       let current = element?.parentElement || null
       while (current) {
@@ -65,9 +85,15 @@ const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElemen
       }
       return null
     })()
+    const parentRect = scrollParent?.getBoundingClientRect()
+    const elementRect = element?.getBoundingClientRect()
+    const anchorDelta = parentRect && elementRect ? elementRect.top - parentRect.top : undefined
     sessionStorage.setItem('network-study-source-return', JSON.stringify({
-      href: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+      href: returnTo || `${window.location.pathname}${window.location.search}${window.location.hash}`,
       y: scrollParent?.scrollTop ?? window.scrollY,
+      messageId,
+      conversationId,
+      anchorDelta,
       at: Date.now(),
     }))
   }
@@ -105,7 +131,10 @@ const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElemen
       <span className='markdown-media-error'>
         <span>{sourceLabel} · 图片加载失败</span>
         <button type='button' onClick={() => setFailed(false)}>重试</button>
-        <a href={sourceHrefWithReturn()} onClick={event => rememberReturnPosition(event.currentTarget)}>{originalLabel}</a>
+        <a href={sourceHrefWithReturn()} onClick={(event) => {
+          rememberReturnPosition(event.currentTarget)
+          event.currentTarget.href = sourceHrefWithReturn(event.currentTarget)
+        }}>{originalLabel}</a>
       </span>
     )
   }
@@ -136,6 +165,7 @@ const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElemen
             onClick={(event) => {
               event.stopPropagation()
               rememberReturnPosition(event.currentTarget)
+              event.currentTarget.href = sourceHrefWithReturn(event.currentTarget)
             }}
             className='font-semibold text-[var(--studio-accent-strong)]'
           >

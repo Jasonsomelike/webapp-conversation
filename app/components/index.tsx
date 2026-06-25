@@ -36,6 +36,35 @@ const cloneChatItem = (item: ChatItem): ChatItem => {
   return JSON.parse(JSON.stringify(item)) as ChatItem
 }
 
+interface SourceReturnState {
+  href?: string
+  y?: number
+  at?: number
+  messageId?: string
+  conversationId?: string
+  anchorDelta?: number
+}
+
+const readSourceReturnState = (): SourceReturnState | null => {
+  if (typeof window === 'undefined')
+  { return null }
+  try {
+    const raw = sessionStorage.getItem('network-study-source-return')
+    if (!raw)
+    { return null }
+    const state = JSON.parse(raw) as SourceReturnState
+    if (!state.at || Date.now() - Number(state.at) > 10 * 60 * 1000) {
+      sessionStorage.removeItem('network-study-source-return')
+      return null
+    }
+    return state
+  }
+  catch {
+    sessionStorage.removeItem('network-study-source-return')
+    return null
+  }
+}
+
 const Main: FC<IMainProps> = () => {
   const { t } = useTranslation()
   const media = useBreakpoints()
@@ -121,6 +150,14 @@ const Main: FC<IMainProps> = () => {
   const conversationIntroduction = currConversationInfo?.introduction || ''
   const suggestedQuestions = currConversationInfo?.suggested_questions || []
 
+  useEffect(() => {
+    ;(window as any).__NETWORK_STUDY_CURRENT_CONVERSATION_ID = currConversationId
+    return () => {
+      if ((window as any).__NETWORK_STUDY_CURRENT_CONVERSATION_ID === currConversationId)
+      { delete (window as any).__NETWORK_STUDY_CURRENT_CONVERSATION_ID }
+    }
+  }, [currConversationId])
+
   const handleConversationSwitch = () => {
     if (!inited) { return }
 
@@ -179,6 +216,8 @@ const Main: FC<IMainProps> = () => {
   const handleConversationIdChange = (id: string) => {
     userPausedFollowRef.current = false
     followOutputRef.current = true
+    autoFollowGraceUntilRef.current = Date.now() + 800
+    pendingScrollToBottomRef.current = id !== '-1'
     setTargetMessageId('')
     targetConversationIdRef.current = ''
     if (id === '-1') {
@@ -217,6 +256,9 @@ const Main: FC<IMainProps> = () => {
   const lastScrollTopRef = useRef(0)
   const touchYRef = useRef<number | null>(null)
   const userScrollIntentUntilRef = useRef(0)
+  const autoFollowGraceUntilRef = useRef(0)
+  const lastDistanceToBottomRef = useRef(0)
+  const pendingScrollToBottomRef = useRef(false)
   const autoScrollTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null)
   const scrollToChatBottom = (behavior: ScrollBehavior = 'smooth') => {
     const scrollParent = findScrollParent(chatListDomRef.current)
@@ -224,9 +266,12 @@ const Main: FC<IMainProps> = () => {
     { return }
     userPausedFollowRef.current = false
     followOutputRef.current = true
+    userScrollIntentUntilRef.current = 0
+    autoFollowGraceUntilRef.current = Date.now() + 1200
     setShowJumpToBottom(false)
     scrollParent.scrollTo({ top: scrollParent.scrollHeight, behavior })
     lastScrollTopRef.current = scrollParent.scrollTop
+    lastDistanceToBottomRef.current = scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight
   }
 
   const findScrollParent = (element: HTMLElement | null) => {
@@ -253,6 +298,7 @@ const Main: FC<IMainProps> = () => {
     const pauseFollowing = () => {
       userPausedFollowRef.current = true
       followOutputRef.current = false
+      autoFollowGraceUntilRef.current = 0
       setShowJumpToBottom(true)
       if (autoScrollTimerRef.current) {
         globalThis.clearTimeout(autoScrollTimerRef.current)
@@ -261,7 +307,7 @@ const Main: FC<IMainProps> = () => {
     }
 
     const markUserScrollIntent = () => {
-      userScrollIntentUntilRef.current = Date.now() + 500
+      userScrollIntentUntilRef.current = Date.now() + 3500
     }
 
     const isMainChatScrollTarget = (target: EventTarget | null) =>
@@ -273,8 +319,10 @@ const Main: FC<IMainProps> = () => {
       const currentTop = scrollParent.scrollTop
       const distanceToBottom = scrollParent.scrollHeight - currentTop - scrollParent.clientHeight
       const movedUp = currentTop < lastScrollTopRef.current - 1
-      const nearBottom = distanceToBottom < 36
-      if (movedUp && !nearBottom)
+      const nearBottom = distanceToBottom < 56
+      const userIntentActive = Date.now() < userScrollIntentUntilRef.current
+      lastDistanceToBottomRef.current = distanceToBottom
+      if ((movedUp || userIntentActive) && !nearBottom)
       { pauseFollowing() }
       else if (nearBottom) {
         userPausedFollowRef.current = false
@@ -339,14 +387,22 @@ const Main: FC<IMainProps> = () => {
   useEffect(() => {
     if (!followOutputRef.current || userPausedFollowRef.current)
     { return }
+    const now = Date.now()
+    const hasRecentUserScrollIntent = now < userScrollIntentUntilRef.current
+    const canFollow = lastDistanceToBottomRef.current < 180 || now < autoFollowGraceUntilRef.current
+    if (hasRecentUserScrollIntent || !canFollow)
+    { return }
     autoScrollTimerRef.current = globalThis.setTimeout(() => {
       autoScrollTimerRef.current = null
       if (!followOutputRef.current || userPausedFollowRef.current)
       { return }
       const scrollParent = findScrollParent(chatListDomRef.current)
       if (scrollParent) {
+        if (Date.now() < userScrollIntentUntilRef.current)
+        { return }
         scrollParent.scrollTop = scrollParent.scrollHeight
         lastScrollTopRef.current = scrollParent.scrollTop
+        lastDistanceToBottomRef.current = scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight
         setShowJumpToBottom(false)
       }
     }, 50)
@@ -418,34 +474,75 @@ const Main: FC<IMainProps> = () => {
   }, [chatList, currConversationId, targetMessageId])
 
   useEffect(() => {
-    let raw = ''
-    try {
-      raw = sessionStorage.getItem('network-study-source-return') || ''
-      if (!raw)
-      { return }
-      const state = JSON.parse(raw) as { href?: string, y?: number, at?: number }
-      const currentHref = `${globalThis.location.pathname}${globalThis.location.search}${globalThis.location.hash}`
-      if (!state.href || state.href !== currentHref || Date.now() - Number(state.at || 0) > 10 * 60 * 1000)
-      { return }
-      const scrollParent = findScrollParent(chatListDomRef.current)
-      if (!scrollParent)
-      { return }
-      followOutputRef.current = false
-      userPausedFollowRef.current = true
-      const restore = () => {
-        scrollParent.scrollTo({ top: Math.max(0, Number(state.y || 0)), behavior: 'auto' })
-        lastScrollTopRef.current = scrollParent.scrollTop
+    const state = readSourceReturnState()
+    if (!state)
+    { return }
+    const currentHref = `${globalThis.location.pathname}${globalThis.location.search}${globalThis.location.hash}`
+    const currentPath = globalThis.location.pathname
+    const conversationMatches = !state.conversationId || state.conversationId === currConversationId
+    const hrefMatches = state.href === currentHref || (currentPath === '/chat' && conversationMatches)
+    if (!hrefMatches)
+    { return }
+    if (state.conversationId && state.conversationId !== currConversationId) {
+      const exists = conversationList.some(item => item.id === state.conversationId)
+      if (exists) {
+        pendingScrollToBottomRef.current = false
+        followOutputRef.current = false
+        userPausedFollowRef.current = true
+        setShowMobileConversationList(false)
+        setCurrConversationId(state.conversationId, APP_ID, false)
       }
-      restore()
-      const timers = [120, 420, 900].map(delay => globalThis.setTimeout(restore, delay))
-      sessionStorage.removeItem('network-study-source-return')
-      return () => timers.forEach(timer => globalThis.clearTimeout(timer))
+      return
     }
-    catch {
-      if (raw)
-      { sessionStorage.removeItem('network-study-source-return') }
+    const scrollParent = findScrollParent(chatListDomRef.current)
+    if (!scrollParent)
+    { return }
+    pendingScrollToBottomRef.current = false
+    followOutputRef.current = false
+    userPausedFollowRef.current = true
+    autoFollowGraceUntilRef.current = 0
+    userScrollIntentUntilRef.current = Date.now() + 4000
+    setShowMobileConversationList(false)
+    if (state.messageId) {
+      targetConversationIdRef.current = currConversationId
+      setTargetMessageId(state.messageId)
+    }
+    const restore = () => {
+      const targetElement = state.messageId
+        ? document.getElementById(`message-${state.messageId}`)
+        : null
+      if (targetElement && typeof state.anchorDelta === 'number') {
+        const parentRect = scrollParent.getBoundingClientRect()
+        const elementRect = targetElement.getBoundingClientRect()
+        const nextTop = scrollParent.scrollTop + elementRect.top - parentRect.top - state.anchorDelta
+        scrollParent.scrollTo({ top: Math.max(0, nextTop), behavior: 'auto' })
+      }
+      else {
+        scrollParent.scrollTo({ top: Math.max(0, Number(state.y || 0)), behavior: 'auto' })
+      }
+      lastScrollTopRef.current = scrollParent.scrollTop
+      lastDistanceToBottomRef.current = scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight
+    }
+    restore()
+    const timers = [120, 420, 900, 1600].map(delay => globalThis.setTimeout(restore, delay))
+    const cleanupTimer = globalThis.setTimeout(() => {
+      sessionStorage.removeItem('network-study-source-return')
+    }, 1800)
+    return () => {
+      timers.forEach(timer => globalThis.clearTimeout(timer))
+      globalThis.clearTimeout(cleanupTimer)
     }
   }, [chatList, currConversationId])
+
+  useEffect(() => {
+    if (!pendingScrollToBottomRef.current || targetMessageId)
+    { return }
+    pendingScrollToBottomRef.current = false
+    const timers = [80, 260, 620].map(delay => globalThis.setTimeout(() => {
+      scrollToChatBottom('auto')
+    }, delay))
+    return () => timers.forEach(timer => globalThis.clearTimeout(timer))
+  }, [chatList, currConversationId, targetMessageId])
   // user can not edit inputs if user had send message
   const canEditInputs = !chatList.some(item => item.isAnswer === false) && isNewConversation
   const createNewChat = () => {
@@ -499,8 +596,9 @@ const Main: FC<IMainProps> = () => {
           return
         }
         const urlParams = new URLSearchParams(globalThis.location.search)
-        const requestedConversationId = urlParams.get('conversationId') || urlParams.get('conversation') || ''
-        const requestedMessageId = urlParams.get('messageId') || ''
+        const sourceReturnState = readSourceReturnState()
+        const requestedConversationId = urlParams.get('conversationId') || urlParams.get('conversation') || sourceReturnState?.conversationId || ''
+        const requestedMessageId = urlParams.get('messageId') || sourceReturnState?.messageId || ''
         const requestedConversation = conversations.find(item => item.id === requestedConversationId)
         const _conversationId = requestedConversation?.id || getConversationIdFromStorage(APP_ID)
         const currentConversation = conversations.find(item => item.id === _conversationId)
@@ -509,6 +607,8 @@ const Main: FC<IMainProps> = () => {
           targetConversationIdRef.current = requestedConversation.id
           setTargetMessageId(requestedMessageId)
           followOutputRef.current = !requestedMessageId
+          userPausedFollowRef.current = Boolean(requestedMessageId)
+          pendingScrollToBottomRef.current = false
           setShowMobileConversationList(false)
         }
 
@@ -773,6 +873,9 @@ const Main: FC<IMainProps> = () => {
     }
     userPausedFollowRef.current = false
     followOutputRef.current = true
+    userScrollIntentUntilRef.current = 0
+    autoFollowGraceUntilRef.current = Date.now() + 1200
+    lastDistanceToBottomRef.current = 0
     const responseTempId = responseItem.id
     let hasSetResponseId = false
 

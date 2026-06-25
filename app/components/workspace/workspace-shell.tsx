@@ -193,6 +193,14 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
     router.refresh()
   }
 
+  const goLoginFromGuest = async () => {
+    setLoginPromptOpen(false)
+    resetChatRuntime()
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined)
+    router.replace('/login')
+    router.refresh()
+  }
+
   const handleNavClick = (event: MouseEvent<HTMLAnchorElement>, href: string) => {
     if (isGuest && !guestAllowedRoutes.has(href)) {
       event.preventDefault()
@@ -443,7 +451,7 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
                 </button>
                 <button
                   type="button"
-                  onClick={() => router.push('/login')}
+                  onClick={() => void goLoginFromGuest()}
                   className="h-11 rounded-2xl bg-[var(--studio-deep)] text-sm font-semibold text-white"
                 >
                   去登录

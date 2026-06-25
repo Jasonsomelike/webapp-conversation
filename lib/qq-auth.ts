@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { createHmac, timingSafeEqual } from 'node:crypto'
 import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
 import { assertAppUserActive, ensureAccountLifecycleStorage, isAppUserDeleted } from '@/lib/account-lifecycle'
 
@@ -20,6 +21,65 @@ interface QqProfile {
 }
 
 let qqIdentityStorageReady = false
+
+export const PENDING_QQ_COOKIE = 'network_study_pending_qq'
+export const PENDING_QQ_COOKIE_MAX_AGE = 10 * 60
+
+export interface PendingQqIdentity {
+  appId: string
+  openId: string
+  unionId?: string
+  nickname?: string
+  avatarUrl?: string
+  createdAt: number
+}
+
+export interface QqIdentitySummary {
+  bound: boolean
+  displayId?: string
+  openIdTail?: string
+  unionId?: string
+  appIds: string[]
+}
+
+const getSecret = () =>
+  process.env.AUTH_SECRET || 'development-only-secret-change-before-production'
+
+const encode = (value: string) => Buffer.from(value).toString('base64url')
+const decode = (value: string) => Buffer.from(value, 'base64url').toString('utf8')
+
+const sign = (payload: string) =>
+  createHmac('sha256', getSecret()).update(payload).digest('base64url')
+
+export const createPendingQqToken = (identity: Omit<PendingQqIdentity, 'createdAt'>) => {
+  const payload = encode(JSON.stringify({ ...identity, createdAt: Date.now() } satisfies PendingQqIdentity))
+  return `${payload}.${sign(payload)}`
+}
+
+export const verifyPendingQqToken = (token?: string | null): PendingQqIdentity | null => {
+  if (!token)
+  { return null }
+  const [payload, signature] = token.split('.')
+  if (!payload || !signature)
+  { return null }
+
+  const expected = Buffer.from(sign(payload))
+  const received = Buffer.from(signature)
+  if (expected.length !== received.length || !timingSafeEqual(expected, received))
+  { return null }
+
+  try {
+    const identity = JSON.parse(decode(payload)) as PendingQqIdentity
+    if (!identity.appId || !identity.openId || !identity.createdAt)
+    { return null }
+    if (Date.now() - Number(identity.createdAt) > PENDING_QQ_COOKIE_MAX_AGE * 1000)
+    { return null }
+    return identity
+  }
+  catch {
+    return null
+  }
+}
 
 const ensureQqIdentityStorage = async () => {
   if (qqIdentityStorageReady)
@@ -140,6 +200,12 @@ export const resolveQqUser = async ({
     if (exactIdentity) {
       if (await isAppUserDeleted(exactIdentity.appUserId))
       { throw new Error('QQ_ACCOUNT_DELETED') }
+      if (unionId && exactIdentity.unionId !== unionId) {
+        await db.qqIdentity.update({
+          where: { appId_openId: { appId, openId } },
+          data: { unionId },
+        })
+      }
       const user = await db.appUser.update({
         where: { id: exactIdentity.appUserId },
         data: {
@@ -162,8 +228,10 @@ export const resolveQqUser = async ({
     if (unionIdentity) {
       if (await isAppUserDeleted(unionIdentity.appUserId))
       { throw new Error('QQ_ACCOUNT_DELETED') }
-      await db.qqIdentity.create({
-        data: { appUserId: unionIdentity.appUserId, appId, openId, unionId },
+      await db.qqIdentity.upsert({
+        where: { appId_openId: { appId, openId } },
+        update: { unionId },
+        create: { appUserId: unionIdentity.appUserId, appId, openId, unionId },
       })
       const user = await db.appUser.update({
         where: { id: unionIdentity.appUserId },
@@ -193,22 +261,27 @@ export const bindQqIdentityToUser = async ({
   return withDatabaseRetry(async () => {
     await ensureQqIdentityStorage()
     await assertAppUserActive(appUserId)
-    const existing = await db.qqIdentity.findFirst({
-      where: {
-        OR: [
-          { appId, openId },
-          ...(unionId ? [{ unionId }] : []),
-        ],
-      },
-    })
-    if (existing && existing.appUserId !== appUserId)
+    const [exactIdentity, unionIdentity] = await Promise.all([
+      db.qqIdentity.findUnique({
+        where: { appId_openId: { appId, openId } },
+      }),
+      unionId
+        ? db.qqIdentity.findFirst({ where: { unionId } })
+        : Promise.resolve(null),
+    ])
+    const conflict = [exactIdentity, unionIdentity].find(identity => identity && identity.appUserId !== appUserId)
+    if (conflict)
     { throw new Error('QQ_ALREADY_BOUND') }
-    if (!existing) {
-      await db.qqIdentity.create({
-        data: { appUserId, appId, openId, unionId },
-      })
-    }
-    return { bound: true }
+
+    const saved = await db.qqIdentity.upsert({
+      where: { appId_openId: { appId, openId } },
+      update: {
+        appUserId,
+        ...(unionId ? { unionId } : {}),
+      },
+      create: { appUserId, appId, openId, unionId },
+    })
+    return { bound: true, identity: saved }
   })
 }
 
@@ -216,4 +289,25 @@ export const hasQqIdentity = async (appUserId: string) =>
   withDatabaseRetry(async () => {
     await ensureQqIdentityStorage()
     return (await db.qqIdentity.count({ where: { appUserId } })) > 0
+  })
+
+export const getQqIdentitySummary = async (appUserId: string): Promise<QqIdentitySummary> =>
+  withDatabaseRetry(async () => {
+    await ensureQqIdentityStorage()
+    const identities = await db.qqIdentity.findMany({
+      where: { appUserId },
+      orderBy: { updatedAt: 'desc' },
+      select: { appId: true, openId: true, unionId: true },
+    })
+    const primary = identities[0]
+    if (!primary)
+    { return { bound: false, appIds: [] } }
+    const openIdTail = primary.openId.slice(-8)
+    return {
+      bound: true,
+      displayId: primary.unionId || `openid…${openIdTail}`,
+      openIdTail,
+      unionId: primary.unionId || undefined,
+      appIds: Array.from(new Set(identities.map(identity => identity.appId))),
+    }
   })
