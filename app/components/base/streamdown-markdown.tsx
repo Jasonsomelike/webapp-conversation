@@ -15,9 +15,40 @@ import {
 interface StreamdownMarkdownProps {
   content: string
   className?: string
+  shareToken?: string
 }
 
-const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElement>) => {
+const toSharedAssetProxyUrl = (value: string, shareToken?: string, download = false, filename = '') => {
+  if (!shareToken)
+  { return toDifyAssetProxyUrl(value, download, filename) }
+  const url = toAbsoluteDifyAssetUrl(value)
+  if (!url)
+  { return '' }
+  try {
+    const target = new URL(url)
+    const isDifyAsset = target.protocol === 'https:'
+      && ['dify.jasonsome.cn', 'www.jasonsome.cn', 'jasonsome.cn'].includes(target.hostname)
+      && (target.hostname !== 'dify.jasonsome.cn' || !target.port || target.port === '22380')
+      && (target.pathname.startsWith('/files/') || target.pathname.startsWith('/page-images/'))
+    if (!isDifyAsset)
+    { return toDifyAssetProxyUrl(value, download, filename) }
+  }
+  catch {
+    return toDifyAssetProxyUrl(value, download, filename)
+  }
+  const params = new URLSearchParams({ url })
+  if (download)
+  { params.set('download', '1') }
+  if (filename)
+  { params.set('filename', filename) }
+  return `/api/share/${encodeURIComponent(shareToken)}/file-proxy?${params}`
+}
+
+interface MarkdownImageProps extends ImgHTMLAttributes<HTMLImageElement> {
+  shareToken?: string
+}
+
+const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) => {
   const [preview, setPreview] = useState(false)
   const [failed, setFailed] = useState(false)
   const [sourceInfo, setSourceInfo] = useState<{
@@ -28,7 +59,7 @@ const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElemen
   }>()
   const sourceUrl = String(src)
   const absoluteSourceUrl = toAbsoluteDifyAssetUrl(sourceUrl)
-  const imageUrl = toDifyAssetProxyUrl(sourceUrl)
+  const imageUrl = toSharedAssetProxyUrl(sourceUrl, shareToken)
 
   const pageNumber = sourceInfo?.pageNumber || Number(sourceUrl.match(/\/page-images\/[^/]+\/page_(\d+)\./i)?.[1] || 0) || undefined
   const sourceFilename = sourceInfo?.documentName || String(alt).match(/([^\n|]+?\.(?:pdf|docx?|pptx?))/i)?.[1]?.replace(/^[\s\-–—*#>|![\]()"'“”‘’]+/, '').trim()
@@ -181,11 +212,16 @@ const childText = (children: ReactNode) => Array.isArray(children)
   ? children.map(child => String(child)).join('').trim()
   : String(children || '').trim()
 
+interface MarkdownLinkProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
+  shareToken?: string
+}
+
 const MarkdownLink = ({
   href = '',
   children,
+  shareToken,
   ...props
-}: AnchorHTMLAttributes<HTMLAnchorElement>) => {
+}: MarkdownLinkProps) => {
   const downloadable = isDownloadableAsset(href)
   const filename = (() => {
     const label = childText(children)
@@ -198,7 +234,7 @@ const MarkdownLink = ({
       return '下载文件'
     }
   })()
-  const target = toDifyAssetProxyUrl(href, downloadable, filename)
+  const target = toSharedAssetProxyUrl(href, shareToken, downloadable, filename)
 
   if (downloadable) {
     const extension = filename.split('.').pop()?.toUpperCase() || 'FILE'
@@ -221,14 +257,14 @@ const MarkdownLink = ({
   )
 }
 
-export function StreamdownMarkdown({ content, className = '' }: StreamdownMarkdownProps) {
+export function StreamdownMarkdown({ content, className = '', shareToken }: StreamdownMarkdownProps) {
   return (
     <div className={`streamdown-markdown ${className}`}>
       <Streamdown
         defaultOrigin='https://dify.jasonsome.cn:22380'
         components={{
-          img: MarkdownImage,
-          a: MarkdownLink,
+          img: props => <MarkdownImage {...props} shareToken={shareToken} />,
+          a: props => <MarkdownLink {...props} shareToken={shareToken} />,
         }}
       >
         {normalizeAssistantMarkdown(content)}

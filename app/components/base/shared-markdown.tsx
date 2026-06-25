@@ -2,6 +2,6 @@
 
 import StreamdownMarkdown from '@/app/components/base/streamdown-markdown'
 
-export default function SharedMarkdown({ content }: { content: string }) {
-  return <StreamdownMarkdown content={content} />
+export default function SharedMarkdown({ content, shareToken }: { content: string, shareToken?: string }) {
+  return <StreamdownMarkdown content={content} shareToken={shareToken} />
 }

@@ -111,7 +111,7 @@ export default async function SharedConversationPage({
               <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-black/35">
                 {message.role === 'user' ? '用户' : '计网Agent'}
               </div>
-              <SharedMarkdown content={visibleMarkdown(message.content)} />
+              <SharedMarkdown content={visibleMarkdown(message.content)} shareToken={token} />
             </article>
           ))}
         </div>
