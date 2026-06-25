@@ -334,6 +334,18 @@ export const hasQqIdentity = async (appUserId: string) =>
     return (await db.qqIdentity.count({ where: { appUserId } })) > 0
   })
 
+export const unbindQqIdentitiesFromUser = async (appUserId: string) => {
+  if (!isDatabaseConfigured())
+  { throw new Error('DATABASE_NOT_CONFIGURED') }
+
+  return withDatabaseRetry(async () => {
+    await ensureQqIdentityStorage()
+    await assertAppUserActive(appUserId)
+    const result = await db.qqIdentity.deleteMany({ where: { appUserId } })
+    return { bound: false, removed: result.count, appIds: [] as string[] }
+  })
+}
+
 export const getQqIdentitySummary = async (appUserId: string): Promise<QqIdentitySummary> =>
   withDatabaseRetry(async () => {
     await ensureQqIdentityStorage()

@@ -248,6 +248,29 @@ export default function ProfileView({
     }
   }
 
+  const unbindQq = async () => {
+    if (!qqBound)
+    { return }
+    // eslint-disable-next-line no-alert
+    if (!globalThis.confirm('解绑后将不能继续使用该 QQ 直接登录当前账号，确定解绑吗？'))
+    { return }
+    setQqBinding(true)
+    try {
+      const response = await fetch('/api/profile/qq/unbind', { method: 'POST' })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok)
+      { throw new Error(result.error || '解绑 QQ 失败') }
+      setQqIdentity(result.qq || { bound: false, appIds: [] })
+      notify({ type: 'success', message: 'QQ 账号已解绑' })
+    }
+    catch (error) {
+      notify({ type: 'error', message: error instanceof Error ? error.message : '解绑 QQ 失败，请稍后重试' })
+    }
+    finally {
+      setQqBinding(false)
+    }
+  }
+
   const startQqBinding = () => {
     if (!nativeApp) {
       globalThis.location.href = '/api/auth/qq/web/start?purpose=bind'
@@ -568,19 +591,33 @@ export default function ProfileView({
             <div className="px-5 pb-2 pt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#748179]">
               账户安全
             </div>
-            <button
-              type="button"
-              onClick={startQqBinding}
-              disabled={qqBound || qqBinding}
-              className="flex w-full items-center gap-3 border-b border-black/[0.06] px-5 py-4 text-left transition hover:bg-black/[0.02] disabled:cursor-default"
-            >
-              <LinkIcon className="h-5 w-5 text-[#12aee2]" />
-              <span className="flex-1">
-                <span className="block text-sm font-semibold">{qqBound ? 'QQ 账号已绑定' : '绑定 QQ 账号'}</span>
-                <span className="mt-1 block text-[10px] text-black/40">{qqBound ? qqDisplay : '保留现有学习数据并增加 QQ 登录方式'}</span>
-              </span>
-              <span className="text-xs text-black/35">{qqBinding ? '授权中…' : qqBound ? '已绑定' : '去绑定'}</span>
-            </button>
+            <div className="border-b border-black/[0.06]">
+              <button
+                type="button"
+                onClick={startQqBinding}
+                disabled={qqBinding}
+                className="flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-black/[0.02] disabled:cursor-default disabled:opacity-60"
+              >
+                <LinkIcon className="h-5 w-5 text-[#12aee2]" />
+                <span className="flex-1">
+                  <span className="block text-sm font-semibold">{qqBound ? 'QQ 账号已绑定' : '绑定 QQ 账号'}</span>
+                  <span className="mt-1 block text-[10px] text-black/40">{qqBound ? `${qqDisplay}；如 Web/APP 登录不同步，可点右侧更新绑定` : '保留现有学习数据并增加 QQ 登录方式'}</span>
+                </span>
+                <span className="text-xs text-black/35">{qqBinding ? '授权中…' : qqBound ? '更新绑定' : '去绑定'}</span>
+              </button>
+              {qqBound && (
+                <button
+                  type="button"
+                  onClick={() => void unbindQq()}
+                  disabled={qqBinding}
+                  className="flex w-full items-center gap-3 border-t border-black/[0.04] px-5 py-3 text-left text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                >
+                  <span className="h-5 w-5" />
+                  <span className="flex-1">解绑 QQ 账号</span>
+                  <span className="text-red-400">解绑</span>
+                </button>
+              )}
+            </div>
             {!session.username.startsWith('qq_') && (
               <>
                 <button
