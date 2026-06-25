@@ -8,7 +8,6 @@ import {
   CalendarDaysIcon,
   CameraIcon,
   ChartBarSquareIcon,
-  CheckIcon,
   ChevronRightIcon,
   Cog6ToothIcon,
   FingerPrintIcon,
@@ -18,6 +17,7 @@ import {
   PencilSquareIcon,
   ShieldCheckIcon,
   SparklesIcon,
+  TrashIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
@@ -60,6 +60,7 @@ export default function ProfileView({
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl)
   const [avatarSaving, setAvatarSaving] = useState(false)
   const [qqBound, setQqBound] = useState(initialQqBound)
@@ -207,6 +208,26 @@ export default function ProfileView({
     catch {
       setLoggingOut(false)
       notify({ type: 'error', message: '退出失败，请稍后重试' })
+    }
+  }
+
+  const deleteAccount = async () => {
+    // eslint-disable-next-line no-alert
+    const typed = globalThis.prompt(`注销后账号将无法再次登录，QQ 绑定会解除，但历史学习数据会被保留用于审计与数据完整性。\n\n如确认，请输入账号名：${session.username}`)
+    if (typed !== session.username)
+    { return }
+    setDeletingAccount(true)
+    try {
+      resetChatRuntime()
+      const response = await fetch('/api/profile/account', { method: 'DELETE' })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok)
+      { throw new Error(result.error || '注销账号失败') }
+      globalThis.location.replace('/login')
+    }
+    catch (error) {
+      setDeletingAccount(false)
+      notify({ type: 'error', message: error instanceof Error ? error.message : '注销账号失败，请稍后重试' })
     }
   }
 
@@ -607,6 +628,23 @@ export default function ProfileView({
                 <span className="flex-1 text-sm font-semibold">{loggingOut ? '正在退出…' : '退出登录'}</span>
               </button>
             )}
+            {session.provider !== 'guest'
+              ? (
+                <button
+                  type="button"
+                  onClick={() => void deleteAccount()}
+                  disabled={deletingAccount}
+                  className="flex w-full items-center gap-3 border-t border-black/[0.06] px-5 py-4 text-left text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                >
+                  <TrashIcon className="h-5 w-5" />
+                  <span className="flex-1 text-sm font-semibold">{deletingAccount ? '正在注销…' : '注销账号'}</span>
+                </button>
+              )
+              : (
+                <div className="border-t border-black/[0.06] px-5 py-4 text-[11px] text-black/35">
+                  游客模式不会创建正式账号，无需注销。
+                </div>
+              )}
           </PageCard>
         </div>
       </div>

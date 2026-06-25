@@ -942,11 +942,24 @@ const Main: FC<IMainProps> = () => {
       },
       onError() {
         setRespondingFalse()
-        // role back placeholder answer
+        // roll back the optimistic question and placeholder when the Dify request
+        // fails before a durable assistant message is produced, so the composer can
+        // keep the draft for retry without duplicating the user bubble.
         setChatList(produce(getChatList(), (draft) => {
           const placeholderIndex = draft.findIndex(item => item.id === placeholderAnswerId)
           if (placeholderIndex >= 0)
           { draft.splice(placeholderIndex, 1) }
+          const hasAssistantPayload = Boolean(
+            responseItem.content
+            || responseItem.workflowProcess
+            || responseItem.agent_thoughts?.length
+            || responseItem.message_files?.length,
+          )
+          if (!hasAssistantPayload) {
+            const questionIndex = draft.findIndex(item => item.id === questionId)
+            if (questionIndex >= 0)
+            { draft.splice(questionIndex, 1) }
+          }
         }))
       },
       onWorkflowStarted: ({ workflow_run_id }) => {

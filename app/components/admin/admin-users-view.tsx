@@ -7,6 +7,7 @@ import {
   CheckIcon,
   LockOpenIcon,
   MagnifyingGlassIcon,
+  TrashIcon,
   UserGroupIcon,
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
@@ -31,6 +32,7 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
   const [users, setUsers] = useState(initialUsers)
   const [query, setQuery] = useState('')
   const [savingId, setSavingId] = useState('')
+  const [deletingId, setDeletingId] = useState('')
   const [conversationUser, setConversationUser] = useState<AdminUserRow>()
   const { notify } = Toast
   const filtered = useMemo(() => users.filter(user =>
@@ -64,6 +66,29 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
     }
     finally {
       setSavingId('')
+    }
+  }
+
+  const deleteUser = async (user: AdminUserRow) => {
+    // eslint-disable-next-line no-alert
+    const typed = globalThis.prompt(`将注销账号 @${user.username}，该账号将无法再次登录，QQ 绑定也会解除。\n\n如确认，请输入账号名：${user.username}`)
+    if (typed !== user.username)
+    { return }
+
+    setDeletingId(user.id)
+    try {
+      const response = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok)
+      { throw new Error(result.error || '删除用户失败') }
+      setUsers(current => current.filter(item => item.id !== user.id))
+      notify({ type: 'success', message: '用户已注销' })
+    }
+    catch (error) {
+      notify({ type: 'error', message: error instanceof Error ? error.message : '删除用户失败' })
+    }
+    finally {
+      setDeletingId('')
     }
   }
 
@@ -130,6 +155,15 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
                 <button onClick={() => void save(user)} disabled={savingId === user.id} className="flex h-10 min-w-[88px] items-center justify-center gap-2 rounded-xl bg-[var(--studio-deep)] px-4 text-xs font-semibold text-white disabled:opacity-50">
                   {savingId === user.id ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <CheckIcon className="h-4 w-4" />}
                   保存
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void deleteUser(user)}
+                  disabled={deletingId === user.id}
+                  className="grid h-10 w-10 place-items-center rounded-xl border border-red-100 bg-red-50 text-red-600 disabled:opacity-50"
+                  title="注销/删除用户"
+                >
+                  {deletingId === user.id ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <TrashIcon className="h-4 w-4" />}
                 </button>
               </div>
             </div>

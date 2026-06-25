@@ -63,11 +63,24 @@ const Chat: FC<IChatProps> = ({
   const [query, setQuery] = React.useState('')
   const [isSending, setIsSending] = React.useState(false)
   const queryRef = useRef('')
+  const textareaRef = useRef<any>(null)
 
-  const handleContentChange = (e: any) => {
-    const value = e.target.value
+  const getDraftValue = () =>
+    String(
+      textareaRef.current?.resizableTextArea?.textArea?.value
+      ?? textareaRef.current?.textArea?.value
+      ?? queryRef.current
+      ?? query
+      ?? '',
+    )
+
+  const syncDraftValue = (value: string) => {
     setQuery(value)
     queryRef.current = value
+  }
+
+  const handleContentChange = (e: any) => {
+    syncDraftValue(e.target.value)
   }
 
   const logError = (message: string) => {
@@ -75,8 +88,9 @@ const Chat: FC<IChatProps> = ({
   }
 
   const valid = () => {
-    const query = queryRef.current
-    if (!query || query.trim() === '') {
+    const draft = getDraftValue()
+    syncDraftValue(draft)
+    if (!draft || draft.trim() === '') {
       logError(t('app.errorMessage.valueOfVarRequired'))
       return false
     }
@@ -127,7 +141,8 @@ const Chat: FC<IChatProps> = ({
     }))
     const docAndOtherFiles: VisionFile[] = getProcessedFiles(attachmentFiles)
     const combinedFiles: VisionFile[] = [...imageFiles, ...docAndOtherFiles]
-    const message = queryRef.current
+    const message = getDraftValue()
+    syncDraftValue(message)
     setIsSending(true)
     const accepted = await Promise.resolve(onSend(message, combinedFiles)).catch(() => false)
     setIsSending(false)
@@ -135,8 +150,7 @@ const Chat: FC<IChatProps> = ({
     { return }
     if (!files.find(item => item.type === TransferMethod.local_file && !item.fileId)) {
       if (files.length) { onClear() }
-      setQuery('')
-      queryRef.current = ''
+      syncDraftValue('')
     }
     if (!attachmentFiles.find(item => item.transferMethod === TransferMethod.local_file && !item.uploadedId)) { setAttachmentFiles([]) }
   }
@@ -157,22 +171,21 @@ const Chat: FC<IChatProps> = ({
     { return }
     if (e.code === 'Enter' && !e.shiftKey) {
       const result = query.replace(/\n$/, '')
-      setQuery(result)
-      queryRef.current = result
+      syncDraftValue(result)
       e.preventDefault()
     }
   }
 
   const suggestionClick = (suggestion: string) => {
-    setQuery(suggestion)
-    queryRef.current = suggestion
+    syncDraftValue(suggestion)
     void handleSend()
   }
+  const canSendText = (queryRef.current || query).trim().length > 0
 
   return (
     <div className={cn(!feedbackDisabled && 'px-1 sm:px-3.5', 'flex h-full min-h-0 flex-col')}>
       {/* Chat List */}
-      <div ref={scrollContainerRef} className="min-h-0 flex-1 space-y-[30px] overflow-y-auto overscroll-contain pb-4 pt-2">
+      <div ref={scrollContainerRef} className="min-h-0 flex-1 space-y-[30px] overflow-x-hidden overflow-y-auto overscroll-contain pb-4 pt-2">
         {chatList.map((item) => {
           if (item.isAnswer) {
             const isLast = item.id === chatList[chatList.length - 1].id
@@ -223,18 +236,21 @@ const Chat: FC<IChatProps> = ({
                   </div>
                 )}
                 <Textarea
+                  ref={textareaRef}
                   className="block min-w-0 flex-1 appearance-none resize-none bg-transparent px-1.5 py-2 text-[15px] leading-5 text-[var(--studio-ink)] outline-none"
                   placeholder="发消息…"
                   value={query}
                   onChange={handleContentChange}
+                  onInput={handleContentChange}
                   onCompositionStart={() => {
                     isUseInputMethod.current = true
                   }}
+                  onCompositionUpdate={(event: any) => {
+                    queryRef.current = event.currentTarget.value
+                  }}
                   onCompositionEnd={(event: any) => {
                     isUseInputMethod.current = false
-                    const value = event.currentTarget.value
-                    setQuery(value)
-                    queryRef.current = value
+                    syncDraftValue(event.currentTarget.value)
                   }}
                   onKeyUp={handleKeyUp}
                   onKeyDown={handleKeyDown}
@@ -242,7 +258,7 @@ const Chat: FC<IChatProps> = ({
                   autoSize
                 />
                 <div className="flex h-9 shrink-0 items-center gap-1">
-                  {query.trim().length > 0 && <div className={`${s.count} rounded-full bg-gray-50 px-1.5 text-[10px] leading-5 text-gray-400`}>{query.trim().length}</div>}
+                  {canSendText && <div className={`${s.count} rounded-full bg-gray-50 px-1.5 text-[10px] leading-5 text-gray-400`}>{(queryRef.current || query).trim().length}</div>}
                   <Tooltip
                     selector='send-tip'
                     htmlContent={
@@ -255,7 +271,7 @@ const Chat: FC<IChatProps> = ({
                     <button
                       type="button"
                       onClick={() => void handleSend()}
-                      disabled={!query.trim() || isResponding || isSending}
+                      disabled={!canSendText || isResponding || isSending}
                       className="grid h-9 w-9 place-items-center rounded-full bg-[var(--studio-deep)] text-white shadow-sm transition active:scale-95 disabled:bg-black/10 disabled:text-black/25"
                       aria-label="发送消息"
                     >

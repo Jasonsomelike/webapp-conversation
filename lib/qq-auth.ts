@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
+import { assertAppUserActive, ensureAccountLifecycleStorage, isAppUserDeleted } from '@/lib/account-lifecycle'
 
 interface QqIdentityPayload {
   client_id: string
@@ -73,7 +74,23 @@ const fetchQqJson = async <T>(url: URL): Promise<T> => {
   })
   if (!response.ok)
   { throw new Error(`QQ_HTTP_${response.status}`) }
-  return response.json() as Promise<T>
+  const text = await response.text()
+  const trimmed = text.trim()
+  const jsonpMatch = trimmed.match(/^[\w$]+\(([\s\S]*)\);?$/)
+  const payload = jsonpMatch?.[1] || trimmed
+  try {
+    return JSON.parse(payload) as T
+  }
+  catch {
+    const params = new URLSearchParams(payload)
+    const parsed: Record<string, string> = {}
+    params.forEach((value, key) => {
+      parsed[key] = value
+    })
+    if (Object.keys(parsed).length)
+    { return parsed as T }
+    throw new Error('QQ_RESPONSE_PARSE_FAILED')
+  }
 }
 
 export const getQqIdentity = async (accessToken: string, expectedAppId: string) => {
@@ -82,7 +99,7 @@ export const getQqIdentity = async (accessToken: string, expectedAppId: string) 
   url.searchParams.set('fmt', 'json')
   url.searchParams.set('unionid', '1')
   const identity = await fetchQqJson<QqIdentityPayload>(url)
-  if (identity.error || !identity.openid || identity.client_id !== expectedAppId)
+  if (identity.error || !identity.openid || String(identity.client_id) !== expectedAppId)
   { throw new Error('QQ_TOKEN_INVALID') }
   return identity
 }
@@ -115,11 +132,14 @@ export const resolveQqUser = async ({
 
   return withDatabaseRetry(async () => {
     await ensureQqIdentityStorage()
+    await ensureAccountLifecycleStorage()
     const exactIdentity = await db.qqIdentity.findUnique({
       where: { appId_openId: { appId, openId } },
       include: { user: true },
     })
     if (exactIdentity) {
+      if (await isAppUserDeleted(exactIdentity.appUserId))
+      { throw new Error('QQ_ACCOUNT_DELETED') }
       const user = await db.appUser.update({
         where: { id: exactIdentity.appUserId },
         data: {
@@ -140,6 +160,8 @@ export const resolveQqUser = async ({
       : null
 
     if (unionIdentity) {
+      if (await isAppUserDeleted(unionIdentity.appUserId))
+      { throw new Error('QQ_ACCOUNT_DELETED') }
       await db.qqIdentity.create({
         data: { appUserId: unionIdentity.appUserId, appId, openId, unionId },
       })
@@ -170,6 +192,7 @@ export const bindQqIdentityToUser = async ({
 
   return withDatabaseRetry(async () => {
     await ensureQqIdentityStorage()
+    await assertAppUserActive(appUserId)
     const existing = await db.qqIdentity.findFirst({
       where: {
         OR: [

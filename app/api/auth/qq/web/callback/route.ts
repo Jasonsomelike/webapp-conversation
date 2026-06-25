@@ -10,6 +10,7 @@ const defaultCallbackPath = '/api/auth/qq/callback'
 interface QqTokenPayload {
   access_token?: string
   openid?: string
+  unionid?: string
   expires_in?: string | number
   refresh_token?: string
   error?: number | string
@@ -44,6 +45,8 @@ const qqErrorParam = (error: unknown) => {
   { return 'failed' }
   if (error.message === 'QQ_NOT_BOUND')
   { return 'unbound' }
+  if (error.message === 'QQ_ACCOUNT_DELETED' || error.message === 'ACCOUNT_DELETED')
+  { return 'deleted' }
   if (error.message.startsWith('QQ_TOKEN_EXCHANGE_FAILED'))
   { return 'token' }
   if (error.message === 'QQ_OPENID_MISMATCH' || error.message === 'QQ_TOKEN_INVALID')
@@ -110,12 +113,29 @@ export async function GET(request: NextRequest) {
       throw new Error(`QQ_TOKEN_EXCHANGE_FAILED:${token.error || tokenResponse.status}`)
     }
 
-    const identity = token.openid
-      ? { client_id: appId, openid: token.openid }
+    let verifiedIdentity = token.openid
+      ? { client_id: appId, openid: token.openid, unionid: token.unionid }
       : await getQqIdentity(token.access_token, appId)
-    const verifiedIdentity = await getQqIdentity(token.access_token, appId)
-    if (identity.openid !== verifiedIdentity.openid)
-    { throw new Error('QQ_OPENID_MISMATCH') }
+    try {
+      const identityFromMe = await getQqIdentity(token.access_token, appId)
+      if (verifiedIdentity.openid !== identityFromMe.openid)
+      { throw new Error('QQ_OPENID_MISMATCH') }
+      verifiedIdentity = {
+        ...verifiedIdentity,
+        unionid: identityFromMe.unionid || verifiedIdentity.unionid,
+      }
+    }
+    catch (identityError) {
+      if (identityError instanceof Error && identityError.message === 'QQ_OPENID_MISMATCH')
+      { throw identityError }
+      if (!token.openid)
+      { throw identityError }
+      console.warn('[qq-web-auth] openid endpoint unavailable, using token openid fallback', {
+        stage: 'openid-fallback',
+        appId,
+        error: identityError instanceof Error ? identityError.message : String(identityError),
+      })
+    }
     const profile = await getQqProfile(token.access_token, appId, verifiedIdentity.openid)
     if (purpose === 'bind') {
       const session = await getSession()

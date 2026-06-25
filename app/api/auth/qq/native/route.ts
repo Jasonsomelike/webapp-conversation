@@ -46,6 +46,9 @@ export async function POST(request: Request) {
         needBinding: true,
       }, { status: 409 })
     }
+    if (error instanceof Error && (error.message === 'QQ_ACCOUNT_DELETED' || error.message === 'ACCOUNT_DELETED')) {
+      return NextResponse.json({ error: '该账号已注销，无法继续登录。' }, { status: 403 })
+    }
     return NextResponse.json({ error: 'QQ 登录失败，请稍后重试' }, { status: 401 })
   }
 }

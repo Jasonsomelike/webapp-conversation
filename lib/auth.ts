@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { securityQuestions } from '@/lib/account-policy'
 import { db, isDatabaseConfigured } from '@/lib/db'
+import { ensureAccountLifecycleStorage, isAppUserDeleted } from '@/lib/account-lifecycle'
 
 const usernamePattern = /^[a-zA-Z][a-zA-Z0-9_-]{2,31}$/
 const passwordPattern = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,72}$/
@@ -36,6 +37,7 @@ export const registerUser = async (input: z.infer<typeof registerSchema>) => {
   if (!isDatabaseConfigured())
   { throw new Error('DATABASE_NOT_CONFIGURED') }
 
+  await ensureAccountLifecycleStorage()
   const username = normalizeUsername(input.username)
   const existing = await db.appUser.findUnique({ where: { username } })
   if (existing)
@@ -62,9 +64,12 @@ export const authenticateUser = async (usernameInput: string, password: string) 
   if (!isDatabaseConfigured())
   { throw new Error('DATABASE_NOT_CONFIGURED') }
 
+  await ensureAccountLifecycleStorage()
   const username = normalizeUsername(usernameInput)
   const user = await db.appUser.findUnique({ where: { username } })
   if (!user)
+  { return null }
+  if (await isAppUserDeleted(user.id))
   { return null }
 
   if (user.lockedUntil && user.lockedUntil > new Date())
@@ -97,19 +102,26 @@ export const getSecurityQuestion = async (usernameInput: string) => {
   if (!isDatabaseConfigured())
   { throw new Error('DATABASE_NOT_CONFIGURED') }
 
-  return db.appUser.findUnique({
+  await ensureAccountLifecycleStorage()
+  const user = await db.appUser.findUnique({
     where: { username: normalizeUsername(usernameInput) },
-    select: { securityQuestion: true },
+    select: { id: true, securityQuestion: true },
   })
+  if (!user || await isAppUserDeleted(user.id))
+  { return null }
+  return { securityQuestion: user.securityQuestion }
 }
 
 export const resetUserPassword = async (input: z.infer<typeof resetPasswordSchema>) => {
   if (!isDatabaseConfigured())
   { throw new Error('DATABASE_NOT_CONFIGURED') }
 
+  await ensureAccountLifecycleStorage()
   const username = normalizeUsername(input.username)
   const user = await db.appUser.findUnique({ where: { username } })
   if (!user)
+  { return false }
+  if (await isAppUserDeleted(user.id))
   { return false }
 
   const validAnswer = await bcrypt.compare(

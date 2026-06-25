@@ -3,13 +3,13 @@ import { NextResponse } from 'next/server'
 
 const legacyHosts = new Set([
   'bestijason.cn',
-  'www.bestijason.cn',
   'jasonsome.cn',
 ])
 
 export function middleware(request: NextRequest) {
   const hostname = request.nextUrl.hostname.toLowerCase()
-  if (!legacyHosts.has(hostname))
+  const alreadyCanonical = hostname === 'www.jasonsome.cn' && request.nextUrl.protocol === 'https:'
+  if (alreadyCanonical || !legacyHosts.has(hostname))
   { return NextResponse.next() }
 
   const url = request.nextUrl.clone()

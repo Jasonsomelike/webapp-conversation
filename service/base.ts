@@ -181,12 +181,21 @@ const handleStream = (
       console.error(`[chat-stream] ${name} callback failed`, error)
     }
   }
+  return new Promise<boolean>((resolve) => {
+    let completed = false
+    const finish = (name: string, hasError = false) => {
+      if (completed)
+      { return }
+      completed = true
+      safelyCall(name, () => onCompleted?.(hasError))
+      resolve(!hasError)
+    }
   function read() {
     let hasError = false
     reader?.read().then(async (result: any) => {
       if (result.done) {
         await persistPromise
-        safelyCall('completed', () => onCompleted?.())
+        finish('completed')
         return
       }
       buffer += decoder.decode(result.value, { stream: true })
@@ -213,7 +222,7 @@ const handleStream = (
                 errorCode: bufferObj?.code,
               }))
               hasError = true
-              safelyCall('error-completed', () => onCompleted?.(true))
+              finish('error-completed', true)
               return
             }
             if (bufferObj.event === 'message' || bufferObj.event === 'agent_message') {
@@ -274,13 +283,30 @@ const handleStream = (
           errorMessage: `${e}`,
         }))
         hasError = true
-        safelyCall('parse-error-completed', () => onCompleted?.(true))
+        finish('parse-error-completed', true)
         return
       }
       if (!hasError) { read() }
+    }).catch((error: unknown) => {
+      safelyCall('stream-read-error', () => onData('', false, {
+        conversationId: undefined,
+        messageId: '',
+        errorMessage: toFriendlyNetworkError(error),
+      }))
+      finish('read-error-completed', true)
     })
   }
-  read()
+    if (!reader) {
+      safelyCall('missing-reader', () => onData('', false, {
+        conversationId: undefined,
+        messageId: '',
+        errorMessage: '浏览器无法读取响应流',
+      }))
+      finish('missing-reader-completed', true)
+      return
+    }
+    read()
+  })
 }
 
 const baseFetch = (url: string, fetchOptions: any, { needAllResponseContent }: IOtherOptions) => {
@@ -438,16 +464,14 @@ export const ssePost = (
         onError?.(message, data.code)
         return false
       }
-      handleStream(res, (str: string, isFirstMessage: boolean, moreInfo: IOnDataMoreInfo) => {
+      return handleStream(res, (str: string, isFirstMessage: boolean, moreInfo: IOnDataMoreInfo) => {
         if (moreInfo.errorMessage) {
           Toast.notify({ type: 'error', message: moreInfo.errorMessage })
+          onError?.(moreInfo.errorMessage, moreInfo.errorCode)
           return
         }
         onData?.(str, isFirstMessage, moreInfo)
-      }, () => {
-        onCompleted?.()
-      }, onThought, onMessageEnd, onMessageReplace, onFile, onWorkflowStarted, onWorkflowFinished, onNodeStarted, onNodeFinished)
-      return true
+      }, onCompleted, onThought, onMessageEnd, onMessageReplace, onFile, onWorkflowStarted, onWorkflowFinished, onNodeStarted, onNodeFinished)
     })
     .catch((e) => {
       const message = toFriendlyNetworkError(e)

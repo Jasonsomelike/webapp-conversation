@@ -14,11 +14,11 @@ type IQuestionProps = Pick<IChatItem, 'id' | 'content' | 'useCurrentUserAvatar'>
 const Question: FC<IQuestionProps> = ({ id, content, useCurrentUserAvatar, imgSrcs }) => {
   const userName = ''
   return (
-    <div className='flex items-start justify-end' key={id}>
-      <div>
+    <div className='flex min-w-0 items-start justify-end' key={id}>
+      <div className="min-w-0 max-w-[min(88vw,720px)]">
         <div className={`${s.question} relative text-sm text-gray-900`}>
           <div
-            className={'chat-question-card rounded-b-2xl rounded-tl-2xl bg-blue-500 px-3 py-2.5 sm:mr-2 sm:px-4 sm:py-3'}
+            className={'chat-question-card max-w-full overflow-x-auto break-words rounded-b-2xl rounded-tl-2xl bg-blue-500 px-3 py-2.5 sm:mr-2 sm:px-4 sm:py-3'}
           >
             {imgSrcs && imgSrcs.length > 0 && (
               <ImageGallery srcs={imgSrcs} />

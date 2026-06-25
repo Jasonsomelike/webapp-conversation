@@ -33,6 +33,8 @@ const qqLoginErrorMessage = (error: string) => {
   { return '绑定 QQ 前登录状态已失效，请重新登录后再绑定。' }
   if (error === 'unbound')
   { return '该 QQ 尚未绑定学习账号，请先使用账号密码登录/注册，再到“我的画像”中绑定 QQ。' }
+  if (error === 'deleted')
+  { return '该账号已注销，无法继续登录。' }
   return 'QQ 登录失败，请重试'
 }
 
