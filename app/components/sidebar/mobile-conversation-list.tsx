@@ -117,7 +117,7 @@ export default function MobileConversationList({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--studio-chat-surface)]">
+    <div className="mobile-conversation-list flex h-full min-h-0 max-w-full select-none flex-col overflow-x-hidden bg-[var(--studio-chat-surface)] [-webkit-touch-callout:none] [-webkit-user-select:none]">
       <div className="flex h-16 shrink-0 items-center justify-between border-b border-black/[0.07] px-4">
         <div>
           <h2 className="text-xl font-semibold tracking-[-0.025em]">对话记录</h2>
@@ -145,7 +145,7 @@ export default function MobileConversationList({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4">
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-2 pb-4">
         {conversations.length
           ? conversations.map((item, index) => (
             <button
@@ -169,18 +169,18 @@ export default function MobileConversationList({
               onTouchMove={clearLongPressTimer}
               onTouchEnd={clearLongPressTimer}
               onTouchCancel={clearLongPressTimer}
-              className="flex w-full min-w-0 items-center gap-3 rounded-2xl px-3 py-3.5 text-left transition active:bg-black/[0.04]"
-              title={item.preview || item.name}
+              className="mobile-conversation-list-item flex w-full max-w-full touch-manipulation select-none items-center gap-2.5 rounded-2xl px-2.5 py-3 text-left transition active:bg-black/[0.04] [-webkit-touch-callout:none] [-webkit-user-select:none]"
+              title={item.name}
             >
-              <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-full ${colors[index % colors.length]}`}>
-                <ChatBubbleOvalLeftEllipsisIcon className="h-6 w-6" />
+              <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${colors[index % colors.length]}`}>
+                <ChatBubbleOvalLeftEllipsisIcon className="h-5 w-5" />
               </span>
-              <span className="min-w-0 flex-1 overflow-hidden border-b border-black/[0.065] pb-3">
+              <span className="min-w-0 max-w-[calc(100vw-78px)] flex-1 overflow-hidden border-b border-black/[0.065] pb-2.5">
                 <span className="flex min-w-0 items-start gap-3">
-                  <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{item.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-[14px] font-semibold">{item.name}</span>
                   <span className="shrink-0 pt-0.5 text-[10px] text-[var(--studio-muted)]">{formatTime(item.updatedAt)}</span>
                 </span>
-                <span className="mt-1.5 block min-w-0 overflow-hidden text-ellipsis break-words text-[12px] leading-5 text-[var(--studio-muted)] line-clamp-2">{item.preview || '点击继续本次学习对话'}</span>
+                <span className="mt-1 block min-w-0 overflow-hidden break-words text-[12px] leading-[18px] text-[var(--studio-muted)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{item.preview || '点击继续本次学习对话'}</span>
               </span>
             </button>
           ))

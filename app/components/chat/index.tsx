@@ -15,6 +15,7 @@ import Tooltip from '@/app/components/base/tooltip'
 import Toast from '@/app/components/base/toast'
 import ImageList from '@/app/components/base/image-uploader/image-list'
 import { useImageFiles } from '@/app/components/base/image-uploader/hooks'
+import ChatImageUploader from '@/app/components/base/image-uploader/chat-image-uploader'
 import FileUploaderInAttachmentWrapper from '@/app/components/base/file-uploader-in-attachment'
 import type { FileEntity, FileUpload } from '@/app/components/base/file-uploader-in-attachment/types'
 import { getProcessedFiles } from '@/app/components/base/file-uploader-in-attachment/utils'
@@ -119,9 +120,9 @@ const Chat: FC<IChatProps> = ({
     notify({ type: 'error', message, duration: 3000 })
   }
 
-  const valid = (overrideMessage?: string) => {
+  const valid = (overrideMessage?: string, hasFiles = false) => {
     const draft = typeof overrideMessage === 'string' ? overrideMessage : refreshDraftFromDom()
-    if (!draft || draft.trim() === '') {
+    if ((!draft || draft.trim() === '') && !hasFiles) {
       logError(t('app.errorMessage.valueOfVarRequired'))
       return false
     }
@@ -187,9 +188,26 @@ const Chat: FC<IChatProps> = ({
     onImageLinkLoadSuccess,
     onClear,
     onPaste,
+    onUpload,
   } = useImageFiles()
 
   const [attachmentFiles, setAttachmentFiles] = React.useState<FileEntity[]>([])
+  const attachmentOnlyFileConfig = React.useMemo(() => {
+    if (!fileConfig?.enabled)
+    { return undefined }
+    const allowedFileTypes = fileConfig.allowed_file_types?.filter(type => type !== 'image')
+    if (fileConfig.allowed_file_types && !allowedFileTypes?.length)
+    { return undefined }
+    const allowedFileExtensions = fileConfig.allowed_file_extensions?.filter((ext) => {
+      const normalized = ext.toLowerCase()
+      return !['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.svg'].includes(normalized)
+    })
+    return {
+      ...fileConfig,
+      allowed_file_types: allowedFileTypes ?? fileConfig.allowed_file_types,
+      allowed_file_extensions: allowedFileExtensions ?? fileConfig.allowed_file_extensions,
+    }
+  }, [fileConfig])
 
   const resolveImageUrl = (file: Partial<VisionFile>) =>
     file.url || file.preview_url || file.display_url || file.base64Url || file.base64_url || ''
@@ -198,7 +216,9 @@ const Chat: FC<IChatProps> = ({
     if (isSending || isResponding)
     { return }
     const message = typeof overrideMessage === 'string' ? overrideMessage : refreshDraftFromDom()
-    if (!valid(message) || (!options?.skipExternalCheck && checkCanSend && !checkCanSend())) { return }
+    const hasUploadedFiles = files.some(file => file.progress === 100)
+      || attachmentFiles.some(file => file.progress === 100)
+    if (!valid(message, hasUploadedFiles) || (!options?.skipExternalCheck && checkCanSend && !checkCanSend())) { return }
     const hasPendingImageUploads = files.some(file => file.progress !== -1 && file.progress < 100)
     const hasPendingAttachmentUploads = attachmentFiles.some(file => file.progress !== -1 && file.progress < 100)
     if (hasPendingImageUploads || hasPendingAttachmentUploads) {
@@ -216,10 +236,15 @@ const Chat: FC<IChatProps> = ({
     }))
     const docAndOtherFiles: VisionFile[] = getProcessedFiles(attachmentFiles)
     const combinedFiles: VisionFile[] = [...imageFiles, ...docAndOtherFiles]
-    syncDraftValue(message)
+    if (!combinedFiles.length && !message.trim()) {
+      logError(t('app.errorMessage.valueOfVarRequired'))
+      return
+    }
+    const outboundMessage = message.trim() || (imageFiles.length ? '请分析这张图片。' : '请结合我上传的文件进行分析。')
+    syncDraftValue(outboundMessage)
     clearComposerImmediately()
     setIsSending(true)
-    await Promise.resolve(onSend(message, combinedFiles)).catch(() => false)
+    await Promise.resolve(onSend(outboundMessage, combinedFiles)).catch(() => false)
     setIsSending(false)
   }
 
@@ -250,6 +275,9 @@ const Chat: FC<IChatProps> = ({
     void handleSend(suggestion, { skipExternalCheck: true })
   }
   const canSendText = draftState.hasContent
+  const hasReadyFiles = files.some(file => file.progress === 100)
+    || attachmentFiles.some(file => file.progress === 100)
+  const canSend = canSendText || hasReadyFiles
 
   return (
     <div className={cn(!feedbackDisabled && 'px-1 sm:px-3.5', 'flex h-full min-h-0 flex-col')}>
@@ -291,9 +319,9 @@ const Chat: FC<IChatProps> = ({
       {
         !isHideSendInput && (
           <div className='z-10 mx-auto w-full max-w-[720px] shrink-0 bg-gradient-to-t from-[var(--studio-chat-surface)] via-[var(--studio-chat-surface)] to-transparent px-4 pb-[calc(10px+env(safe-area-inset-bottom))] pt-2 sm:px-5 sm:pb-4 sm:pt-3'>
-            <div className='chat-composer max-h-[160px] overflow-y-auto rounded-[22px] border border-[#17342b]/15 bg-white px-2.5 py-2 shadow-[0_14px_36px_rgba(35,55,47,.13)]'>
+            <div className='chat-composer max-h-[230px] overflow-y-auto rounded-[22px] border border-[#17342b]/15 bg-white px-2.5 py-2 shadow-[0_14px_36px_rgba(35,55,47,.13)]'>
               {visionConfig?.enabled && files.length > 0 && (
-                <div className='mb-1 pl-10'>
+                <div className='mb-2 pl-1'>
                   <ImageList
                     list={files}
                     onRemove={onRemove}
@@ -304,10 +332,24 @@ const Chat: FC<IChatProps> = ({
                 </div>
               )}
               <div className="flex min-h-10 items-end gap-1">
-                {fileConfig?.enabled && (
+                {visionConfig?.enabled && (
+                  <div className="shrink-0">
+                    <ChatImageUploader
+                      settings={{
+                        ...visionConfig,
+                        transfer_methods: visionConfig.transfer_methods?.length
+                          ? visionConfig.transfer_methods
+                          : [TransferMethod.local_file],
+                      }}
+                      onUpload={onUpload}
+                      disabled={isResponding || isSending || files.length >= (visionConfig.number_limits || 5)}
+                    />
+                  </div>
+                )}
+                {attachmentOnlyFileConfig?.enabled && (
                   <div className="shrink-0">
                     <FileUploaderInAttachmentWrapper
-                      fileConfig={fileConfig}
+                      fileConfig={attachmentOnlyFileConfig}
                       value={attachmentFiles}
                       onChange={setAttachmentFiles}
                       compact
@@ -350,7 +392,7 @@ const Chat: FC<IChatProps> = ({
                     <button
                       type="button"
                       onClick={() => void handleSend()}
-                      disabled={!canSendText || isResponding || isSending}
+                      disabled={!canSend || isResponding || isSending}
                       className="grid h-9 w-9 place-items-center rounded-full bg-[var(--studio-deep)] text-white shadow-sm transition active:scale-95 disabled:bg-black/10 disabled:text-black/25"
                       aria-label="发送消息"
                     >

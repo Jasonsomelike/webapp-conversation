@@ -92,7 +92,7 @@ const Sidebar: FC<ISidebarProps> = ({
             <div
               onClick={() => onCurrentIdChange(item.id)}
               key={item.id}
-              title={preview || item.name}
+              title={item.name}
               className={classNames(
                 isCurrent
                   ? 'chat-conversation-active bg-[#e4eee6] text-[#285440]'

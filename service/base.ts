@@ -2,6 +2,7 @@ import { API_PREFIX } from '@/config'
 import Toast from '@/app/components/base/toast'
 import type { AnnotationReply, MessageEnd, MessageReplace, ThoughtItem } from '@/app/components/chat/type'
 import type { VisionFile } from '@/types/app'
+import { isNetworkStudyApp } from '@/lib/native-app'
 
 const TIME_OUT = 100000
 
@@ -27,6 +28,23 @@ const toFriendlyNetworkError = (error: unknown) => {
   if (/failed\s*to\s*fetch|networkerror|load failed|request timeout/i.test(message))
   { return '网络连接失败，请检查网络或稍后重试' }
   return message
+}
+
+const withNativeServerRelay = (urlWithPrefix: string, endpoint: string) => {
+  if (!isNetworkStudyApp() || !/^\/?chat-messages(?:\?|$)/.test(endpoint))
+  { return urlWithPrefix }
+
+  try {
+    const nextUrl = new URL(urlWithPrefix, globalThis.location.origin)
+    if (nextUrl.origin !== globalThis.location.origin)
+    { return urlWithPrefix }
+    nextUrl.searchParams.set('serverRelay', '1')
+    return nextUrl.pathname + nextUrl.search + nextUrl.hash
+  }
+  catch {
+    const separator = urlWithPrefix.includes('?') ? '&' : '?'
+    return `${urlWithPrefix}${separator}serverRelay=1`
+  }
 }
 
 export interface WorkflowStartedResponse {
@@ -459,12 +477,18 @@ export const ssePost = (
     // when the request is redirected to the cross-origin browser relay.
     credentials: 'same-origin',
   }, fetchOptions)
+  options.headers = new Headers(options.headers)
 
   const urlPrefix = API_PREFIX
-  const urlWithPrefix = `${urlPrefix}${url.startsWith('/') ? url : `/${url}`}`
+  const urlWithPrefix = withNativeServerRelay(
+    `${urlPrefix}${url.startsWith('/') ? url : `/${url}`}`,
+    url,
+  )
 
   const { body } = options
   if (body) { options.body = JSON.stringify(body) }
+  if (isNetworkStudyApp())
+  { options.headers.set('X-Network-Study-App', 'android') }
 
   return globalThis.fetch(urlWithPrefix, options)
     .then(async (res: Response) => {

@@ -709,3 +709,20 @@ a {
   background: color-mix(in srgb, var(--studio-accent) 32%, transparent);
   box-shadow: 0 0 0 7px color-mix(in srgb, var(--studio-accent) 16%, transparent);
 }
+
+:root[data-native-app="true"] .chat-message-target,
+:root[data-native-app="true"] .chat-message-target *,
+:root[data-native-app="true"] .mobile-conversation-list,
+:root[data-native-app="true"] .mobile-conversation-list * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+:root[data-native-app="true"] textarea,
+:root[data-native-app="true"] input,
+:root[data-native-app="true"] [contenteditable="true"] {
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
+}

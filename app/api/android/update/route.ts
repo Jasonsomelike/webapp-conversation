@@ -9,6 +9,7 @@ const hostedApkBaseUrl = 'https://www.jasonsome.cn/downloads'
 const hostedApkSizes: Record<string, number> = {
   'network-study-android-v1.11.0.apk': 3752815,
   'network-study-android-v1.12.0.apk': 3752815,
+  'network-study-android-v1.13.0.apk': 3753111,
 }
 
 const versionFromTag = (tag: string) =>

@@ -2,6 +2,7 @@ import type { FC, PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEve
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import XClose from '@/app/components/base/icons/line/x-close'
+import { isNetworkStudyApp } from '@/lib/native-app'
 
 interface ImagePreviewProps {
   url: string
@@ -16,6 +17,7 @@ const ImagePreview: FC<ImagePreviewProps> = ({
   const [reloadKey, setReloadKey] = useState(0)
   const [scale, setScale] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const nativeApp = typeof window !== 'undefined' && isNetworkStudyApp()
   const pointersRef = useRef(new Map<number, { x: number, y: number }>())
   const gestureRef = useRef({
     lastDistance: 0,
@@ -45,13 +47,18 @@ const ImagePreview: FC<ImagePreviewProps> = ({
 
   const closePreview = useCallback(() => {
     if (
-      typeof window !== 'undefined'
+      !nativeApp
+      && typeof window !== 'undefined'
       && historyKeyRef.current
       && window.history.state?.networkStudyImagePreview === historyKeyRef.current
     ) {
       window.history.back()
       return
     }
+    onCancel()
+  }, [nativeApp, onCancel])
+
+  const closePreviewFromNativeBack = useCallback(() => {
     onCancel()
   }, [onCancel])
 
@@ -82,19 +89,21 @@ const ImagePreview: FC<ImagePreviewProps> = ({
     const key = `image-preview-${Date.now()}-${Math.random().toString(36).slice(2)}`
     historyKeyRef.current = key
     window.NetworkStudyApp?.setImagePreviewOpen?.(true)
-    try {
-      const currentState = window.history.state
-      window.history.pushState(
-        {
-          ...(currentState && typeof currentState === 'object' ? currentState : {}),
-          networkStudyImagePreview: key,
-        },
-        '',
-        window.location.href,
-      )
-    }
-    catch {
-      historyKeyRef.current = ''
+    if (!nativeApp) {
+      try {
+        const currentState = window.history.state
+        window.history.pushState(
+          {
+            ...(currentState && typeof currentState === 'object' ? currentState : {}),
+            networkStudyImagePreview: key,
+          },
+          '',
+          window.location.href,
+        )
+      }
+      catch {
+        historyKeyRef.current = ''
+      }
     }
 
     const handlePopState = () => {
@@ -107,7 +116,7 @@ const ImagePreview: FC<ImagePreviewProps> = ({
     const handleNativeBack = (event: Event) => {
       const action = (event as CustomEvent<{ action?: string }>).detail?.action
       if (action === 'image-preview-close')
-      { closePreview() }
+      { closePreviewFromNativeBack() }
     }
     window.addEventListener('popstate', handlePopState)
     window.addEventListener('keydown', handleKeyDown)
@@ -118,7 +127,7 @@ const ImagePreview: FC<ImagePreviewProps> = ({
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('network-study-native-back', handleNativeBack)
     }
-  }, [closePreview, onCancel])
+  }, [closePreview, closePreviewFromNativeBack, nativeApp, onCancel])
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.stopPropagation()
@@ -199,11 +208,15 @@ const ImagePreview: FC<ImagePreviewProps> = ({
 
   return createPortal(
     <div
-      className='fixed inset-0 z-[1000] flex items-center justify-center bg-black/45 p-[max(12px,env(safe-area-inset-top))] backdrop-blur-[2px]'
+      className={nativeApp
+        ? 'fixed inset-x-3 bottom-[calc(14px+env(safe-area-inset-bottom))] top-[calc(62px+env(safe-area-inset-top))] z-[1000] flex items-center justify-center rounded-[30px] bg-black/42 p-2 backdrop-blur-[2px]'
+        : 'fixed inset-0 z-[1000] flex items-center justify-center bg-black/45 p-[max(12px,env(safe-area-inset-top))] backdrop-blur-[2px]'}
       onClick={closePreview}
     >
       <div
-        className='relative flex h-[min(82dvh,880px)] w-[min(94vw,1100px)] overflow-hidden rounded-[28px] bg-black/88 shadow-[0_24px_80px_rgba(0,0,0,.42)] ring-1 ring-white/10'
+        className={nativeApp
+          ? 'relative flex h-full w-full overflow-hidden rounded-[26px] bg-black/88 shadow-[0_18px_52px_rgba(0,0,0,.38)] ring-1 ring-white/10'
+          : 'relative flex h-[min(82dvh,880px)] w-[min(94vw,1100px)] overflow-hidden rounded-[28px] bg-black/88 shadow-[0_24px_80px_rgba(0,0,0,.42)] ring-1 ring-white/10'}
         onClick={event => event.stopPropagation()}
       >
         {!loaded && !failed && (
