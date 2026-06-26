@@ -65,8 +65,18 @@ export const imageUpload: ImageUpload = async ({
   catch {
     uploadFile = file
   }
+  const ticket = await fetch('/api/file-upload-ticket', {
+    method: 'POST',
+    credentials: 'include',
+  }).then(async (response) => {
+    if (!response.ok)
+    { throw new Error(await response.text().catch(() => 'UPLOAD_TICKET_FAILED')) }
+    return response.json() as Promise<{ url: string, user: string, requestId: string }>
+  }).catch(() => null)
   const formData = new FormData()
   formData.append('file', uploadFile)
+  if (ticket?.user)
+  { formData.append('user', ticket.user) }
   const onProgress = (e: ProgressEvent) => {
     if (e.lengthComputable) {
       const percent = Math.floor(e.loaded / e.total * 100)
@@ -76,6 +86,9 @@ export const imageUpload: ImageUpload = async ({
 
   upload({
     xhr: new XMLHttpRequest(),
+    ...(ticket?.url
+      ? { url: ticket.url, withCredentials: false, headers: { 'X-Request-Id': ticket.requestId } }
+      : {}),
     data: formData,
     onprogress: onProgress,
   })

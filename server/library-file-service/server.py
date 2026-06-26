@@ -459,7 +459,7 @@ def cors_headers() -> dict[str, str]:
         "Access-Control-Allow-Origin": allowed_origin,
         "Access-Control-Allow-Credentials": "true",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, X-Network-Study-App",
+        "Access-Control-Allow-Headers": "Content-Type, X-Network-Study-App, X-Request-Id",
         "Access-Control-Expose-Headers": "X-Request-Id",
         "Vary": "Origin",
     }
@@ -474,21 +474,56 @@ def chat_error(message: str, status: int, request_id: str) -> Response:
     )
 
 
-@app.post("/files/upload")
-def files_upload():
-    request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+def upload_ticket_is_valid(request_id: str, user: str) -> bool:
     provided = request.headers.get("X-Internal-Token", "")
     if (
-        not INTERNAL_TOKEN
-        or not provided
-        or not hmac.compare_digest(provided.encode(), INTERNAL_TOKEN.encode())
+        INTERNAL_TOKEN
+        and provided
+        and hmac.compare_digest(provided.encode(), INTERNAL_TOKEN.encode())
     ):
+        return True
+
+    expires = request.args.get("expires", "")
+    signature = request.args.get("signature", "")
+    try:
+        expires_at = int(expires)
+    except ValueError:
+        return False
+    now = int(time.time())
+    if (
+        not INTERNAL_TOKEN
+        or not user
+        or not request_id
+        or expires_at < now
+        or expires_at > now + 180
+    ):
+        return False
+    canonical = f"{user}\n{request_id}\n{expires}"
+    expected = base64.urlsafe_b64encode(
+        hmac.new(INTERNAL_TOKEN.encode(), canonical.encode(), hashlib.sha256).digest()
+    ).decode().rstrip("=")
+    return bool(signature and hmac.compare_digest(signature, expected))
+
+
+@app.route("/files/upload", methods=["OPTIONS"])
+def files_upload_options():
+    return Response(status=204, headers=cors_headers())
+
+
+@app.post("/files/upload")
+def files_upload():
+    upload_file = request.files.get("file")
+    user = request.form.get("user", "").strip()
+    request_id = (
+        request.headers.get("X-Request-Id")
+        or request.args.get("requestId")
+        or str(uuid.uuid4())
+    )
+    if not upload_ticket_is_valid(request_id, user):
         return error_response("Upload ticket is invalid", 401, request_id)
     if not DIFY_APP_API_KEY:
         return error_response("Dify app key is not configured", 503, request_id)
 
-    upload_file = request.files.get("file")
-    user = request.form.get("user", "").strip()
     if upload_file is None or not user:
         return error_response("Missing file or user", 400, request_id)
 
@@ -521,14 +556,14 @@ def files_upload():
             upstream.text or "Upload failed",
             status=upstream.status_code,
             content_type=upstream.headers.get("Content-Type", "text/plain; charset=utf-8"),
-            headers={"X-Request-Id": request_id},
+            headers={**cors_headers(), "X-Request-Id": request_id},
         )
 
     return Response(
         upstream.content,
         status=upstream.status_code,
         content_type=upstream.headers.get("Content-Type", "application/json"),
-        headers={"X-Request-Id": request_id},
+        headers={**cors_headers(), "X-Request-Id": request_id},
     )
 
 

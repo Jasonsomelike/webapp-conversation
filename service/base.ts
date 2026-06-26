@@ -465,9 +465,9 @@ export const upload = (fetchOptions: any): Promise<any> => {
   return new Promise((resolve, reject) => {
     const xhr = options.xhr
     xhr.open(options.method, options.url)
-    for (const key in options.headers) { xhr.setRequestHeader(key, options.headers[key]) }
+    for (const key in options.headers || {}) { xhr.setRequestHeader(key, options.headers[key]) }
 
-    xhr.withCredentials = true
+    xhr.withCredentials = options.withCredentials ?? true
     xhr.onreadystatechange = function () {
       if (xhr.readyState === 4) {
         if (xhr.status === 200) { resolve({ id: xhr.response }) }
