@@ -30,8 +30,10 @@ const toFriendlyNetworkError = (error: unknown) => {
   return message
 }
 
+const isChatMessagesEndpoint = (endpoint: string) => /^\/?chat-messages(?:\?|$)/.test(endpoint)
+
 const withNativeServerRelay = (urlWithPrefix: string, endpoint: string) => {
-  if (!isNetworkStudyApp() || !/^\/?chat-messages(?:\?|$)/.test(endpoint))
+  if (!isNetworkStudyApp() || !isChatMessagesEndpoint(endpoint))
   { return urlWithPrefix }
 
   try {
@@ -45,6 +47,29 @@ const withNativeServerRelay = (urlWithPrefix: string, endpoint: string) => {
     const separator = urlWithPrefix.includes('?') ? '&' : '?'
     return `${urlWithPrefix}${separator}serverRelay=1`
   }
+}
+
+const withoutNativeServerRelay = (urlWithPrefix: string) => {
+  try {
+    const nextUrl = new URL(urlWithPrefix, globalThis.location.origin)
+    nextUrl.searchParams.delete('serverRelay')
+    return nextUrl.origin === globalThis.location.origin
+      ? `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
+      : nextUrl.toString()
+  }
+  catch {
+    return urlWithPrefix.replace(
+      /([?&])serverRelay=1(&?)/,
+      (_match, prefix: string, suffix: string) => suffix ? prefix : '',
+    )
+  }
+}
+
+const shouldRetryNativeRelay = (urlWithPrefix: string, statusOrCode?: number | string) => {
+  if (!isNetworkStudyApp() || !urlWithPrefix.includes('serverRelay=1'))
+  { return false }
+  const value = String(statusOrCode || '')
+  return !value || ['502', '503', '504', 'DIFY_CONNECT_TIMEOUT', 'DIFY_REQUEST_FAILED'].some(code => value.includes(code))
 }
 
 export interface WorkflowStartedResponse {
@@ -468,6 +493,7 @@ export const ssePost = (
     onWorkflowFinished,
     onNodeStarted,
     onNodeFinished,
+    getAbortController,
     onError,
   }: IOtherOptions,
 ) => {
@@ -490,39 +516,63 @@ export const ssePost = (
   if (isNetworkStudyApp())
   { options.headers.set('X-Network-Study-App', 'android') }
 
-  return globalThis.fetch(urlWithPrefix, options)
-    .then(async (res: Response) => {
-      if (!/^(2|3)\d{2}$/.test(String(res.status))) {
-        const text = await res.text().catch(() => '')
-        let data: Record<string, any> = {}
-        try {
-          data = text ? JSON.parse(text) : {}
+  const abortController = new AbortController()
+  options.signal = abortController.signal
+  getAbortController?.(abortController)
+
+  const send = (targetUrl: string, retriedFromNativeRelay = false): Promise<boolean | false> => {
+    const requestOptions = {
+      ...options,
+      headers: new Headers(options.headers),
+    }
+    return globalThis.fetch(targetUrl, requestOptions)
+      .then(async (res: Response) => {
+        if (!/^(2|3)\d{2}$/.test(String(res.status))) {
+          const text = await res.text().catch(() => '')
+          let data: Record<string, any> = {}
+          try {
+            data = text ? JSON.parse(text) : {}
+          }
+          catch {
+            // Preserve non-JSON diagnostics returned by an upstream proxy.
+          }
+          const requestId = data.requestId || res.headers.get('X-Request-Id')
+          const baseMessage = data.error || data.message || text || `请求失败（HTTP ${res.status}）`
+          const message = requestId ? `${baseMessage}（请求 ID：${requestId}）` : baseMessage
+          if (!retriedFromNativeRelay && shouldRetryNativeRelay(targetUrl, res.status || data.code)) {
+            console.warn('[chat] native server relay failed, retrying browser relay', {
+              status: res.status,
+              requestId,
+              message: baseMessage,
+            })
+            return send(withoutNativeServerRelay(targetUrl), true)
+          }
+          Toast.notify({ type: 'error', message })
+          onError?.(message, data.code)
+          return false
         }
-        catch {
-          // Preserve non-JSON diagnostics returned by an upstream proxy.
+        return handleStream(res, (str: string, isFirstMessage: boolean, moreInfo: IOnDataMoreInfo) => {
+          if (moreInfo.errorMessage) {
+            Toast.notify({ type: 'error', message: moreInfo.errorMessage })
+            onError?.(moreInfo.errorMessage, moreInfo.errorCode)
+            return
+          }
+          onData?.(str, isFirstMessage, moreInfo)
+        }, onCompleted, onThought, onMessageEnd, onMessageReplace, onFile, onWorkflowStarted, onWorkflowFinished, onNodeStarted, onNodeFinished)
+      })
+      .catch((e) => {
+        const message = toFriendlyNetworkError(e)
+        if (!retriedFromNativeRelay && shouldRetryNativeRelay(targetUrl)) {
+          console.warn('[chat] native server relay network error, retrying browser relay', e)
+          return send(withoutNativeServerRelay(targetUrl), true)
         }
-        const requestId = data.requestId || res.headers.get('X-Request-Id')
-        const baseMessage = data.error || data.message || text || `请求失败（HTTP ${res.status}）`
-        const message = requestId ? `${baseMessage}（请求 ID：${requestId}）` : baseMessage
         Toast.notify({ type: 'error', message })
-        onError?.(message, data.code)
+        onError?.(message)
         return false
-      }
-      return handleStream(res, (str: string, isFirstMessage: boolean, moreInfo: IOnDataMoreInfo) => {
-        if (moreInfo.errorMessage) {
-          Toast.notify({ type: 'error', message: moreInfo.errorMessage })
-          onError?.(moreInfo.errorMessage, moreInfo.errorCode)
-          return
-        }
-        onData?.(str, isFirstMessage, moreInfo)
-      }, onCompleted, onThought, onMessageEnd, onMessageReplace, onFile, onWorkflowStarted, onWorkflowFinished, onNodeStarted, onNodeFinished)
-    })
-    .catch((e) => {
-      const message = toFriendlyNetworkError(e)
-      Toast.notify({ type: 'error', message })
-      onError?.(message)
-      return false
-    })
+      })
+  }
+
+  return send(urlWithPrefix)
 }
 
 export const request = (url: string, options = {}, otherOptions?: IOtherOptions) => {

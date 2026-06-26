@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { NextRequest } from 'next/server'
 import { getInfo, isDifyConfigured } from '@/app/api/utils/common'
 import { fetchDify } from '@/lib/dify-server'
@@ -6,6 +7,28 @@ import { getSessionFromRequest } from '@/lib/session'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
+
+const uploadViaLibraryFileService = async (file: File, user: string) => {
+  const baseUrl = process.env.LIBRARY_FILE_SERVICE_URL?.replace(/\/$/, '')
+  const token = process.env.LIBRARY_FILE_SERVICE_TOKEN
+  if (!baseUrl || !token)
+  { return null }
+
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('user', user)
+  const requestId = randomUUID()
+  const response = await fetch(`${baseUrl}/files/upload`, {
+    method: 'POST',
+    headers: {
+      'X-Internal-Token': token,
+      'X-Request-Id': requestId,
+    },
+    body: formData,
+    cache: 'no-store',
+  })
+  return { response, requestId }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,13 +75,36 @@ export async function POST(request: NextRequest) {
     if (!user)
     { return new Response('Unauthorized', { status: 401 }) }
     formData.append('user', user)
-    const upstream = await fetchDify('/files/upload', {
+    let upstream = await fetchDify('/files/upload', {
       method: 'POST',
       body: formData,
-    }, { connectTimeoutMs: 30_000, retries: 0 })
-    if (!upstream.ok) {
-      const message = await upstream.text()
-      return new Response(message || 'Upload failed', { status: upstream.status })
+    }, { connectTimeoutMs: 30_000, retries: 0 }).catch(async (error) => {
+      console.warn('[file-upload] direct Dify upload failed, trying library file service', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return null
+    })
+    if (!upstream?.ok) {
+      const directStatus = upstream?.status
+      const directMessage = upstream ? await upstream.text().catch(() => '') : ''
+      const fallback = await uploadViaLibraryFileService(file, user).catch((error) => {
+        console.error('[file-upload] library file service fallback failed', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+        return null
+      })
+      if (fallback?.response.ok)
+      { upstream = fallback.response }
+      else {
+        const fallbackMessage = fallback ? await fallback.response.text().catch(() => '') : ''
+        return new Response(
+          fallbackMessage || directMessage || 'Upload failed',
+          {
+            status: fallback?.response.status || directStatus || 502,
+            headers: fallback?.requestId ? { 'X-Request-Id': fallback.requestId } : undefined,
+          },
+        )
+      }
     }
     const result = await upstream.json() as { id?: string }
     if (!result.id)

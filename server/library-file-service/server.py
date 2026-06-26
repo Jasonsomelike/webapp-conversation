@@ -30,6 +30,10 @@ DIFY_CHAT_API_URL = os.getenv(
     "DIFY_CHAT_API_URL",
     "http://api:5001/v1/chat-messages",
 )
+DIFY_FILE_UPLOAD_API_URL = os.getenv(
+    "DIFY_FILE_UPLOAD_API_URL",
+    "http://api:5001/v1/files/upload",
+)
 CHAT_RELAY_ALLOWED_ORIGIN = os.getenv(
     "CHAT_RELAY_ALLOWED_ORIGIN",
     "https://www.jasonsome.cn",
@@ -453,7 +457,7 @@ def cors_headers() -> dict[str, str]:
         "Access-Control-Allow-Origin": allowed_origin,
         "Access-Control-Allow-Credentials": "true",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Headers": "Content-Type, X-Network-Study-App",
         "Access-Control-Expose-Headers": "X-Request-Id",
         "Vary": "Origin",
     }
@@ -465,6 +469,64 @@ def chat_error(message: str, status: int, request_id: str) -> Response:
         status=status,
         content_type="application/json; charset=utf-8",
         headers={**cors_headers(), "X-Request-Id": request_id},
+    )
+
+
+@app.post("/files/upload")
+def files_upload():
+    request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+    provided = request.headers.get("X-Internal-Token", "")
+    if (
+        not INTERNAL_TOKEN
+        or not provided
+        or not hmac.compare_digest(provided.encode(), INTERNAL_TOKEN.encode())
+    ):
+        return error_response("Upload ticket is invalid", 401, request_id)
+    if not DIFY_APP_API_KEY:
+        return error_response("Dify app key is not configured", 503, request_id)
+
+    upload_file = request.files.get("file")
+    user = request.form.get("user", "").strip()
+    if upload_file is None or not user:
+        return error_response("Missing file or user", 400, request_id)
+
+    try:
+        upstream = requests.post(
+            DIFY_FILE_UPLOAD_API_URL,
+            headers={"Authorization": f"Bearer {DIFY_APP_API_KEY}"},
+            data={"user": user},
+            files={
+                "file": (
+                    upload_file.filename or "upload",
+                    upload_file.stream,
+                    upload_file.mimetype or "application/octet-stream",
+                ),
+            },
+            timeout=(10, 120),
+        )
+    except requests.RequestException as error:
+        logger.exception("[file-upload] connect failed requestId=%s", request_id)
+        return error_response(f"Dify upload failed: {type(error).__name__}", 503, request_id)
+
+    if not upstream.ok:
+        logger.error(
+            "[file-upload] upstream failed requestId=%s status=%s body=%s",
+            request_id,
+            upstream.status_code,
+            upstream.text[:500],
+        )
+        return Response(
+            upstream.text or "Upload failed",
+            status=upstream.status_code,
+            content_type=upstream.headers.get("Content-Type", "text/plain; charset=utf-8"),
+            headers={"X-Request-Id": request_id},
+        )
+
+    return Response(
+        upstream.content,
+        status=upstream.status_code,
+        content_type=upstream.headers.get("Content-Type", "application/json"),
+        headers={"X-Request-Id": request_id},
     )
 
 

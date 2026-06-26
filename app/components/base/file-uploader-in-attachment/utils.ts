@@ -98,6 +98,11 @@ export const getSupportFileType = (fileName: string, fileMimetype: string, isCus
 
 export const getProcessedFiles = (files: FileEntity[]) => {
   return files.filter(file => file.progress !== -1 && fileIsUploaded(file)).map(fileItem => ({
+    id: fileItem.uploadedId || fileItem.id,
+    name: fileItem.name,
+    filename: fileItem.name,
+    mime_type: fileItem.type,
+    size: fileItem.size,
     type: fileItem.supportFileType,
     transfer_method: fileItem.transferMethod,
     url: fileItem.url || '',

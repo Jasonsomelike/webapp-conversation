@@ -13,11 +13,16 @@ import {
 import PageCard from '@/app/components/workspace/page-card'
 import type { KnowledgeReference } from '@/lib/learning-types'
 import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
+import ImagePreview from '@/app/components/base/image-uploader/image-preview'
+
+const inferPageFromImageUrl = (value?: string | null) =>
+  Number(String(value || '').match(/\/page_(\d+)\./i)?.[1] || 0) || undefined
 
 export default function SourcesView({ initialReferences }: { initialReferences: KnowledgeReference[] }) {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState(initialReferences[0]?.id)
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
+  const [previewImageUrl, setPreviewImageUrl] = useState('')
 
   const [imageError, setImageError] = useState(false)
   const filtered = useMemo(() => initialReferences.filter(item =>
@@ -25,8 +30,11 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
   ), [query, initialReferences])
   const selected = initialReferences.find(item => item.id === selectedId) || filtered[0]
   const documentCount = new Set(initialReferences.map(item => item.documentName)).size
+  const selectedPreviewPage = selected
+    ? inferPageFromImageUrl(selected.pageImageUrl) || selected.pageNumber || selected.originalPageNumber || 1
+    : 1
   const documentPreviewUrl = selected
-    ? `/sources/preview/${selected.id}?page=${selected.originalPageNumber || selected.pageNumber || 1}&filename=${encodeURIComponent(selected.documentName)}&returnTo=${encodeURIComponent('/sources')}`
+    ? `/sources/preview/${selected.id}?page=${selectedPreviewPage}&filename=${encodeURIComponent(selected.documentName)}&returnTo=${encodeURIComponent('/sources')}`
     : ''
   const documentDownloadUrl = selected
     ? `/api/sources/${selected.id}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`
@@ -127,22 +135,28 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
 
     const sourcePreview = pageImageHref && !imageError
       ? (
-        <a
-          href={documentPreviewUrl || pageImageHref}
+        <div
           className={`group mt-5 inline-block max-w-full overflow-hidden rounded-2xl border border-black/10 bg-black/[0.025] p-2 text-left shadow-sm ${mobile ? 'w-full' : 'sm:max-w-[50%]'}`}
         >
-          <img
-            src={pageImageHref}
-            alt={`${selected.documentName} 来源页`}
-            loading="lazy"
-            onError={() => setImageError(true)}
-            className={`w-full rounded-xl object-contain transition-transform duration-200 group-hover:scale-[1.01] ${mobile ? 'max-h-[34dvh]' : 'max-h-[240px]'}`}
-          />
+          <button
+            type="button"
+            className="block w-full cursor-zoom-in overflow-hidden rounded-xl"
+            onClick={() => setPreviewImageUrl(pageImageHref)}
+            aria-label="放大来源页图片"
+          >
+            <img
+              src={pageImageHref}
+              alt={`${selected.documentName} 来源页`}
+              loading="lazy"
+              onError={() => setImageError(true)}
+              className={`w-full rounded-xl object-contain transition-transform duration-200 group-hover:scale-[1.01] ${mobile ? 'max-h-[34dvh]' : 'max-h-[240px]'}`}
+            />
+          </button>
           <div className="flex items-center justify-between gap-3 px-2 pb-1 pt-2 text-[10px] text-black/45">
-            <span>点击查看完整 PDF</span>
-            <span className="font-semibold text-[var(--studio-accent-strong)]">第 {selected.originalPageNumber || selected.pageNumber || 1} 页</span>
+            <a href={documentPreviewUrl} className="font-semibold text-[var(--studio-accent-strong)]">点击查看来源 PDF</a>
+            <span className="font-semibold text-[var(--studio-accent-strong)]">第 {selectedPreviewPage} 页</span>
           </div>
-        </a>
+        </div>
       )
       : (
         <div className="mt-5 rounded-2xl border border-dashed border-black/10 bg-black/[0.025] px-5 py-10 text-center">
@@ -156,8 +170,10 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
       <>
         <div className="flex flex-wrap gap-2 text-[10px]">
           <span className="rounded-full bg-[var(--studio-accent)]/35 px-3 py-1.5 font-semibold text-[var(--studio-accent-strong)]">{selected.topic}</span>
-          {selected.pageNumber && <span className="rounded-full bg-black/[0.04] px-3 py-1.5">分卷第 {selected.pageNumber} 页</span>}
-          {selected.originalPageNumber && <span className="rounded-full bg-orange-50 px-3 py-1.5 text-orange-700">原 PDF 第 {selected.originalPageNumber} 页</span>}
+          {selected.pageNumber && <span className="rounded-full bg-black/[0.04] px-3 py-1.5">PDF 第 {selected.pageNumber} 页</span>}
+          {selected.originalPageNumber && selected.originalPageNumber !== selectedPreviewPage && (
+            <span className="rounded-full bg-orange-50 px-3 py-1.5 text-orange-700">原书映射第 {selected.originalPageNumber} 页</span>
+          )}
         </div>
         <h2 className={`mt-4 break-words font-semibold ${mobile ? 'text-base leading-6' : 'text-lg leading-7'}`}>{selected.documentName}</h2>
         <div className="mt-1 text-xs text-black/40">{selected.datasetName || '课程知识库'}</div>
@@ -289,6 +305,12 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
         ), document.body,
         )
         : null}
+      {previewImageUrl && (
+        <ImagePreview
+          url={previewImageUrl}
+          onCancel={() => setPreviewImageUrl('')}
+        />
+      )}
     </div>
   )
 }

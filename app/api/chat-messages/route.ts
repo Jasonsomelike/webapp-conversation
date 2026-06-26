@@ -50,7 +50,12 @@ const asRecordArray = (value: unknown): Record<string, unknown>[] =>
 const normalizePersistedUserFiles = (body: Record<string, any>) => {
   const source = asRecordArray(body.userFiles || body.user_files)
   return source
-    .filter(file => String(file.type || '').toLowerCase() === 'image' || String(file.url || '').startsWith('data:image/'))
+    .filter((file) => {
+      const type = String(file.type || '').toLowerCase()
+      const uploadFileId = String(file.upload_file_id || file.id || '')
+      const url = String(file.url || file.preview_url || file.display_url || file.base64Url || file.base64_url || '')
+      return Boolean(type || uploadFileId || url || file.name || file.filename)
+    })
     .map(file => ({
       ...file,
       belongs_to: 'user',

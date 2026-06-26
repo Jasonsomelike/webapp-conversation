@@ -278,9 +278,13 @@ const Main: FC<IMainProps> = () => {
 
     // update chat list of current conversation
     if (!isNewConversation && !conversationIdChangeBecauseOfNew && !isResponding) {
+      setChatList(generateNewChatListWithOpenStatement(notSyncToStateIntroduction, notSyncToStateInputs))
       fetchChatList(currConversationId).then((res: any) => {
         const { data } = res
         setChatList(buildChatListFromMessages(data, notSyncToStateIntroduction, notSyncToStateInputs))
+      }).catch((error) => {
+        console.warn('[chat] failed to switch conversation', { conversationId: currConversationId, error })
+        Toast.notify({ type: 'error', message: '加载对话失败，请稍后重试' })
       })
     }
 
@@ -290,6 +294,7 @@ const Main: FC<IMainProps> = () => {
   useEffect(handleConversationSwitch, [currConversationId, inited])
 
   const handleConversationIdChange = (id: string) => {
+    nativeChatEnteredScrollKeyRef.current = ''
     userPausedFollowRef.current = false
     followOutputRef.current = true
     autoFollowGraceUntilRef.current = Date.now() + 800
@@ -336,6 +341,7 @@ const Main: FC<IMainProps> = () => {
   const lastDistanceToBottomRef = useRef(0)
   const pendingScrollToBottomRef = useRef(false)
   const autoScrollTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null)
+  const nativeChatEnteredScrollKeyRef = useRef('')
   const scrollToChatBottom = (behavior: ScrollBehavior = 'smooth') => {
     const scrollParent = findScrollParent(chatListDomRef.current)
     if (!scrollParent)
@@ -390,17 +396,19 @@ const Main: FC<IMainProps> = () => {
     const handleChatEntered = () => {
       if (targetMessageId)
       { return }
+      const currentKey = currConversationId || '-1'
+      if (nativeChatEnteredScrollKeyRef.current === currentKey)
+      { return }
+      nativeChatEnteredScrollKeyRef.current = currentKey
       pendingScrollToBottomRef.current = false
       userPausedFollowRef.current = false
       followOutputRef.current = true
       setShowJumpToBottom(false)
-      ;[0, 80, 240, 560, 1200, 2200, 3200].forEach(delay => globalThis.setTimeout(() => {
-        scrollToChatBottom('auto')
-      }, delay))
+      scrollToChatBottom('auto')
     }
     globalThis.addEventListener('network-study-chat-entered', handleChatEntered)
     return () => globalThis.removeEventListener('network-study-chat-entered', handleChatEntered)
-  }, [targetMessageId])
+  }, [currConversationId, targetMessageId])
 
   useEffect(() => {
     const scrollParent = findScrollParent(chatListDomRef.current)
@@ -650,10 +658,7 @@ const Main: FC<IMainProps> = () => {
     if (!pendingScrollToBottomRef.current || targetMessageId)
     { return }
     pendingScrollToBottomRef.current = false
-    const timers = [0, 80, 260, 620, 1200, 2200].map(delay => globalThis.setTimeout(() => {
-      scrollToChatBottom('auto')
-    }, delay))
-    return () => timers.forEach(timer => globalThis.clearTimeout(timer))
+    scrollToChatBottom('auto')
   }, [chatList, currConversationId, targetMessageId])
   // user can not edit inputs if user had send message
   const canEditInputs = !chatList.some(item => item.isAnswer === false) && isNewConversation
@@ -1188,7 +1193,7 @@ const Main: FC<IMainProps> = () => {
       conversation_id: isNewConversation ? null : currConversationId,
       memory_context: supplementalContext.memoryContext,
       file_context: supplementalContext.fileContext,
-      userFiles: userVisibleFiles.filter((f: any) => f.type === 'image'),
+      userFiles: userVisibleFiles,
     }
 
     if (files && files?.length > 0) {
@@ -1210,7 +1215,7 @@ const Main: FC<IMainProps> = () => {
       id: questionId,
       content: messageText,
       isAnswer: false,
-      message_files: userVisibleFiles.filter((f: any) => f.type === 'image'),
+      message_files: userVisibleFiles,
     }
 
     const placeholderAnswerId = `answer-placeholder-${Date.now()}`

@@ -226,6 +226,11 @@ const Chat: FC<IChatProps> = ({
       return
     }
     const imageFiles: VisionFile[] = files.filter(file => file.progress !== -1).map(fileItem => ({
+      id: fileItem.fileId || fileItem._id,
+      name: fileItem.file?.name || '图片',
+      filename: fileItem.file?.name || '图片',
+      mime_type: fileItem.file?.type || 'image/*',
+      size: fileItem.file?.size,
       type: 'image',
       transfer_method: fileItem.type,
       url: fileItem.type === TransferMethod.local_file ? (fileItem.base64Url || fileItem.url) : fileItem.url,
@@ -311,6 +316,7 @@ const Chat: FC<IChatProps> = ({
                     .map(file => resolveImageUrl(file))
                     .filter(Boolean)
                   : []}
+                files={(item.message_files || []).filter(file => file.type !== 'image')}
               />
             </div>
           )

@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
 
   const inferredPage = Number(reference.pageImageUrl?.match(/\/page_(\d+)\./i)?.[1] || 0) || undefined
   const documentName = cleanReferenceDocumentName(reference.documentName || '课程知识库原页')
-  const pageNumber = reference.originalPageNumber || reference.pageNumber || inferredPage || 1
+  const pageNumber = inferredPage || reference.pageNumber || reference.originalPageNumber || 1
   const previewUrl = new URL(`/sources/preview/${encodeURIComponent(reference.id)}`, request.url)
   previewUrl.searchParams.set('page', String(pageNumber))
   previewUrl.searchParams.set('filename', documentName)

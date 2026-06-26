@@ -104,6 +104,7 @@ const FileUploaderInAttachment = ({
             showDownloadAction={false}
             onRemove={() => handleRemoveFile(file.id)}
             onReUpload={() => handleReUploadFile(file.id)}
+            compact={compact}
           />
         ))}
       </div>

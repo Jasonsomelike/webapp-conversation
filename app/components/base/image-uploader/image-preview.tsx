@@ -130,6 +130,8 @@ const ImagePreview: FC<ImagePreviewProps> = ({
   }, [closePreview, closePreviewFromNativeBack, nativeApp, onCancel])
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget)
+    { return }
     event.stopPropagation()
     try {
       event.currentTarget.setPointerCapture(event.pointerId)
@@ -181,6 +183,8 @@ const ImagePreview: FC<ImagePreviewProps> = ({
   }
 
   const handlePointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!pointersRef.current.has(event.pointerId))
+    { return }
     event.stopPropagation()
     try {
       event.currentTarget.releasePointerCapture(event.pointerId)
@@ -209,15 +213,20 @@ const ImagePreview: FC<ImagePreviewProps> = ({
   return createPortal(
     <div
       className={nativeApp
-        ? 'fixed inset-x-3 bottom-[calc(14px+env(safe-area-inset-bottom))] top-[calc(62px+env(safe-area-inset-top))] z-[1000] flex items-center justify-center rounded-[30px] bg-black/42 p-2 backdrop-blur-[2px]'
+        ? 'fixed inset-0 z-[1000] flex items-center justify-center bg-black/35 p-4 pt-[calc(74px+env(safe-area-inset-top))] backdrop-blur-[1px]'
         : 'fixed inset-0 z-[1000] flex items-center justify-center bg-black/45 p-[max(12px,env(safe-area-inset-top))] backdrop-blur-[2px]'}
       onClick={closePreview}
     >
       <div
         className={nativeApp
-          ? 'relative flex h-full w-full overflow-hidden rounded-[26px] bg-black/88 shadow-[0_18px_52px_rgba(0,0,0,.38)] ring-1 ring-white/10'
+          ? 'relative flex h-[min(72dvh,760px)] w-[min(92vw,860px)] overflow-hidden rounded-[26px] bg-black/88 shadow-[0_18px_52px_rgba(0,0,0,.38)] ring-1 ring-white/10'
           : 'relative flex h-[min(82dvh,880px)] w-[min(94vw,1100px)] overflow-hidden rounded-[28px] bg-black/88 shadow-[0_24px_80px_rgba(0,0,0,.42)] ring-1 ring-white/10'}
-        onClick={event => event.stopPropagation()}
+        onClick={(event) => {
+          if (event.target === event.currentTarget)
+          { closePreview() }
+          else
+          { event.stopPropagation() }
+        }}
       >
         {!loaded && !failed && (
           <div className='absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white/10 px-4 py-3 text-sm text-white shadow-xl'>
@@ -246,6 +255,10 @@ const ImagePreview: FC<ImagePreviewProps> = ({
           : (
             <div
               className='flex h-full w-full touch-none select-none items-center justify-center overflow-hidden'
+              onClick={(event) => {
+                if (event.target === event.currentTarget)
+                { closePreview() }
+              }}
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerEnd}
