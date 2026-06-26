@@ -19,6 +19,7 @@ import ChatImageUploader from '@/app/components/base/image-uploader/chat-image-u
 import FileUploaderInAttachmentWrapper from '@/app/components/base/file-uploader-in-attachment'
 import type { FileEntity, FileUpload } from '@/app/components/base/file-uploader-in-attachment/types'
 import { getProcessedFiles } from '@/app/components/base/file-uploader-in-attachment/utils'
+import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
 
 type SendResult = boolean | void | Promise<boolean | void>
 
@@ -209,8 +210,14 @@ const Chat: FC<IChatProps> = ({
     }
   }, [fileConfig])
 
-  const resolveImageUrl = (file: Partial<VisionFile>) =>
-    file.url || file.preview_url || file.display_url || file.base64Url || file.base64_url || ''
+  const resolveImageUrl = (file: Partial<VisionFile>) => {
+    const directUrl = file.url || file.preview_url || file.display_url || file.base64Url || file.base64_url || ''
+    if (directUrl)
+    { return directUrl }
+    if (file.upload_file_id)
+    { return toDifyAssetProxyUrl(`https://dify.jasonsome.cn:22380/files/${file.upload_file_id}/file-preview`) }
+    return ''
+  }
 
   const handleSend = async (overrideMessage?: string, options?: { skipExternalCheck?: boolean }) => {
     if (isSending || isResponding)
