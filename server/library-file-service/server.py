@@ -5,7 +5,9 @@ import hmac
 import json
 import logging
 import os
+import queue
 import re
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -724,20 +726,52 @@ def chat_messages():
         decoder = codecs.getincrementaldecoder("utf-8")()
         event_buffer = ""
         completed = False
+        stream_queue = queue.Queue()
+
+        def pump_upstream():
+            nonlocal completed, event_buffer
+            try:
+                for chunk in upstream.iter_content(chunk_size=8192):
+                    if not chunk:
+                        continue
+                    stream_queue.put(("chunk", chunk))
+                    event_buffer += decoder.decode(chunk)
+                    blocks = re.split(r"\r?\n\r?\n", event_buffer)
+                    event_buffer = blocks.pop() or ""
+                    for block in blocks:
+                        read_event_block(block)
+                event_buffer += decoder.decode(b"", final=True)
+                if event_buffer:
+                    read_event_block(event_buffer)
+                completed = True
+                stream_queue.put(("done", None))
+            except Exception as error:
+                logger.exception("[chat-relay] upstream stream failed requestId=%s", request_id)
+                stream_queue.put(("error", str(error)))
+            finally:
+                upstream.close()
+
+        threading.Thread(target=pump_upstream, daemon=True).start()
         try:
-            for chunk in upstream.iter_content(chunk_size=8192):
-                if not chunk:
+            while True:
+                try:
+                    item_type, payload = stream_queue.get(timeout=15)
+                except queue.Empty:
+                    yield b": keep-alive\n\n"
                     continue
-                yield chunk
-                event_buffer += decoder.decode(chunk)
-                blocks = re.split(r"\r?\n\r?\n", event_buffer)
-                event_buffer = blocks.pop() or ""
-                for block in blocks:
-                    read_event_block(block)
-            event_buffer += decoder.decode(b"", final=True)
-            if event_buffer:
-                read_event_block(event_buffer)
-            completed = True
+
+                if item_type == "chunk":
+                    yield payload
+                    continue
+                if item_type == "error":
+                    yield (
+                        'data: {"status":400,"event":"error","code":"DIFY_STREAM_INTERRUPTED",'
+                        '"message":"Dify stream interrupted"}\n\n'
+                    ).encode("utf-8")
+                    break
+                if item_type == "done":
+                    break
+
             if completed and state["conversationId"] and state["messageId"]:
                 persist_event = {
                     "event": "relay_persist",
