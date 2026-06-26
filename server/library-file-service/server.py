@@ -750,6 +750,7 @@ def chat_messages():
                         "workflowProcess": state["workflowProcess"],
                         "agentLogs": state["agentLogs"],
                         "assistantFiles": state["assistantFiles"],
+                        "userFiles": body.get("userFiles") or body.get("user_files") or [],
                     },
                 }
                 yield (
