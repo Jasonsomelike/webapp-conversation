@@ -150,6 +150,22 @@ function unicodeToChar(text: string) {
   })
 }
 
+const streamTextFrom = (value: unknown, eventName: string) => {
+  if (typeof value === 'string')
+  { return unicodeToChar(value) }
+  if (value == null)
+  { return '' }
+  if (typeof value === 'object') {
+    console.warn(`[chat-stream] ${eventName} returned non-string answer`, value)
+    const record = value as Record<string, unknown>
+    const candidate = record.answer || record.content || record.text || record.message
+    if (typeof candidate === 'string')
+    { return unicodeToChar(candidate) }
+    return ''
+  }
+  return unicodeToChar(String(value))
+}
+
 const handleStream = (
   response: Response,
   onData: IOnData,
@@ -190,112 +206,116 @@ const handleStream = (
       safelyCall(name, () => onCompleted?.(hasError))
       resolve(!hasError)
     }
-  function read() {
-    let hasError = false
-    reader?.read().then(async (result: any) => {
-      if (result.done) {
-        await persistPromise
-        finish('completed')
-        return
-      }
-      buffer += decoder.decode(result.value, { stream: true })
-      const lines = buffer.split('\n')
-      try {
-        lines.forEach((message) => {
-          if (message.startsWith('data: ')) { // check if it starts with data:
-            try {
-              bufferObj = JSON.parse(message.substring(6)) as Record<string, any>// remove data: and parse as json
-            }
-            catch (e) {
+    function read() {
+      let hasError = false
+      reader?.read().then(async (result: any) => {
+        if (result.done) {
+          await persistPromise
+          finish('completed')
+          return
+        }
+        buffer += decoder.decode(result.value, { stream: true })
+        const lines = buffer.split('\n')
+        try {
+          lines.forEach((message) => {
+            if (message.startsWith('data: ')) { // check if it starts with data:
+              try {
+                bufferObj = JSON.parse(message.substring(6)) as Record<string, any>// remove data: and parse as json
+              }
+              catch (e) {
               // mute handle message cut off
-              safelyCall('partial-data', () => onData('', isFirstMessage, {
-                conversationId: bufferObj?.conversation_id,
-                messageId: bufferObj?.message_id,
-              }))
-              return
-            }
-            if (bufferObj.status === 400 || !bufferObj.event) {
-              safelyCall('error-data', () => onData('', false, {
-                conversationId: undefined,
-                messageId: '',
-                errorMessage: bufferObj?.message,
-                errorCode: bufferObj?.code,
-              }))
-              hasError = true
-              finish('error-completed', true)
-              return
-            }
-            if (bufferObj.event === 'message' || bufferObj.event === 'agent_message') {
+                safelyCall('partial-data', () => onData('', isFirstMessage, {
+                  conversationId: bufferObj?.conversation_id,
+                  messageId: bufferObj?.message_id,
+                }))
+                return
+              }
+              if (bufferObj.status === 400 || !bufferObj.event) {
+                safelyCall('error-data', () => onData('', false, {
+                  conversationId: undefined,
+                  messageId: '',
+                  errorMessage: bufferObj?.message,
+                  errorCode: bufferObj?.code,
+                }))
+                hasError = true
+                finish('error-completed', true)
+                return
+              }
+              if (bufferObj.event === 'message' || bufferObj.event === 'agent_message') {
               // can not use format here. Because message is splited.
-              safelyCall('message', () => onData(unicodeToChar(bufferObj.answer), isFirstMessage, {
-                conversationId: bufferObj.conversation_id,
-                taskId: bufferObj.task_id,
-                messageId: bufferObj.id,
-              }))
-              isFirstMessage = false
+                safelyCall('message', () => onData(streamTextFrom(bufferObj.answer, bufferObj.event), isFirstMessage, {
+                  conversationId: bufferObj.conversation_id,
+                  taskId: bufferObj.task_id,
+                  messageId: bufferObj.id,
+                }))
+                isFirstMessage = false
+              }
+              else if (bufferObj.event === 'agent_thought') {
+                safelyCall('agent-thought', () => onThought?.(bufferObj as ThoughtItem))
+              }
+              else if (bufferObj.event === 'message_file') {
+                safelyCall('message-file', () => onFile?.({
+                  ...bufferObj,
+                  belongs_to: 'assistant',
+                  url: bufferObj.url || bufferObj.file_url || '',
+                  name: bufferObj.name || bufferObj.filename,
+                } as VisionFile))
+              } else if (bufferObj.event === 'relay_persist' && bufferObj.data) {
+                persistPromise = globalThis.fetch('/api/chat-persist', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(bufferObj.data),
+                }).then(async (persistResponse) => {
+                  if (!persistResponse.ok)
+                  { throw new Error(`CHAT_PERSIST_FAILED:${persistResponse.status}`) }
+                }).catch(error => console.error('[chat-persist] browser callback failed', error))
+              }
+              else if (bufferObj.event === 'message_end') {
+                safelyCall('message-end', () => onMessageEnd?.(bufferObj as MessageEnd))
+              }
+              else if (bufferObj.event === 'message_replace') {
+                safelyCall('message-replace', () => onMessageReplace?.({
+                  ...bufferObj,
+                  answer: streamTextFrom(bufferObj.answer, 'message_replace'),
+                } as MessageReplace))
+              }
+              else if (bufferObj.event === 'workflow_started') {
+                safelyCall('workflow-started', () => onWorkflowStarted?.(bufferObj as WorkflowStartedResponse))
+              }
+              else if (bufferObj.event === 'workflow_finished') {
+                safelyCall('workflow-finished', () => onWorkflowFinished?.(bufferObj as WorkflowFinishedResponse))
+              }
+              else if (bufferObj.event === 'node_started') {
+                safelyCall('node-started', () => onNodeStarted?.(bufferObj as NodeStartedResponse))
+              }
+              else if (bufferObj.event === 'node_finished') {
+                safelyCall('node-finished', () => onNodeFinished?.(bufferObj as NodeFinishedResponse))
+              }
             }
-            else if (bufferObj.event === 'agent_thought') {
-              safelyCall('agent-thought', () => onThought?.(bufferObj as ThoughtItem))
-            }
-            else if (bufferObj.event === 'message_file') {
-              safelyCall('message-file', () => onFile?.({
-                ...bufferObj,
-                url: bufferObj.url || bufferObj.file_url || '',
-                name: bufferObj.name || bufferObj.filename,
-              } as VisionFile))
-            } else if (bufferObj.event === 'relay_persist' && bufferObj.data) {
-              persistPromise = globalThis.fetch('/api/chat-persist', {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(bufferObj.data),
-              }).then(async (persistResponse) => {
-                if (!persistResponse.ok)
-                { throw new Error(`CHAT_PERSIST_FAILED:${persistResponse.status}`) }
-              }).catch(error => console.error('[chat-persist] browser callback failed', error))
-            }
-            else if (bufferObj.event === 'message_end') {
-              safelyCall('message-end', () => onMessageEnd?.(bufferObj as MessageEnd))
-            }
-            else if (bufferObj.event === 'message_replace') {
-              safelyCall('message-replace', () => onMessageReplace?.(bufferObj as MessageReplace))
-            }
-            else if (bufferObj.event === 'workflow_started') {
-              safelyCall('workflow-started', () => onWorkflowStarted?.(bufferObj as WorkflowStartedResponse))
-            }
-            else if (bufferObj.event === 'workflow_finished') {
-              safelyCall('workflow-finished', () => onWorkflowFinished?.(bufferObj as WorkflowFinishedResponse))
-            }
-            else if (bufferObj.event === 'node_started') {
-              safelyCall('node-started', () => onNodeStarted?.(bufferObj as NodeStartedResponse))
-            }
-            else if (bufferObj.event === 'node_finished') {
-              safelyCall('node-finished', () => onNodeFinished?.(bufferObj as NodeFinishedResponse))
-            }
-          }
-        })
-        buffer = lines[lines.length - 1]
-      }
-      catch (e) {
-        safelyCall('stream-parse-error', () => onData('', false, {
+          })
+          buffer = lines[lines.length - 1]
+        }
+        catch (e) {
+          safelyCall('stream-parse-error', () => onData('', false, {
+            conversationId: undefined,
+            messageId: '',
+            errorMessage: `${e}`,
+          }))
+          hasError = true
+          finish('parse-error-completed', true)
+          return
+        }
+        if (!hasError) { read() }
+      }).catch((error: unknown) => {
+        safelyCall('stream-read-error', () => onData('', false, {
           conversationId: undefined,
           messageId: '',
-          errorMessage: `${e}`,
+          errorMessage: toFriendlyNetworkError(error),
         }))
-        hasError = true
-        finish('parse-error-completed', true)
-        return
-      }
-      if (!hasError) { read() }
-    }).catch((error: unknown) => {
-      safelyCall('stream-read-error', () => onData('', false, {
-        conversationId: undefined,
-        messageId: '',
-        errorMessage: toFriendlyNetworkError(error),
-      }))
-      finish('read-error-completed', true)
-    })
-  }
+        finish('read-error-completed', true)
+      })
+    }
     if (!reader) {
       safelyCall('missing-reader', () => onData('', false, {
         conversationId: undefined,

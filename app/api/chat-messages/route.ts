@@ -47,6 +47,16 @@ const asRecord = (value: unknown): Record<string, any> | undefined =>
 const asRecordArray = (value: unknown): Record<string, unknown>[] =>
   Array.isArray(value) ? value.filter(item => asRecord(item)) as Record<string, unknown>[] : []
 
+const normalizePersistedUserFiles = (body: Record<string, any>) => {
+  const source = asRecordArray(body.userFiles || body.user_files)
+  return source
+    .filter(file => String(file.type || '').toLowerCase() === 'image' || String(file.url || '').startsWith('data:image/'))
+    .map(file => ({
+      ...file,
+      belongs_to: 'user',
+    }))
+}
+
 export async function POST(request: NextRequest) {
   const requestId = randomUUID()
   const session = getSessionFromRequest(request)
@@ -83,6 +93,7 @@ export async function POST(request: NextRequest) {
       { status: 400, headers: { 'X-Request-Id': requestId } },
     )
   }
+  const userFiles = normalizePersistedUserFiles(body)
   const relayUrl = signedChatRelayUrl({
     rawBody,
     appUserId: session.id,
@@ -259,6 +270,7 @@ export async function POST(request: NextRequest) {
                     ? relayPayload.agent_logs
                     : relayAgentLogs
                 const finalAssistantFiles = asRecordArray(relayPayload.assistantFiles || relayPayload.assistant_files)
+                const finalUserFiles = asRecordArray(relayPayload.userFiles || relayPayload.user_files)
                 await persistChatExchange({
                   appUserId: session.id,
                   query: finalQuery,
@@ -273,6 +285,7 @@ export async function POST(request: NextRequest) {
                     answer: finalAnswer,
                   }),
                   assistantFiles: finalAssistantFiles.length ? finalAssistantFiles : relayAssistantFiles,
+                  userFiles: finalUserFiles.length ? finalUserFiles : userFiles,
                 }).catch(error => console.error('[dify-chat] relay persist failed', { requestId, error }))
                 if (relayClientConnected)
                 { controller.close() }
@@ -515,6 +528,7 @@ export async function POST(request: NextRequest) {
               answer,
             }),
             assistantFiles,
+            userFiles,
           }).catch(error => console.error('[dify-chat] persist failed', { requestId, error }))
           if (clientConnected)
           { controller.close() }

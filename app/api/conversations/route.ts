@@ -2,11 +2,22 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { getInfo, setSession } from '@/app/api/utils/common'
 import { db, isDatabaseConfigured } from '@/lib/db'
+import { auditMemorySourceConsistency, recoverMissingConversationRows } from '@/lib/memory-consistency'
 
 export async function GET(request: NextRequest) {
   const { sessionId, session } = getInfo(request)
   if (!session)
   { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+
+  if (isDatabaseConfigured()) {
+    await recoverMissingConversationRows({
+      appUserId: session.id,
+      reason: 'conversation-list',
+    }).catch(error => console.warn('[memory-consistency] failed to recover missing conversation rows', {
+      appUserId: session.id,
+      error,
+    }))
+  }
 
   const conversations = isDatabaseConfigured()
     ? await db.chatConversation.findMany({
@@ -19,6 +30,15 @@ export async function GET(request: NextRequest) {
     })
     : []
   const conversationIds = conversations.map(conversation => conversation.difyConversationId)
+  auditMemorySourceConsistency({
+    appUserId: session.id,
+    activeConversationIds: conversationIds,
+    reason: 'conversation-list',
+  }).catch(error => console.warn('[memory-consistency] conversation list audit failed', {
+    appUserId: session.id,
+    error,
+  }))
+
   const recentMessages = isDatabaseConfigured() && conversationIds.length
     ? await db.chatMessage.findMany({
       where: {

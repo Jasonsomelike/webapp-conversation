@@ -9,6 +9,7 @@ export const runtime = 'nodejs'
 const allowedHosts = new Set(['dify.jasonsome.cn', 'www.jasonsome.cn', 'jasonsome.cn'])
 const allowedPaths = ['/files/', '/page-images/']
 const pageImagePathPattern = /^\/page-images\/[a-z0-9_-]{6,64}\/page_\d+\.(?:jpe?g|png|webp)$/i
+const generatedToolFilePattern = /^\/files\/tools\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:\.([a-z0-9]+))?$/i
 
 const contentDisposition = (filename: string, download: boolean) => {
   const mode = download ? 'attachment' : 'inline'
@@ -62,6 +63,48 @@ const signedPageImageRedirect = (path: string, requestId: string) => {
       'Cache-Control': 'public, max-age=300, stale-while-revalidate=900',
       'X-Request-Id': requestId,
       'X-Dify-Asset-Source': 'share-signed-page-image-redirect',
+    },
+  })
+}
+
+const signedGeneratedFileRedirect = ({
+  path,
+  download,
+  filename,
+  requestId,
+}: {
+  path: string
+  download: boolean
+  filename: string
+  requestId: string
+}) => {
+  const matched = path.match(generatedToolFilePattern)
+  const baseUrl = process.env.LIBRARY_FILE_SERVICE_URL?.replace(/\/$/, '')
+  const token = process.env.LIBRARY_FILE_SERVICE_TOKEN
+  if (!matched || !baseUrl || !token)
+  { return null }
+
+  const fileId = matched[1]
+  const fallbackFilename = matched[2] ? `${fileId}.${matched[2]}` : fileId
+  const safeFilename = (filename || fallbackFilename).replace(/["\r\n]/g, '_')
+  const disposition = download ? 'attachment' : 'inline'
+  const expires = String(Math.floor(Date.now() / 1000) + 300)
+  const canonical = `${fileId}\n${disposition}\n${safeFilename}\n${requestId}\n${expires}`
+  const signature = createHmac('sha256', token).update(canonical).digest('base64url')
+  const url = new URL(`${baseUrl}/generated-files/${encodeURIComponent(fileId)}`)
+  url.searchParams.set('disposition', disposition)
+  url.searchParams.set('filename', safeFilename)
+  url.searchParams.set('requestId', requestId)
+  url.searchParams.set('expires', expires)
+  url.searchParams.set('signature', signature)
+
+  return new Response(null, {
+    status: 307,
+    headers: {
+      'Location': url.toString(),
+      'Cache-Control': 'public, max-age=300, stale-while-revalidate=900',
+      'X-Request-Id': requestId,
+      'X-Dify-Asset-Source': 'share-signed-generated-file-redirect',
     },
   })
 }
@@ -148,8 +191,23 @@ export async function GET(
   if (!shared)
   { return new Response('Shared asset not found', { status: 404, headers: { 'X-Request-Id': requestId } }) }
 
+  const shouldDownload = request.nextUrl.searchParams.get('download') === '1'
+  const requestedFilename = request.nextUrl.searchParams.get('filename')
+  const filename = requestedFilename || target.pathname.split('/').pop() || 'download'
+
   if (target.pathname.startsWith('/page-images/')) {
     const redirect = signedPageImageRedirect(target.pathname, requestId)
+    if (redirect)
+    { return redirect }
+  }
+
+  if (target.pathname.startsWith('/files/tools/')) {
+    const redirect = signedGeneratedFileRedirect({
+      path: target.pathname,
+      download: shouldDownload,
+      filename,
+      requestId,
+    })
     if (redirect)
     { return redirect }
   }
@@ -182,10 +240,6 @@ export async function GET(
       { status: upstream.status || 502, headers: { 'X-Request-Id': requestId } },
     )
   }
-
-  const shouldDownload = request.nextUrl.searchParams.get('download') === '1'
-  const requestedFilename = request.nextUrl.searchParams.get('filename')
-  const filename = requestedFilename || target.pathname.split('/').pop() || 'download'
 
   return new Response(upstream.body, {
     status: upstream.status,

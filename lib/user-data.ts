@@ -38,6 +38,7 @@ interface PersistChatExchangeInput {
   }
   references?: ExtractedReference[]
   assistantFiles?: Record<string, unknown>[]
+  userFiles?: Record<string, unknown>[]
 }
 
 const pageFromDocumentName = (name: string, segmentPosition?: number) => {
@@ -50,6 +51,22 @@ const pageFromDocumentName = (name: string, segmentPosition?: number) => {
 const toJson = (value: unknown) =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 
+const toPersistedText = (value: unknown, fallback = '') => {
+  if (typeof value === 'string') {
+    if (value === '[object Object]')
+    { return fallback }
+    return value
+  }
+  if (value == null)
+  { return fallback }
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    const candidate = record.answer || record.content || record.text || record.message || record.query
+    return typeof candidate === 'string' ? candidate : fallback
+  }
+  return String(value)
+}
+
 export const persistChatExchange = async ({
   appUserId,
   query,
@@ -60,26 +77,62 @@ export const persistChatExchange = async ({
   workflowProcess,
   references,
   assistantFiles,
+  userFiles,
 }: PersistChatExchangeInput) => {
   if (!isDatabaseConfigured() || !conversationId || !messageId)
   { return }
 
   const resources = references || metadata?.retriever_resources || []
+  const safeQuery = toPersistedText(query, '')
+  const safeAnswer = toPersistedText(answer, '')
+  const normalizedUserFiles = (userFiles || []).map(file => ({ ...file, belongs_to: 'user' }))
+  const normalizedAssistantFiles = (assistantFiles || []).map(file => ({ ...file, belongs_to: 'assistant' }))
+  const userRawPayload = normalizedUserFiles.length
+    ? toJson({ userFiles: normalizedUserFiles })
+    : undefined
+  const assistantRawPayload = metadata || workflowProcess || normalizedAssistantFiles.length
+    ? toJson({
+      ...(metadata || {}),
+      workflowProcess,
+      assistantFiles: normalizedAssistantFiles,
+    })
+    : undefined
   await db.$transaction(async (tx) => {
-    await tx.chatConversation.upsert({
-      where: {
-        appUserId_difyConversationId: {
-          appUserId,
-          difyConversationId: conversationId,
-        },
-      },
-      update: { lastMessageAt: new Date() },
-      create: {
+    const now = new Date()
+    await tx.chatConversation.createMany({
+      data: [{
         appUserId,
         difyConversationId: conversationId,
-        title: query.slice(0, 120),
-        lastMessageAt: new Date(),
+        title: safeQuery.slice(0, 120),
+        lastMessageAt: now,
+      }],
+      skipDuplicates: true,
+    })
+
+    const activeConversation = await tx.chatConversation.findFirst({
+      where: {
+        appUserId,
+        difyConversationId: conversationId,
+        deletedAt: null,
       },
+      select: { id: true },
+    })
+    if (!activeConversation) {
+      console.warn('[memory-consistency] skipped persisting exchange for deleted conversation', {
+        appUserId,
+        conversationId,
+        messageId,
+      })
+      return
+    }
+
+    await tx.chatConversation.updateMany({
+      where: {
+        appUserId,
+        difyConversationId: conversationId,
+        deletedAt: null,
+      },
+      data: { lastMessageAt: now },
     })
 
     await tx.chatMessage.createMany({
@@ -89,25 +142,47 @@ export const persistChatExchange = async ({
           difyConversationId: conversationId,
           difyMessageId: messageId,
           role: 'user',
-          content: query,
+          content: safeQuery,
+          rawPayload: userRawPayload,
         },
         {
           appUserId,
           difyConversationId: conversationId,
           difyMessageId: messageId,
           role: 'assistant',
-          content: answer,
-          rawPayload: metadata || workflowProcess || assistantFiles?.length
-            ? toJson({
-              ...(metadata || {}),
-              workflowProcess,
-              assistantFiles,
-            })
-            : undefined,
+          content: safeAnswer,
+          rawPayload: assistantRawPayload,
         },
       ],
       skipDuplicates: true,
     })
+
+    if (userRawPayload) {
+      await tx.chatMessage.updateMany({
+        where: {
+          appUserId,
+          difyMessageId: messageId,
+          role: 'user',
+        },
+        data: {
+          content: safeQuery,
+          rawPayload: userRawPayload,
+        },
+      })
+    }
+    if (assistantRawPayload) {
+      await tx.chatMessage.updateMany({
+        where: {
+          appUserId,
+          difyMessageId: messageId,
+          role: 'assistant',
+        },
+        data: {
+          content: safeAnswer,
+          rawPayload: assistantRawPayload,
+        },
+      })
+    }
 
     if (resources.length) {
       await tx.messageReference.createMany({

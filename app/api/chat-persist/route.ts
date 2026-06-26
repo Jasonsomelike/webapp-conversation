@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
         answer: String(body.answer || ''),
       }),
       assistantFiles: Array.isArray(body.assistantFiles) ? body.assistantFiles : [],
+      userFiles: Array.isArray(body.userFiles) ? body.userFiles : Array.isArray(body.user_files) ? body.user_files : [],
     })
     return Response.json({ ok: true })
   }

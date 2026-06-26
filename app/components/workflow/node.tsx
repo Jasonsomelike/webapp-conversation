@@ -29,21 +29,21 @@ const NodePanel: FC<Props> = ({ nodeInfo, hideInfo = false }) => {
   const status = nodeInfo.status || 'running'
 
   return (
-    <div className={cn('px-4 py-1', hideInfo && '!p-0')}>
-      <div className={cn('chat-workflow-node group rounded-2xl border border-[#17342b]/[0.08] bg-white shadow-xs transition-all hover:shadow-md', hideInfo && '!rounded-lg')}>
+    <div className={cn('min-w-0 max-w-full px-4 py-1', hideInfo && '!p-0')}>
+      <div className={cn('chat-workflow-node group min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#17342b]/[0.08] bg-white shadow-xs transition-all hover:shadow-md', hideInfo && '!rounded-lg')}>
         <div
           className={cn(
-            'flex items-center pl-[6px] pr-3',
+            'flex min-w-0 items-center pl-[6px] pr-3',
             hideInfo ? 'py-2' : 'py-3',
           )}
         >
           <BlockIcon size={hideInfo ? 'xs' : 'sm'} className={cn('shrink-0 mr-2', hideInfo && '!mr-1')} type={nodeInfo.node_type} toolIcon={nodeInfo.extras?.icon || nodeInfo.extras} />
           <div className={cn(
-            'grow text-gray-700 text-[13px] leading-[16px] font-semibold truncate',
+            'min-w-0 grow truncate text-gray-700 text-[13px] leading-[16px] font-semibold',
             hideInfo && '!text-xs',
           )} title={nodeInfo.title}>{nodeInfo.title || nodeInfo.node_type}</div>
           {status !== 'running' && (
-            <div className='ml-3 shrink-0 text-[11px] leading-[18px] text-gray-500'>
+            <div className='ml-2 max-w-[44%] shrink-0 truncate text-right text-[11px] leading-[18px] text-gray-500 sm:max-w-none'>
               {hideInfo
                 ? getTime(nodeInfo.elapsed_time || 0)
                 : `${getTime(nodeInfo.elapsed_time || 0)} · ${getTokenCount(nodeInfo.execution_metadata?.total_tokens || 0)} tokens`}

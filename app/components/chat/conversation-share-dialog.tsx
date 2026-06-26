@@ -219,11 +219,11 @@ export default function ConversationShareDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-end bg-black/45 p-0 backdrop-blur-sm sm:place-items-center sm:p-4">
+    <div className="fixed inset-0 z-[100] grid max-w-[100vw] place-items-end overflow-x-hidden bg-black/45 p-0 backdrop-blur-sm sm:place-items-center sm:p-4">
       <button className="absolute inset-0" aria-label="关闭分享" onClick={onClose} />
-      <div className="relative w-full rounded-t-[28px] bg-white p-5 shadow-2xl sm:max-w-lg sm:rounded-[28px]">
-        <div className="flex items-center justify-between">
-          <div>
+      <div className="relative max-h-[calc(100dvh-env(safe-area-inset-bottom))] w-full min-w-0 overflow-y-auto overflow-x-hidden rounded-t-[28px] bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl sm:max-w-lg sm:rounded-[28px] sm:p-5">
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <div className="min-w-0">
             <h2 className="text-lg font-semibold">分享本次对话</h2>
             <p className="mt-1 text-xs text-black/45">选择分享范围，再创建链接或分享图。</p>
           </div>
@@ -231,7 +231,7 @@ export default function ConversationShareDialog({
             <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
-        <div className="mt-5 flex items-center justify-between gap-3">
+        <div className="mt-5 flex min-w-0 flex-wrap items-center justify-between gap-3">
           <div className="text-xs font-semibold">选择要分享的对话</div>
           <div className="flex gap-2 text-[11px]">
             <button type="button" onClick={() => setSelectedExchangeIds(exchanges.map(item => item.id))} className="rounded-lg bg-black/[0.04] px-2.5 py-1.5">全选</button>
@@ -246,7 +246,7 @@ export default function ConversationShareDialog({
                 key={exchange.id}
                 type="button"
                 onClick={() => toggleExchange(exchange.id)}
-                className={`flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition ${
+                className={`flex w-full min-w-0 items-start gap-3 rounded-2xl border p-3 text-left transition ${
                   checked ? 'border-[#17342b]/35 bg-[#eef4ef]' : 'border-black/10 hover:bg-black/[0.025]'
                 }`}
               >
@@ -257,7 +257,7 @@ export default function ConversationShareDialog({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[10px] font-semibold text-black/35">第 {index + 1} 组</span>
-                  <span className="mt-0.5 block truncate text-xs font-semibold">{exchange.question || '用户消息'}</span>
+                  <span className="mt-0.5 block break-words text-xs font-semibold">{exchange.question || '用户消息'}</span>
                   {exchange.answer && <span className="mt-1 block line-clamp-2 text-[11px] leading-5 text-black/45">{exchange.answer}</span>}
                 </span>
               </button>
@@ -265,13 +265,13 @@ export default function ConversationShareDialog({
           })}
         </div>
         {link && (
-          <button onClick={() => void navigator.clipboard.writeText(link)} className="mt-4 flex w-full items-center gap-2 rounded-2xl bg-black/[0.035] px-4 py-3 text-left text-xs">
+          <button onClick={() => void navigator.clipboard.writeText(link)} className="mt-4 flex w-full min-w-0 items-center gap-2 rounded-2xl bg-black/[0.035] px-4 py-3 text-left text-xs">
             <LinkIcon className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 flex-1 truncate">{link}</span>
+            <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{link}</span>
             <ClipboardDocumentIcon className="h-4 w-4 shrink-0" />
           </button>
         )}
-        <div className="mt-5 grid grid-cols-2 gap-3 pb-[env(safe-area-inset-bottom)]">
+        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <button disabled={working || conversationId === '-1' || !selectedItems.length} onClick={() => void createLink()} className="flex h-13 items-center justify-center gap-2 rounded-2xl border border-black/10 py-3.5 text-sm font-semibold disabled:opacity-40">
             <LinkIcon className="h-5 w-5" />创建链接
           </button>

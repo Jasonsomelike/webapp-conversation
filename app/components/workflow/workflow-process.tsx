@@ -40,7 +40,7 @@ const WorkflowProcessItem = ({
     <div
       data-testid='workflow-process'
       className={cn(
-        'chat-workflow-card w-full overflow-hidden rounded-xl border border-[#17342b]/10 bg-[#f2f4f3]',
+        'chat-workflow-card min-w-0 w-full max-w-full overflow-hidden rounded-xl border border-[#17342b]/10 bg-[#f2f4f3]',
         collapse ? 'py-2.5' : 'pb-2 pt-2.5',
         hideInfo ? 'px-2' : 'px-3',
         grayBg && 'bg-gray-50',
@@ -50,7 +50,7 @@ const WorkflowProcessItem = ({
         type='button'
         aria-expanded={!collapse}
         className={cn(
-          'flex h-5 w-full cursor-pointer items-center text-left',
+          'flex h-5 w-full min-w-0 cursor-pointer items-center text-left',
           hideInfo && 'px-1',
         )}
         onClick={() => setCollapse(!collapse)}
@@ -70,7 +70,7 @@ const WorkflowProcessItem = ({
             <AlertCircle className='shrink-0 mr-1 w-3 h-3 text-[#F04438]' />
           )
         }
-        <div className='grow text-[13px] font-semibold leading-[18px] text-[#46554f]'>工作流</div>
+        <div className='min-w-0 grow truncate text-[13px] font-semibold leading-[18px] text-[#46554f]'>工作流</div>
         <span className={cn(
           'mr-1 text-[11px] font-medium',
           running && 'text-[#2970ff]',
@@ -83,10 +83,10 @@ const WorkflowProcessItem = ({
       </button>
       {
         !collapse && (
-          <div className='mt-2 space-y-1'>
+          <div className='mt-2 min-w-0 max-w-full space-y-1 overflow-hidden'>
             {
               data.tracing.map(node => (
-                <div key={node.id || node.node_id}>
+                <div key={node.id || node.node_id} className='min-w-0 max-w-full overflow-hidden'>
                   <NodePanel
                     nodeInfo={node}
                     hideInfo={hideInfo}

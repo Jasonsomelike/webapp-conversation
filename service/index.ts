@@ -64,3 +64,8 @@ export const generationConversationName = async (id: string) => {
 export const deleteConversation = async (id: string) => {
   return del(`conversations/${encodeURIComponent(id)}`)
 }
+
+export const deleteChatMessage = async (messageId: string, conversationId?: string) => {
+  const suffix = conversationId ? `?conversation_id=${encodeURIComponent(conversationId)}` : ''
+  return del(`messages/${encodeURIComponent(messageId)}${suffix}`)
+}

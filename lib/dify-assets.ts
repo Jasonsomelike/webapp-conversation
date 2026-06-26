@@ -120,4 +120,4 @@ export const normalizeAssistantMarkdown = (content: string) => {
 
 export const isImageAsset = (value: string) => imageExtension.test(value)
 export const isDownloadableAsset = (value: string) =>
-  downloadableExtension.test(value) || value.includes('/files/')
+  downloadableExtension.test(value) || /(?:^|\/)files\//i.test(value)

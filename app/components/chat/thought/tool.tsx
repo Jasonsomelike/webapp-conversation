@@ -52,10 +52,10 @@ const Tool: FC<Props> = ({
   const [isShowDetail, setIsShowDetail] = useState(false)
   const icon = getIcon(toolName, allToolIcons) as any
   return (
-    <div>
-      <div className={cn(!isShowDetail && 'shadow-sm', !isShowDetail && 'inline-block', 'max-w-full overflow-x-auto bg-white rounded-md')}>
+    <div className='min-w-0 max-w-full overflow-hidden'>
+      <div className={cn(!isShowDetail && 'shadow-sm', !isShowDetail && 'inline-block', 'max-w-full overflow-hidden bg-white rounded-md')}>
         <div
-          className={cn('flex items-center h-7 px-2 cursor-pointer')}
+          className={cn('flex h-7 min-w-0 cursor-pointer items-center px-2')}
           onClick={() => setIsShowDetail(!isShowDetail)}
         >
           {!isFinished && (
@@ -81,7 +81,7 @@ const Tool: FC<Props> = ({
           />
         </div>
         {isShowDetail && (
-          <div className='border-t border-black/5 p-2 space-y-2 '>
+          <div className='max-w-full space-y-2 overflow-hidden border-t border-black/5 p-2'>
             <Panel
               isRequest={true}
               toolName={toolName}

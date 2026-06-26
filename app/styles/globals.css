@@ -265,9 +265,15 @@ a {
   color: var(--studio-ink);
   font-size: 15px;
   line-height: 1.82;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .streamdown-markdown > * {
+  max-width: 100%;
+  min-width: 0;
   animation: markdown-rise 220ms ease-out both;
 }
 
@@ -297,6 +303,8 @@ a {
 
 .streamdown-markdown p {
   margin: 0.65em 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .streamdown-markdown blockquote {
@@ -323,6 +331,18 @@ a {
   overflow-x: auto;
   border-radius: 12px;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--studio-ink) 9%, transparent);
+}
+
+.streamdown-markdown pre,
+.streamdown-markdown code {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.streamdown-markdown pre {
+  overflow-x: auto;
 }
 
 .streamdown-markdown th {
@@ -377,6 +397,8 @@ a {
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--studio-accent-strong) 35%, transparent);
   text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 
 .streamdown-markdown .markdown-download-link {
@@ -472,6 +494,8 @@ a {
   align-items: center;
   gap: 0.8rem;
   width: min(100%, 440px);
+  max-width: 100%;
+  min-width: 0;
   margin: 0.85rem 0;
   border: 1px solid color-mix(in srgb, var(--studio-accent-strong) 24%, transparent);
   border-radius: 14px;
@@ -564,6 +588,32 @@ a {
 
 .streamdown-markdown .markdown-source-figure figcaption {
   background: color-mix(in srgb, var(--studio-surface) 92%, var(--studio-accent));
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media (max-width: 639px) {
+  .streamdown-markdown .markdown-file-card {
+    gap: 0.6rem;
+    padding: 0.7rem;
+  }
+
+  .streamdown-markdown .markdown-file-icon {
+    width: 2.15rem;
+    height: 2.15rem;
+  }
+
+  .streamdown-markdown .markdown-file-name {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .streamdown-markdown .markdown-file-download {
+    align-self: stretch;
+    justify-content: center;
+  }
 }
 
 :root[data-theme="midnight"] input,

@@ -14,7 +14,12 @@ type IQuestionProps = Pick<IChatItem, 'id' | 'content' | 'useCurrentUserAvatar'>
 const Question: FC<IQuestionProps> = ({ id, content, useCurrentUserAvatar, imgSrcs }) => {
   const userName = ''
   return (
-    <div className='flex min-w-0 items-start justify-end' key={id}>
+    <div
+      id={`message-${id}`}
+      data-message-id={id}
+      className='chat-message-target flex min-w-0 items-start justify-end rounded-2xl'
+      key={id}
+    >
       <div className="min-w-0 max-w-[min(88vw,720px)]">
         <div className={`${s.question} relative text-sm text-gray-900`}>
           <div
