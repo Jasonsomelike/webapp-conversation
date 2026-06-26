@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import cn from 'classnames'
 import s from './style.module.css'
 import ImagePreview from '@/app/components/base/image-uploader/image-preview'
+import { isNetworkStudyApp } from '@/lib/native-app'
 
 interface Props {
   srcs: string[]
@@ -36,6 +37,12 @@ const ImageGallery: FC<Props> = ({
   const validSrcs = srcs.filter(src => src && src.trim() !== '')
   const imgNum = validSrcs.length
   const imgStyle = getWidthStyle(imgNum)
+  const openImage = (src: string) => {
+    if (isNetworkStudyApp())
+    { setImagePreviewUrl(src) }
+    else
+    { window.open(src, '_blank', 'noopener,noreferrer') }
+  }
 
   if (imgNum === 0) { return null }
 
@@ -76,7 +83,7 @@ const ImageGallery: FC<Props> = ({
                   return next
                 })
               }}
-              onClick={() => setImagePreviewUrl(src)}
+              onClick={() => openImage(src)}
             />
           )
       ))}

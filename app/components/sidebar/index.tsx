@@ -5,6 +5,7 @@ import {
   ChatBubbleOvalLeftEllipsisIcon,
   EllipsisHorizontalIcon,
   PencilSquareIcon,
+  ShareIcon,
   TrashIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
@@ -12,6 +13,7 @@ import { ChatBubbleOvalLeftEllipsisIcon as ChatBubbleOvalLeftEllipsisSolidIcon }
 import Button from '@/app/components/base/button'
 // import Card from './card'
 import type { ConversationItem } from '@/types/app'
+import { toConversationPreview } from '@/lib/message-preview'
 
 function classNames(...classes: any[]) {
   return classes.filter(Boolean).join(' ')
@@ -24,6 +26,7 @@ export interface ISidebarProps {
   currentId: string
   onCurrentIdChange: (id: string) => void
   onDeleteConversation: (id: string) => Promise<void>
+  onShareConversation?: (item: ConversationItem) => Promise<void> | void
   list: ConversationItem[]
 }
 
@@ -32,6 +35,7 @@ const Sidebar: FC<ISidebarProps> = ({
   currentId,
   onCurrentIdChange,
   onDeleteConversation,
+  onShareConversation,
   list,
 }) => {
   const { t } = useTranslation()
@@ -81,17 +85,19 @@ const Sidebar: FC<ISidebarProps> = ({
       <nav className="chat-conversation-list mt-4 flex-1 space-y-1 bg-white p-4 !pt-0">
         {list.map((item) => {
           const isCurrent = item.id === currentId
+          const preview = toConversationPreview(item.preview || '')
           const ItemIcon
             = isCurrent ? ChatBubbleOvalLeftEllipsisSolidIcon : ChatBubbleOvalLeftEllipsisIcon
           return (
             <div
               onClick={() => onCurrentIdChange(item.id)}
               key={item.id}
+              title={preview || item.name}
               className={classNames(
                 isCurrent
                   ? 'chat-conversation-active bg-[#e4eee6] text-[#285440]'
                   : 'chat-conversation-item text-gray-700 hover:bg-[#eceee9] hover:text-gray-700',
-                'group relative flex items-center rounded-xl px-2.5 py-2.5 text-xs font-medium cursor-pointer',
+                'group relative flex min-w-0 items-start rounded-xl px-2.5 py-2.5 text-xs font-medium cursor-pointer',
               )}
             >
               <ItemIcon
@@ -99,11 +105,16 @@ const Sidebar: FC<ISidebarProps> = ({
                   isCurrent
                     ? 'text-[#396b53]'
                     : 'text-gray-400 group-hover:text-gray-500',
-                  'mr-3 h-5 w-5 flex-shrink-0',
+                  'mr-3 mt-0.5 h-5 w-5 flex-shrink-0',
                 )}
                 aria-hidden="true"
               />
-              <span className="min-w-0 flex-1 truncate pr-1">{item.name}</span>
+              <span className="min-w-0 flex-1 overflow-hidden pr-1">
+                <span className="block truncate">{item.name}</span>
+                {preview && (
+                  <span className="mt-1 block truncate text-[11px] font-normal text-gray-500">{preview}</span>
+                )}
+              </span>
               {item.id !== '-1' && (
                 <div ref={menuId === item.id ? menuRef : undefined} className="relative">
                   <button
@@ -118,7 +129,21 @@ const Sidebar: FC<ISidebarProps> = ({
                     <EllipsisHorizontalIcon className="h-4 w-4" />
                   </button>
                   {menuId === item.id && (
-                    <div className="absolute right-0 top-8 z-30 w-28 rounded-xl border border-black/10 bg-white p-1.5 shadow-xl">
+                    <div className="absolute right-0 top-8 z-30 w-32 rounded-xl border border-black/10 bg-white p-1.5 shadow-xl">
+                      {onShareConversation && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setMenuId('')
+                            void onShareConversation(item)
+                          }}
+                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                        >
+                          <ShareIcon className="h-4 w-4" />
+                          分享
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={(event) => {

@@ -32,8 +32,6 @@ export interface IChatProps {
    */
   isHideSendInput?: boolean
   onFeedback?: FeedbackFunc
-  onShareMessage?: (item: ChatItem) => void | Promise<void>
-  onDeleteMessage?: (item: ChatItem) => boolean | void | Promise<boolean | void>
   onRetryMessage?: (item: ChatItem) => void | Promise<void>
   checkCanSend?: () => boolean
   onSend?: (message: string, files: VisionFile[]) => SendResult
@@ -50,8 +48,6 @@ const Chat: FC<IChatProps> = ({
   feedbackDisabled = false,
   isHideSendInput = false,
   onFeedback,
-  onShareMessage,
-  onDeleteMessage,
   onRetryMessage,
   checkCanSend,
   onSend = () => { },
@@ -69,12 +65,8 @@ const Chat: FC<IChatProps> = ({
   const [query, setQuery] = React.useState('')
   const [draftState, setDraftState] = React.useState({ hasContent: false, length: 0 })
   const [isSending, setIsSending] = React.useState(false)
-  const [actionTarget, setActionTarget] = React.useState<ChatItem | null>(null)
-  const [confirmingDelete, setConfirmingDelete] = React.useState(false)
-  const [deletingMessageId, setDeletingMessageId] = React.useState('')
   const queryRef = useRef('')
   const textareaRef = useRef<any>(null)
-  const longPressTimerRef = useRef<number | null>(null)
 
   const getDraftValue = () =>
     String(
@@ -127,8 +119,8 @@ const Chat: FC<IChatProps> = ({
     notify({ type: 'error', message, duration: 3000 })
   }
 
-  const valid = () => {
-    const draft = refreshDraftFromDom()
+  const valid = (overrideMessage?: string) => {
+    const draft = typeof overrideMessage === 'string' ? overrideMessage : refreshDraftFromDom()
     if (!draft || draft.trim() === '') {
       logError(t('app.errorMessage.valueOfVarRequired'))
       return false
@@ -199,10 +191,14 @@ const Chat: FC<IChatProps> = ({
 
   const [attachmentFiles, setAttachmentFiles] = React.useState<FileEntity[]>([])
 
-  const handleSend = async () => {
+  const resolveImageUrl = (file: Partial<VisionFile>) =>
+    file.url || file.preview_url || file.display_url || file.base64Url || file.base64_url || ''
+
+  const handleSend = async (overrideMessage?: string, options?: { skipExternalCheck?: boolean }) => {
     if (isSending || isResponding)
     { return }
-    if (!valid() || (checkCanSend && !checkCanSend())) { return }
+    const message = typeof overrideMessage === 'string' ? overrideMessage : refreshDraftFromDom()
+    if (!valid(message) || (!options?.skipExternalCheck && checkCanSend && !checkCanSend())) { return }
     const hasPendingImageUploads = files.some(file => file.progress !== -1 && file.progress < 100)
     const hasPendingAttachmentUploads = attachmentFiles.some(file => file.progress !== -1 && file.progress < 100)
     if (hasPendingImageUploads || hasPendingAttachmentUploads) {
@@ -213,11 +209,13 @@ const Chat: FC<IChatProps> = ({
       type: 'image',
       transfer_method: fileItem.type,
       url: fileItem.type === TransferMethod.local_file ? (fileItem.base64Url || fileItem.url) : fileItem.url,
+      preview_url: fileItem.base64Url || fileItem.url,
+      display_url: fileItem.base64Url || fileItem.url,
+      base64Url: fileItem.base64Url,
       upload_file_id: fileItem.fileId,
     }))
     const docAndOtherFiles: VisionFile[] = getProcessedFiles(attachmentFiles)
     const combinedFiles: VisionFile[] = [...imageFiles, ...docAndOtherFiles]
-    const message = refreshDraftFromDom()
     syncDraftValue(message)
     clearComposerImmediately()
     setIsSending(true)
@@ -247,61 +245,11 @@ const Chat: FC<IChatProps> = ({
   }
 
   const suggestionClick = (suggestion: string) => {
+    setTextareaDomValue(suggestion)
     syncDraftValue(suggestion)
-    void handleSend()
+    void handleSend(suggestion, { skipExternalCheck: true })
   }
   const canSendText = draftState.hasContent
-  const clearLongPressTimer = () => {
-    if (longPressTimerRef.current) {
-      window.clearTimeout(longPressTimerRef.current)
-      longPressTimerRef.current = null
-    }
-  }
-  useEffect(() => clearLongPressTimer, [])
-
-  const openMessageActionMenu = (item: ChatItem) => {
-    if (item.isOpeningStatement)
-    { return }
-    setConfirmingDelete(false)
-    setActionTarget(item)
-  }
-  const actionHandlers = (item: ChatItem) => ({
-    onContextMenu: (event: React.MouseEvent) => {
-      event.preventDefault()
-      openMessageActionMenu(item)
-    },
-    onTouchStart: () => {
-      clearLongPressTimer()
-      longPressTimerRef.current = window.setTimeout(() => openMessageActionMenu(item), 520)
-    },
-    onTouchMove: clearLongPressTimer,
-    onTouchEnd: clearLongPressTimer,
-    onTouchCancel: clearLongPressTimer,
-  })
-
-  const handleActionShare = async () => {
-    if (!actionTarget)
-    { return }
-    await onShareMessage?.(actionTarget)
-    setActionTarget(null)
-  }
-
-  const handleActionDelete = async () => {
-    if (!actionTarget)
-    { return }
-    if (!confirmingDelete) {
-      setConfirmingDelete(true)
-      return
-    }
-    setDeletingMessageId(actionTarget.id)
-    try {
-      await onDeleteMessage?.(actionTarget)
-      setActionTarget(null)
-    }
-    finally {
-      setDeletingMessageId('')
-    }
-  }
 
   return (
     <div className={cn(!feedbackDisabled && 'px-1 sm:px-3.5', 'flex h-full min-h-0 flex-col')}>
@@ -311,7 +259,7 @@ const Chat: FC<IChatProps> = ({
           if (item.isAnswer) {
             const isLast = item.id === chatList[chatList.length - 1].id
             return (
-              <div key={item.id} {...actionHandlers(item)}>
+              <div key={item.id}>
                 <Answer
                   item={item}
                   feedbackDisabled={feedbackDisabled}
@@ -324,48 +272,22 @@ const Chat: FC<IChatProps> = ({
             )
           }
           return (
-            <div key={item.id} {...actionHandlers(item)}>
+            <div key={item.id}>
               <Question
                 id={item.id}
                 content={item.content}
                 useCurrentUserAvatar={useCurrentUserAvatar}
-                imgSrcs={(item.message_files && item.message_files?.length > 0) ? item.message_files.filter(file => file.type === 'image').map(item => item.url) : []}
+                imgSrcs={(item.message_files && item.message_files?.length > 0)
+                  ? item.message_files
+                    .filter(file => file.type === 'image')
+                    .map(file => resolveImageUrl(file))
+                    .filter(Boolean)
+                  : []}
               />
             </div>
           )
         })}
       </div>
-      {actionTarget && (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/20 px-3 pb-[calc(12px+env(safe-area-inset-bottom))] backdrop-blur-[1px] sm:items-center" onClick={() => setActionTarget(null)}>
-          <div className="w-full max-w-sm overflow-hidden rounded-3xl border border-black/10 bg-white shadow-[0_24px_70px_rgba(0,0,0,.22)]" onClick={event => event.stopPropagation()}>
-            <div className="border-b border-black/5 px-5 py-4">
-              <div className="text-sm font-semibold text-gray-900">消息操作</div>
-              <div className="mt-1 line-clamp-2 break-words text-xs text-gray-500">
-                {actionTarget.content || (actionTarget.message_files?.length ? '图片消息' : '空消息')}
-              </div>
-            </div>
-            <button type="button" className="flex w-full items-center justify-between px-5 py-4 text-left text-sm font-medium text-gray-800 active:bg-gray-50" onClick={() => void handleActionShare()}>
-              分享
-              <span className="text-xs text-gray-400">复制/系统分享</span>
-            </button>
-            {confirmingDelete && (
-              <div className="border-t border-black/5 bg-red-50/70 px-5 py-3 text-xs leading-5 text-red-700">
-                将删除这轮对话的提问、回答和引用记录。再次点击确认删除。
-              </div>
-            )}
-            <button type="button" className="flex w-full items-center justify-between border-t border-black/5 px-5 py-4 text-left text-sm font-medium text-red-600 active:bg-red-50" disabled={deletingMessageId === actionTarget.id} onClick={() => void handleActionDelete()}>
-              {confirmingDelete ? '确认删除' : '删除'}
-              <span className="text-xs text-red-300">{deletingMessageId === actionTarget.id ? '删除中…' : '删除本轮'}</span>
-            </button>
-            <button type="button" className="w-full border-t border-black/5 px-5 py-4 text-center text-sm font-medium text-gray-500 active:bg-gray-50" onClick={() => {
-              setConfirmingDelete(false)
-              setActionTarget(null)
-            }}>
-              取消
-            </button>
-          </div>
-        </div>
-      )}
       {
         !isHideSendInput && (
           <div className='z-10 mx-auto w-full max-w-[720px] shrink-0 bg-gradient-to-t from-[var(--studio-chat-surface)] via-[var(--studio-chat-surface)] to-transparent px-4 pb-[calc(10px+env(safe-area-inset-bottom))] pt-2 sm:px-5 sm:pb-4 sm:pt-3'>

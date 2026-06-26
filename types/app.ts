@@ -157,6 +157,10 @@ export interface VisionFile {
   type: string
   transfer_method: TransferMethod
   url: string
+  preview_url?: string
+  display_url?: string
+  base64Url?: string
+  base64_url?: string
   upload_file_id: string
   belongs_to?: string
 }

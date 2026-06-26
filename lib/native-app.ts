@@ -38,6 +38,8 @@ declare global {
       setShellState: (path: string, title: string, eyebrow: string) => void
       hideShell: () => void
       setConversationMode?: (detail: boolean) => void
+      setChatGenerationActive?: (active: boolean, conversationId?: string) => void
+      setImagePreviewOpen?: (open: boolean) => void
     }
   }
 }

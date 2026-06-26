@@ -391,10 +391,10 @@ export default function ProfileView({
   }
 
   return (
-    <div className="mx-auto max-w-[1350px] p-4 sm:p-6">
-      <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
-        <div className="space-y-5">
-          <div className="relative overflow-hidden rounded-[24px] bg-[var(--studio-deep)] p-6 text-white shadow-[0_20px_60px_rgba(23,52,43,.18)]">
+    <div className="mx-auto w-full max-w-[1180px] px-4 py-4 sm:px-5 sm:py-5 xl:px-6">
+      <div className="grid items-start gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="space-y-4 xl:sticky xl:top-[84px]">
+          <div className="relative overflow-hidden rounded-[22px] bg-[var(--studio-deep)] p-5 text-white shadow-[0_18px_48px_rgba(23,52,43,.16)]">
             <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--studio-accent)]/10 blur-2xl" />
             <div className="relative">
               <div className="flex items-center justify-between">
@@ -412,8 +412,8 @@ export default function ProfileView({
                   {editing ? '取消' : '编辑'}
                 </button>
               </div>
-              <div className="mt-7 flex items-center gap-4">
-                <label className="group relative block h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-2xl bg-[var(--studio-accent)] text-[var(--studio-deep)]">
+              <div className="mt-5 flex items-center gap-3.5">
+                <label className="group relative block h-14 w-14 shrink-0 cursor-pointer overflow-hidden rounded-2xl bg-[var(--studio-accent)] text-[var(--studio-deep)]">
                   {avatarUrl
                     ? <img src={avatarUrl} alt="用户头像" className="h-full w-full object-cover" />
                     : <span className="grid h-full w-full place-items-center text-2xl font-semibold">{savedProfile.displayName.slice(0, 1)}</span>}
@@ -444,7 +444,7 @@ export default function ProfileView({
                 </div>
               </div>
 
-              <div className="mt-7 grid grid-cols-3 divide-x divide-white/10 rounded-2xl bg-white/[0.06] py-4 text-center">
+              <div className="mt-5 grid grid-cols-3 divide-x divide-white/10 rounded-2xl bg-white/[0.06] py-3 text-center">
                 {[
                   [String(stats.conversations), '会话'],
                   [String(stats.references), '引用'],
@@ -459,9 +459,9 @@ export default function ProfileView({
             </div>
           </div>
 
-          <PageCard className="p-5">
-            <div className="mb-4 text-[10px] font-bold uppercase tracking-[0.18em] text-[#748179]">账户信息</div>
-            <div className="space-y-4">
+          <PageCard className="p-4">
+            <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#748179]">账户信息</div>
+            <div className="space-y-3">
               {[
                 [FingerPrintIcon, 'Dify 用户 ID', session.difyUserId],
                 [CalendarDaysIcon, '加入时间', new Intl.DateTimeFormat('zh-CN', { dateStyle: 'long' }).format(new Date(joinedAt))],
@@ -473,7 +473,7 @@ export default function ProfileView({
                   </div>
                   <div className="min-w-0">
                     <div className="text-[10px] text-[#89958f]">{label as string}</div>
-                    <div className="mt-1 break-all text-xs font-medium">{value as string}</div>
+                    <div className="mt-0.5 break-all text-xs font-medium">{value as string}</div>
                   </div>
                 </div>
               ))}
@@ -481,8 +481,8 @@ export default function ProfileView({
           </PageCard>
         </div>
 
-        <div className="space-y-5">
-          <PageCard className="p-6">
+        <div className="space-y-4">
+          <PageCard className="p-5">
             <div className="flex items-center gap-3">
               <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#e8f4ec] text-[#47715c]">
                 <AdjustmentsHorizontalIcon className="h-5 w-5" />
@@ -493,21 +493,21 @@ export default function ProfileView({
               </div>
             </div>
 
-            <div className="mt-7 space-y-7">
+            <div className="mt-5 grid gap-5 lg:grid-cols-3">
               {[
                 ['当前阶段', stages, stage, setStage],
                 ['偏好风格', styles, style, setStyle],
                 ['学习目标', targets, target, setTarget],
               ].map(([label, options, value, setter]) => (
                 <div key={label as string}>
-                  <div className="mb-3 text-xs font-semibold">{label as string}</div>
+                  <div className="mb-2 text-xs font-semibold">{label as string}</div>
                   <div className="flex flex-wrap gap-2">
                     {(options as string[]).map(option => (
                       <button
                         key={option}
                         disabled={!editing || saving}
                         onClick={() => (setter as (value: string) => void)(option)}
-                        className={`rounded-xl border px-4 py-2.5 text-xs transition ${
+                        className={`rounded-xl border px-3 py-2 text-xs transition ${
                           option === value
                             ? 'border-[#17342b] bg-[#17342b] font-semibold text-white'
                             : 'border-[#183129]/10 bg-[var(--studio-surface)] text-[var(--studio-muted)] hover:border-[var(--studio-accent-strong)]/30'
@@ -522,7 +522,7 @@ export default function ProfileView({
             </div>
 
             {editing && (
-              <div className="mt-8 flex justify-end gap-3">
+              <div className="mt-6 flex justify-end gap-3">
                 <button
                   onClick={cancel}
                   disabled={saving}
@@ -541,9 +541,9 @@ export default function ProfileView({
             )}
           </PageCard>
 
-          <div className="grid gap-5 md:grid-cols-2">
-            <PageCard className="p-6">
-              <div className="mb-5 flex items-center gap-3">
+          <div className="grid gap-4 md:grid-cols-2">
+            <PageCard className="p-5">
+              <div className="mb-4 flex items-center gap-3">
                 <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#fff0df] text-[#a4653a]">
                   <AcademicCapIcon className="h-5 w-5" />
                 </div>
@@ -559,8 +559,8 @@ export default function ProfileView({
               </div>
             </PageCard>
 
-            <PageCard className="p-6">
-              <div className="mb-5 flex items-center gap-3">
+            <PageCard className="p-5">
+              <div className="mb-4 flex items-center gap-3">
                 <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#f1eafa] text-[#765692]">
                   <SparklesIcon className="h-5 w-5" />
                 </div>
@@ -575,7 +575,7 @@ export default function ProfileView({
             </PageCard>
           </div>
 
-          <div className="rounded-[22px] border border-[#5f866f]/15 bg-[#e8f4ec] p-6">
+          <div className="rounded-[22px] border border-[#5f866f]/15 bg-[#e8f4ec] p-5">
             <div className="flex items-start gap-3">
               <ShieldCheckIcon className="mt-0.5 h-5 w-5 shrink-0 text-[#4e755f]" />
               <div>

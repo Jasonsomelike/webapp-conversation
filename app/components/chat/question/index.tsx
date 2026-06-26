@@ -26,7 +26,9 @@ const Question: FC<IQuestionProps> = ({ id, content, useCurrentUserAvatar, imgSr
             className={'chat-question-card max-w-full overflow-x-auto break-words rounded-b-2xl rounded-tl-2xl bg-blue-500 px-3 py-2.5 sm:mr-2 sm:px-4 sm:py-3'}
           >
             {imgSrcs && imgSrcs.length > 0 && (
-              <ImageGallery srcs={imgSrcs} />
+              <div className="mb-2">
+                <ImageGallery srcs={imgSrcs} />
+              </div>
             )}
             <StreamdownMarkdown content={content} />
           </div>

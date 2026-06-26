@@ -11,6 +11,7 @@ import {
   toAbsoluteDifyAssetUrl,
   toDifyAssetProxyUrl,
 } from '@/lib/dify-assets'
+import { isNetworkStudyApp } from '@/lib/native-app'
 
 interface StreamdownMarkdownProps {
   content: string
@@ -76,6 +77,12 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   const sourceHref = isKnowledgeSource
     ? sourceInfo?.previewUrl || `/api/sources/image-info?redirect=1&url=${encodeURIComponent(absoluteSourceUrl)}`
     : imageUrl
+  const openPreview = () => {
+    if (isNetworkStudyApp())
+    { setPreview(true) }
+    else
+    { window.open(imageUrl, '_blank', 'noopener,noreferrer') }
+  }
   const getReturnContext = (element?: HTMLElement | null) => {
     if (typeof window === 'undefined')
     { return { returnTo: '', messageId: '', conversationId: '' } }
@@ -177,10 +184,10 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
           role='button'
           tabIndex={0}
           className='markdown-media group relative block max-w-full overflow-hidden text-left'
-          onClick={() => setPreview(true)}
+          onClick={openPreview}
           onKeyDown={(event) => {
             if (event.key === 'Enter' || event.key === ' ')
-            { setPreview(true) }
+            { openPreview() }
           }}
         >
           <img src={imageUrl} alt={alt} loading='lazy' onError={() => setFailed(true)} />
@@ -192,6 +199,7 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
           <span>{sourceLabel}</span>
           <a
             href={sourceHrefWithReturn()}
+            target={isKnowledgeSource ? undefined : '_blank'}
             rel='noreferrer'
             onClick={(event) => {
               event.stopPropagation()

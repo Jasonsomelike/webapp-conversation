@@ -9,6 +9,7 @@ import TooltipPlus from '@/app/components/base/tooltip-plus'
 import type { ImageFile } from '@/types/app'
 import { TransferMethod } from '@/types/app'
 import ImagePreview from '@/app/components/base/image-uploader/image-preview'
+import { isNetworkStudyApp } from '@/lib/native-app'
 
 interface ImageListProps {
   list: ImageFile[]
@@ -36,14 +37,22 @@ const ImageList: FC<ImageListProps> = ({
   const handleImageLinkLoadError = (item: ImageFile) => {
     if (item.type === TransferMethod.remote_url && onImageLinkLoadError) { onImageLinkLoadError(item._id) }
   }
+  const openImage = (url: string) => {
+    if (!url)
+    { return }
+    if (isNetworkStudyApp())
+    { setImagePreviewUrl(url) }
+    else
+    { window.open(url, '_blank', 'noopener,noreferrer') }
+  }
 
   return (
-    <div className='flex flex-wrap'>
+    <div className='flex flex-wrap gap-2'>
       {
         list.map(item => (
           <div
             key={item._id}
-            className='group relative mr-1 border-[0.5px] border-black/5 rounded-lg'
+            className='group relative rounded-2xl border-[0.5px] border-black/5'
           >
             {
               item.type === TransferMethod.local_file && item.progress !== 100 && (
@@ -88,25 +97,25 @@ const ImageList: FC<ImageListProps> = ({
               )
             }
             <img
-              className='w-16 h-16 rounded-lg object-cover cursor-pointer border-[0.5px] border-black/5'
+              className='h-28 w-28 cursor-pointer rounded-2xl border-[0.5px] border-black/5 object-cover sm:h-32 sm:w-32'
               alt=''
               onLoad={() => handleImageLinkLoadSuccess(item)}
               onError={() => handleImageLinkLoadError(item)}
               src={item.type === TransferMethod.remote_url ? item.url : item.base64Url}
-              onClick={() => item.progress === 100 && setImagePreviewUrl((item.type === TransferMethod.remote_url ? item.url : item.base64Url) as string)}
+              onClick={() => item.progress === 100 && openImage((item.type === TransferMethod.remote_url ? item.url : item.base64Url) as string)}
             />
             {
               !readonly && (
                 <div
                   className={`
-                    absolute z-10 -top-[9px] -right-[9px] items-center justify-center w-[18px] h-[18px] 
-                    bg-white hover:bg-gray-50 border-[0.5px] border-black/[0.02] rounded-2xl shadow-lg
+                    absolute right-1 top-1 z-10 items-center justify-center h-6 w-6
+                    rounded-full bg-black/55 text-white shadow-sm backdrop-blur transition hover:bg-black/70
                     cursor-pointer
-                    ${item.progress === -1 ? 'flex' : 'hidden group-hover:flex'}
+                    ${item.progress === -1 ? 'flex' : 'flex opacity-100 sm:opacity-0 sm:group-hover:opacity-100'}
                   `}
                   onClick={() => onRemove && onRemove(item._id)}
                 >
-                  <XClose className='w-3 h-3 text-gray-500' />
+                  <XClose className='h-3.5 w-3.5 text-white' />
                 </div>
               )
             }

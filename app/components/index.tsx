@@ -10,7 +10,7 @@ import Toast from '@/app/components/base/toast'
 import Sidebar from '@/app/components/sidebar'
 import MobileConversationList from '@/app/components/sidebar/mobile-conversation-list'
 import ConfigSence from '@/app/components/config-scence'
-import { deleteChatMessage, deleteConversation as deleteConversationRequest, fetchAppParams, fetchChatList, fetchConversations, generationConversationName, sendChatMessage, updateFeedback } from '@/service'
+import { deleteConversation as deleteConversationRequest, fetchAppParams, fetchChatList, fetchConversations, generationConversationName, sendChatMessage, updateFeedback } from '@/service'
 import type { ChatItem, ConversationItem, Feedbacktype, PromptConfig, VisionFile, VisionSettings } from '@/types/app'
 import type { FileUpload } from '@/app/components/base/file-uploader-in-attachment/types'
 import { Resolution, TransferMethod, WorkflowRunningStatus } from '@/types/app'
@@ -85,6 +85,52 @@ const readSourceReturnState = (): SourceReturnState | null => {
   }
 }
 
+interface PendingGenerationState {
+  startedAt: number
+  conversationId?: string
+  query?: string
+}
+
+interface ConversationShareTarget {
+  conversationId: string
+  title: string
+  chatList: ChatItem[]
+}
+
+const pendingGenerationKey = 'network-study-pending-generation'
+
+const readPendingGenerationState = (): PendingGenerationState | null => {
+  if (typeof window === 'undefined')
+  { return null }
+  try {
+    const raw = sessionStorage.getItem(pendingGenerationKey)
+    if (!raw)
+    { return null }
+    const state = JSON.parse(raw) as PendingGenerationState
+    if (!state.startedAt || Date.now() - Number(state.startedAt) > 30 * 60 * 1000) {
+      sessionStorage.removeItem(pendingGenerationKey)
+      return null
+    }
+    return state
+  }
+  catch {
+    sessionStorage.removeItem(pendingGenerationKey)
+    return null
+  }
+}
+
+const writePendingGenerationState = (state: PendingGenerationState) => {
+  if (typeof window === 'undefined')
+  { return }
+  sessionStorage.setItem(pendingGenerationKey, JSON.stringify(state))
+}
+
+const clearPendingGenerationState = () => {
+  if (typeof window === 'undefined')
+  { return }
+  sessionStorage.removeItem(pendingGenerationKey)
+}
+
 const Main: FC<IMainProps> = () => {
   const { t } = useTranslation()
   const media = useBreakpoints()
@@ -104,6 +150,7 @@ const Main: FC<IMainProps> = () => {
   const prefillOpenHandledRef = useRef(false)
   const [showMobileConversationList, setShowMobileConversationList] = useState(true)
   const [shareOpen, setShareOpen] = useState(false)
+  const [shareTarget, setShareTarget] = useState<ConversationShareTarget | null>(null)
   const [showJumpToBottom, setShowJumpToBottom] = useState(false)
 
   useEffect(() => {
@@ -338,6 +385,22 @@ const Main: FC<IMainProps> = () => {
     globalThis.addEventListener('network-study-native-back', handleNativeBack)
     return () => globalThis.removeEventListener('network-study-native-back', handleNativeBack)
   }, [])
+
+  useEffect(() => {
+    const handleChatEntered = () => {
+      if (targetMessageId)
+      { return }
+      pendingScrollToBottomRef.current = false
+      userPausedFollowRef.current = false
+      followOutputRef.current = true
+      setShowJumpToBottom(false)
+      ;[0, 80, 240, 560, 1200, 2200, 3200].forEach(delay => globalThis.setTimeout(() => {
+        scrollToChatBottom('auto')
+      }, delay))
+    }
+    globalThis.addEventListener('network-study-chat-entered', handleChatEntered)
+    return () => globalThis.removeEventListener('network-study-chat-entered', handleChatEntered)
+  }, [targetMessageId])
 
   useEffect(() => {
     const scrollParent = findScrollParent(chatListDomRef.current)
@@ -587,7 +650,7 @@ const Main: FC<IMainProps> = () => {
     if (!pendingScrollToBottomRef.current || targetMessageId)
     { return }
     pendingScrollToBottomRef.current = false
-    const timers = [80, 260, 620].map(delay => globalThis.setTimeout(() => {
+    const timers = [0, 80, 260, 620, 1200, 2200].map(delay => globalThis.setTimeout(() => {
       scrollToChatBottom('auto')
     }, delay))
     return () => timers.forEach(timer => globalThis.clearTimeout(timer))
@@ -723,6 +786,19 @@ const Main: FC<IMainProps> = () => {
     notify({ type: 'error', message })
   }
 
+  useEffect(() => {
+    window.NetworkStudyApp?.setChatGenerationActive?.(
+      isResponding,
+      currConversationId && currConversationId !== '-1' ? currConversationId : '',
+    )
+  }, [isResponding, currConversationId])
+
+  useEffect(() => {
+    return () => {
+      window.NetworkStudyApp?.setChatGenerationActive?.(false, '')
+    }
+  }, [])
+
   const checkCanSend = () => {
     if (currConversationId !== '-1') { return true }
 
@@ -790,61 +866,41 @@ const Main: FC<IMainProps> = () => {
     }
   }
 
-  const handleShareMessage = async (item: ChatItem) => {
-    const imageUrls = (item.message_files || [])
-      .map(file => file.url)
-      .filter(Boolean)
-    const text = [
-      toMessageText(item.content),
-      ...imageUrls,
-    ].filter(Boolean).join('\n\n')
-    if (!text) {
-      notify({ type: 'warning', message: '这条消息暂无可分享内容' })
+  const openCurrentConversationShare = () => {
+    if (!currConversationId || currConversationId === '-1') {
+      notify({ type: 'warning', message: '请先创建并发送一轮对话后再分享' })
+      return
+    }
+    setShareTarget({
+      conversationId: currConversationId,
+      title: conversationName,
+      chatList: getChatList(),
+    })
+    setShareOpen(true)
+  }
+
+  const handleShareConversation = async (conversation: ConversationItem) => {
+    if (!conversation.id || conversation.id === '-1') {
+      notify({ type: 'warning', message: '这个对话暂不能分享' })
+      return
+    }
+    if (conversation.id === currConversationId) {
+      openCurrentConversationShare()
       return
     }
     try {
-      if (navigator.share) {
-        await navigator.share({
-          title: item.isAnswer ? '计网Agent 回复' : '我的提问',
-          text,
-        })
-      }
-      else {
-        await navigator.clipboard.writeText(text)
-        notify({ type: 'success', message: '消息内容已复制' })
-      }
+      const result = await fetchChatList(conversation.id)
+      const messages = Array.isArray((result as any)?.data) ? (result as any).data : []
+      setShareTarget({
+        conversationId: conversation.id,
+        title: conversation.name || '网络学习会话',
+        chatList: buildChatListFromMessages(messages, conversation.introduction, conversation.inputs),
+      })
+      setShareOpen(true)
     }
     catch (error) {
-      if ((error as Error)?.name !== 'AbortError')
-      { notify({ type: 'error', message: '分享失败，请稍后重试' }) }
-    }
-  }
-
-  const handleDeleteMessage = async (item: ChatItem) => {
-    if (item.isOpeningStatement) {
-      notify({ type: 'warning', message: '开场提示不能删除' })
-      return false
-    }
-    const normalizedId = normalizeExchangeMessageId(item.id)
-    if (!normalizedId || normalizedId.startsWith('answer-placeholder-')) {
-      notify({ type: 'warning', message: '这条消息暂时不能删除' })
-      return false
-    }
-    const previousList = getChatList()
-    const optimisticList = previousList.filter((message) => {
-      const messageId = normalizeExchangeMessageId(message.id)
-      return messageId !== normalizedId
-    })
-    setChatList(optimisticList)
-    try {
-      await deleteChatMessage(normalizedId, currConversationId)
-      notify({ type: 'success', message: '消息已删除' })
-      return true
-    }
-    catch {
-      setChatList(previousList)
-      notify({ type: 'error', message: '删除消息失败，已恢复原内容' })
-      return false
+      console.warn('[chat] failed to load conversation for sharing', { conversationId: conversation.id, error })
+      notify({ type: 'error', message: '加载对话内容失败，暂时无法分享' })
     }
   }
 
@@ -860,9 +916,62 @@ const Main: FC<IMainProps> = () => {
     }))
   }
 
+  const recoverPendingGeneratedConversation = async (reason: 'resume' | 'manual') => {
+    const pending = readPendingGenerationState()
+    if (!pending)
+    { return false }
+
+    try {
+      const conversationsResult = await fetchConversations()
+      const refreshedConversations = Array.isArray((conversationsResult as any)?.data)
+        ? (conversationsResult as any).data as ConversationItem[]
+        : []
+      if (!refreshedConversations.length)
+      { return false }
+
+      setConversationList(refreshedConversations)
+      const startedAt = Number(pending.startedAt || 0)
+      const recentCutoff = startedAt > 0 ? startedAt - 2 * 60 * 1000 : 0
+      const explicitConversation = pending.conversationId
+        ? refreshedConversations.find(item => item.id === pending.conversationId)
+        : undefined
+      const recentConversation = refreshedConversations.find((item) => {
+        const updatedAt = item.updatedAt ? new Date(item.updatedAt).getTime() : 0
+        return updatedAt >= recentCutoff
+      })
+      const targetConversation = explicitConversation || recentConversation
+      if (!targetConversation?.id)
+      { return false }
+
+      const messagesResult = await fetchChatList(targetConversation.id)
+      const messages = Array.isArray((messagesResult as any)?.data) ? (messagesResult as any).data : []
+      setConversationIdChangeBecauseOfNew(false)
+      setShowMobileConversationList(false)
+      setCurrConversationId(targetConversation.id, APP_ID, true)
+      setIsRespondingConCurrCon(true)
+      setRespondingFalse()
+      if (messages.length > 0) {
+        setChatList(buildChatListFromMessages(messages, targetConversation.introduction, targetConversation.inputs))
+        pendingScrollToBottomRef.current = true
+        clearPendingGenerationState()
+        return true
+      }
+
+      markCurrentGenerationInterrupted('后台生成尚未同步完成，请稍后刷新或点击重试。')
+      return false
+    }
+    catch (error) {
+      console.warn('[chat] failed to recover pending generated conversation', { reason, error })
+      return false
+    }
+  }
+
   const refreshCurrentConversationMessages = async (reason: 'resume' | 'manual' = 'manual') => {
     const currentId = getCurrConversationId()
     if (!currentId || currentId === '-1') {
+      const recovered = await recoverPendingGeneratedConversation(reason)
+      if (recovered)
+      { return true }
       setRespondingFalse()
       setIsRespondingConCurrCon(true)
       return false
@@ -889,6 +998,7 @@ const Main: FC<IMainProps> = () => {
       if (messages.length > 0) {
         setChatList(buildChatListFromMessages(messages, activeIntroduction, activeInputs))
         setConversationIdChangeBecauseOfNew(false)
+        clearPendingGenerationState()
       }
       else if (getChatList().some(item => !item.isAnswer && !item.isOpeningStatement)) {
         markCurrentGenerationInterrupted()
@@ -940,11 +1050,11 @@ const Main: FC<IMainProps> = () => {
     let pausedDuringResponse = false
     const recoverIfNeeded = () => {
       const currentId = getCurrConversationId()
-      if (!currentId || currentId === '-1')
-      { return }
-      const hasPendingResponse = getChatRuntime().isResponding || pausedDuringResponse
+      const hasPendingResponse = getChatRuntime().isResponding || pausedDuringResponse || Boolean(readPendingGenerationState())
       const recentlyPaused = pauseStartedAt > 0 && Date.now() - pauseStartedAt < 10 * 60 * 1000
       if (!hasPendingResponse && !recentlyPaused)
+      { return }
+      if (!currentId && !readPendingGenerationState())
       { return }
       pausedDuringResponse = false
       pauseStartedAt = 0
@@ -1061,6 +1171,12 @@ const Main: FC<IMainProps> = () => {
     }
 
     const messageText = toMessageText(message)
+    const generationStartedAt = Date.now()
+    writePendingGenerationState({
+      startedAt: generationStartedAt,
+      conversationId: currConversationId && currConversationId !== '-1' ? currConversationId : undefined,
+      query: messageText,
+    })
     const userVisibleFiles = (files || []).map(file => ({
       ...file,
       belongs_to: 'user',
@@ -1138,6 +1254,11 @@ const Main: FC<IMainProps> = () => {
       { return }
       expectedConversationId = conversationId
       tempNewConversationId = conversationId
+      writePendingGenerationState({
+        startedAt: generationStartedAt,
+        conversationId,
+        query: messageText,
+      })
       const now = new Date().toISOString()
       optimisticConversation = {
         id: conversationId,
@@ -1167,6 +1288,10 @@ const Main: FC<IMainProps> = () => {
     }
 
     setRespondingTrue()
+    window.NetworkStudyApp?.setChatGenerationActive?.(
+      true,
+      currConversationId && currConversationId !== '-1' ? currConversationId : '',
+    )
     return await sendChatMessage(data, {
       getAbortController: (abortController) => {
         setAbortController(abortController)
@@ -1207,6 +1332,7 @@ const Main: FC<IMainProps> = () => {
       async onCompleted(hasError?: boolean) {
         try {
           if (!hasError) {
+            clearPendingGenerationState()
             const { data: allConversations }: any = await fetchConversations()
             const mergedConversations: ConversationItem[] = [...allConversations]
             if (tempNewConversationId && optimisticConversation && !mergedConversations.some(item => item.id === tempNewConversationId))
@@ -1438,6 +1564,7 @@ const Main: FC<IMainProps> = () => {
         list={conversationList}
         onCurrentIdChange={handleConversationIdChange}
         onDeleteConversation={handleDeleteConversation}
+        onShareConversation={handleShareConversation}
         currentId={currConversationId}
         copyRight={APP_INFO.copyright || APP_INFO.title}
       />
@@ -1461,6 +1588,8 @@ const Main: FC<IMainProps> = () => {
                 list={conversationList}
                 onOpen={handleConversationIdChange}
                 onNew={() => handleConversationIdChange('-1')}
+                onDelete={handleDeleteConversation}
+                onShare={handleShareConversation}
               />
             </div>
           )
@@ -1476,15 +1605,14 @@ const Main: FC<IMainProps> = () => {
                 </button>
                 <div className="flex items-center gap-2">
                   {!isNewConversation && (
-                    <button onClick={() => setShareOpen(true)} className="grid h-8 w-8 place-items-center rounded-lg border border-black/10 bg-white" aria-label="分享对话">
+                    <button onClick={openCurrentConversationShare} className="grid h-8 w-8 place-items-center rounded-lg border border-black/10 bg-white" aria-label="分享对话">
                       <ShareIcon className="h-4 w-4" />
                     </button>
                   )}
-                  <button onClick={() => handleConversationIdChange('-1')} className="rounded-lg bg-[#17342b] px-2.5 py-1.5 text-[11px] font-medium text-white">新对话</button>
                 </div>
               </div>
               {!isMobile && !isNewConversation && (
-                <button onClick={() => setShareOpen(true)} className="absolute right-4 top-3 z-30 flex items-center gap-2 rounded-xl border border-black/10 bg-white/95 px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur">
+                <button onClick={openCurrentConversationShare} className="absolute right-4 top-3 z-30 flex items-center gap-2 rounded-xl border border-black/10 bg-white/95 px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur">
                   <ShareIcon className="h-4 w-4" />分享
                 </button>
               )}
@@ -1509,8 +1637,6 @@ const Main: FC<IMainProps> = () => {
                       chatList={chatList}
                       onSend={handleSend}
                       onFeedback={handleFeedback}
-                      onShareMessage={handleShareMessage}
-                      onDeleteMessage={handleDeleteMessage}
                       onRetryMessage={handleRetryMessage}
                       isResponding={isResponding}
                       checkCanSend={checkCanSend}
@@ -1533,10 +1659,13 @@ const Main: FC<IMainProps> = () => {
           )}
         <ConversationShareDialog
           open={shareOpen}
-          onClose={() => setShareOpen(false)}
-          conversationId={currConversationId}
-          title={conversationName}
-          chatList={chatList}
+          onClose={() => {
+            setShareOpen(false)
+            setShareTarget(null)
+          }}
+          conversationId={shareTarget?.conversationId || currConversationId}
+          title={shareTarget?.title || conversationName}
+          chatList={shareTarget?.chatList || chatList}
         />
       </div>
     </div>
