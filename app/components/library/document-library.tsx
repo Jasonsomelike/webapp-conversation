@@ -28,8 +28,20 @@ const statusLabel: Record<string, string> = {
 }
 
 const formatDate = (timestamp?: number) => timestamp
-  ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(timestamp * 1000))
+  ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Shanghai' }).format(new Date(timestamp * 1000))
   : '—'
+
+const formatDateTime = (value: string) =>
+  new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(new Date(value))
 
 export default function DocumentLibrary({
   result: initialResult,
@@ -158,7 +170,7 @@ export default function DocumentLibrary({
         <div className="flex items-center justify-end border-b border-black/[0.05] px-5 py-2 text-[10px] text-black/40">
           <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${refreshPending ? 'animate-pulse bg-blue-500' : result.stale ? 'bg-amber-500' : 'bg-emerald-500'}`} />
           服务端每 30 分钟同步
-          {result.refreshed_at && ` · 最近更新 ${new Date(result.refreshed_at).toLocaleString('zh-CN', { hour12: false })}`}
+          {result.refreshed_at && ` · 最近更新 ${formatDateTime(result.refreshed_at)}`}
           {refreshPending && ' · 已发起后台刷新'}
         </div>
 

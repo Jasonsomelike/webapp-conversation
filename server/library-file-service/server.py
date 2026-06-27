@@ -16,6 +16,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import psycopg2
+import psycopg2.extras
 import requests
 from flask import Flask, Response, request, send_file, stream_with_context
 
@@ -230,6 +231,137 @@ def storage_file_response(
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+def header_token_is_valid() -> bool:
+    provided = request.headers.get("X-Internal-Token", "")
+    return bool(
+        INTERNAL_TOKEN
+        and provided
+        and hmac.compare_digest(provided.encode(), INTERNAL_TOKEN.encode())
+    )
+
+
+def jsonish(value):
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+    return value or {}
+
+
+def epoch_seconds(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return int(value.timestamp())
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+@app.get("/library/documents/catalog")
+def document_catalog():
+    request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+    if not header_token_is_valid():
+        return error_response("Unauthorized", 401, request_id)
+
+    try:
+        max_rows = min(10000, max(1, int(request.args.get("limit", "10000"))))
+    except ValueError:
+        return error_response("Invalid limit", 400, request_id)
+
+    try:
+        with database_connection() as connection:
+            connection.set_session(readonly=True, autocommit=False)
+            with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'documents'
+                    """
+                )
+                available_columns = {row["column_name"] for row in cursor.fetchall()}
+
+                field_expressions = {
+                    "id": "id::text",
+                    "position": "position",
+                    "data_source_type": "data_source_type",
+                    "data_source_info": "data_source_info",
+                    "data_source_detail_dict": "data_source_detail_dict",
+                    "name": "name",
+                    "created_from": "created_from",
+                    "created_at": "created_at",
+                    "tokens": "tokens",
+                    "indexing_status": "indexing_status",
+                    "display_status": "display_status",
+                    "error": "error",
+                    "enabled": "enabled",
+                    "archived": "archived",
+                    "word_count": "word_count",
+                    "hit_count": "hit_count",
+                    "doc_form": "doc_form",
+                }
+                selected = []
+                for field_name, expression in field_expressions.items():
+                    source_column = expression.split("::", 1)[0]
+                    if source_column in available_columns:
+                        selected.append(f"{expression} AS {field_name}")
+                    else:
+                        selected.append(f"NULL AS {field_name}")
+
+                order_by = (
+                    "position DESC NULLS LAST, created_at DESC NULLS LAST"
+                    if "position" in available_columns and "created_at" in available_columns
+                    else "id DESC"
+                )
+                cursor.execute(
+                    f"""
+                    SELECT {', '.join(selected)}
+                    FROM documents
+                    WHERE (%s = '' OR dataset_id::text = %s)
+                    ORDER BY {order_by}
+                    LIMIT %s
+                    """,
+                    (DATASET_ID, DATASET_ID, max_rows),
+                )
+                rows = cursor.fetchall()
+
+        documents = []
+        for row in rows:
+            data_source_info = jsonish(row.get("data_source_info"))
+            data_source_detail = jsonish(row.get("data_source_detail_dict"))
+            documents.append({
+                "id": str(row.get("id")),
+                "position": row.get("position"),
+                "data_source_type": row.get("data_source_type"),
+                "data_source_info": data_source_info,
+                "data_source_detail_dict": data_source_detail,
+                "name": row.get("name") or str(row.get("id")),
+                "created_from": row.get("created_from"),
+                "created_at": epoch_seconds(row.get("created_at")),
+                "tokens": row.get("tokens"),
+                "indexing_status": row.get("indexing_status"),
+                "display_status": row.get("display_status"),
+                "error": row.get("error"),
+                "enabled": row.get("enabled"),
+                "archived": row.get("archived"),
+                "word_count": row.get("word_count"),
+                "hit_count": row.get("hit_count") or 0,
+                "doc_form": row.get("doc_form"),
+            })
+
+        return {
+            "data": documents,
+            "total": len(documents),
+            "requestId": request_id,
+        }
+    except Exception as error:
+        logger.exception("[library-file-service] catalog failed requestId=%s", request_id)
+        return error_response(f"Document catalog failed: {type(error).__name__}", 500, request_id)
 
 @app.get("/page-images/<batch>/<filename>")
 def page_image_file(batch: str, filename: str):

@@ -115,16 +115,55 @@ const fetchKnowledgeDocuments = async ({
   return response.json()
 }
 
+const describeErrorWithCause = (error: unknown) => {
+  if (!(error instanceof Error))
+  { return String(error) }
+  const cause = (error as { cause?: unknown }).cause
+  const causeMessage = cause instanceof Error
+    ? cause.message
+    : cause
+      ? String(cause)
+      : ''
+  return causeMessage ? `${error.message}:${causeMessage}` : error.message
+}
+
+const libraryCatalogServiceUrls = () => {
+  const rawUrls = [
+    process.env.LIBRARY_FILE_SERVICE_URL,
+    process.env.DIFY_API_BASE_URL
+      ? `${new URL(process.env.DIFY_API_BASE_URL).origin}/custom-library`
+      : '',
+    process.env.NEXT_PUBLIC_API_URL
+      ? `${new URL(process.env.NEXT_PUBLIC_API_URL).origin}/custom-library`
+      : '',
+  ].filter(Boolean) as string[]
+  const candidates: string[] = []
+  rawUrls.forEach((rawUrl) => {
+    try {
+      const url = new URL(rawUrl.replace(/\/$/, ''))
+      candidates.push(url.toString().replace(/\/$/, ''))
+      if (url.hostname === 'dify.jasonsome.cn' && !url.port) {
+        url.port = '22380'
+        candidates.push(url.toString().replace(/\/$/, ''))
+      }
+    }
+    catch {
+      candidates.push(rawUrl.replace(/\/$/, ''))
+    }
+  })
+  return [...new Set(candidates)]
+}
+
 const fetchCompleteKnowledgeCatalog = async () => {
-  const serviceUrl = process.env.LIBRARY_FILE_SERVICE_URL?.replace(/\/$/, '')
   const serviceToken = process.env.LIBRARY_FILE_SERVICE_TOKEN
-  if (serviceUrl && serviceToken) {
+  const serviceUrls = serviceToken ? libraryCatalogServiceUrls() : []
+  if (serviceUrls.length && serviceToken) {
     const serviceErrors: string[] = []
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (const serviceUrl of serviceUrls) {
       const controller = new AbortController()
       const timeout = setTimeout(
         () => controller.abort(new Error('LIBRARY_CATALOG_SERVICE_TIMEOUT')),
-        45_000,
+        8_000,
       )
       try {
         const response = await fetch(`${serviceUrl}/library/documents/catalog`, {
@@ -136,18 +175,17 @@ const fetchCompleteKnowledgeCatalog = async () => {
           const result = await response.json() as { data?: unknown }
           return normalizeCatalogDocuments(result.data)
         }
-        serviceErrors.push(`attempt-${attempt + 1}:${response.status}`)
+        const detail = await response.text().catch(() => '')
+        serviceErrors.push(`${new URL(serviceUrl).host}:${response.status}:${detail.slice(0, 120)}`)
         if (response.status === 401 || response.status === 403)
         { break }
       }
       catch (error) {
-        serviceErrors.push(`attempt-${attempt + 1}:${error instanceof Error ? error.message : String(error)}`)
+        serviceErrors.push(`${serviceUrl}:${describeErrorWithCause(error)}`)
       }
       finally {
         clearTimeout(timeout)
       }
-      if (attempt < 2)
-      { await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1))) }
     }
     console.warn('[library-catalog] local catalog service unavailable, using Dify API fallback', {
       errors: serviceErrors,
