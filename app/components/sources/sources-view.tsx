@@ -257,9 +257,9 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
               style={sourcesSplit.containerStyle}
               className="grid min-h-[580px] min-w-0 lg:grid-cols-[var(--sources-list-width)_8px_minmax(0,1fr)]"
             >
-              <aside className="min-w-0 border-b border-black/[0.07] bg-black/[0.018] p-3 lg:border-b-0 lg:border-r">
-                <div className="mb-2 px-2 py-2 text-[10px] font-bold uppercase tracking-[0.18em] text-black/40">当前账号引用 · {filtered.length}</div>
-                <div className="space-y-2 lg:max-h-[535px] lg:overflow-y-auto">
+              <aside className="flex min-h-0 min-w-0 flex-col border-b border-black/[0.07] bg-black/[0.018] p-3 lg:border-b-0 lg:border-r">
+                <div className="shrink-0 px-2 py-2 text-[10px] font-bold uppercase tracking-[0.18em] text-black/40">当前账号引用 · {filtered.length}</div>
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                   {filtered.map(item => (
                     <button
                       key={item.id}

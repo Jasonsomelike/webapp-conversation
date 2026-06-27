@@ -28,9 +28,13 @@ export async function GET(request: Request) {
     })
   }
   catch (error) {
-    const message = error instanceof Error && error.message === 'DIFY_DATASET_NOT_CONFIGURED'
+    const detail = error instanceof Error ? error.message : 'UNKNOWN_LIBRARY_DOCUMENTS_ERROR'
+    const message = detail === 'DIFY_DATASET_NOT_CONFIGURED'
       ? 'Knowledge base API is not configured'
-      : 'Unable to load knowledge base documents'
-    return NextResponse.json({ error: message }, { status: 503 })
+      : detail === 'LIBRARY_CATALOG_EMPTY'
+        ? 'Knowledge base catalog is not initialized'
+        : 'Unable to load knowledge base documents'
+    console.error('[library-documents] request failed', { detail })
+    return NextResponse.json({ error: message, detail }, { status: 503 })
   }
 }

@@ -69,13 +69,20 @@ export default function DocumentLibrary({
         cache: 'no-store',
       })
       if (!response.ok)
-      { throw new Error(`LIBRARY_REFRESH_FAILED:${response.status}`) }
-      setResult(await response.json())
-      setError('')
+      {
+        const payload = await response.json().catch(() => null) as { detail?: string, error?: string } | null
+        throw new Error(payload?.detail || payload?.error || `LIBRARY_REFRESH_FAILED:${response.status}`)
+      }
+      const nextResult = await response.json() as DifyDocumentList
+      setResult(nextResult)
+      if (nextResult.stale && nextResult.refresh_error)
+      { setError(`知识库同步失败：${nextResult.refresh_error}`) }
+      else
+      { setError('') }
     }
-    catch {
+    catch (caught) {
       if (showLoading)
-      { setError('知识库同步失败，请稍后重试。') }
+      { setError(`知识库同步失败：${caught instanceof Error ? caught.message : '请稍后重试。'}`) }
     }
     finally {
       if (showLoading)
@@ -149,7 +156,7 @@ export default function DocumentLibrary({
 
         {result.stale && result.data.length > 0 && (
           <div className="border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-xs text-amber-800">
-            本次同步暂时失败，当前展示最近一次成功更新的数据。
+            本次同步暂时失败，当前展示最近一次成功更新的数据{result.refresh_error ? `。原因：${result.refresh_error}` : '。'}
           </div>
         )}
 

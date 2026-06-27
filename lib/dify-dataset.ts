@@ -229,6 +229,30 @@ const readCatalogRow = async () => {
   return catalog
 }
 
+const CATALOG_REFRESH_INTERVAL_MS = 30 * 60 * 1000
+let backgroundRefreshPromise: Promise<unknown> | undefined
+
+const shouldRefreshCatalog = (refreshedAt?: Date | string | null) => {
+  if (!refreshedAt)
+  { return true }
+  const timestamp = new Date(refreshedAt).getTime()
+  return !Number.isFinite(timestamp) || Date.now() - timestamp >= CATALOG_REFRESH_INTERVAL_MS
+}
+
+const refreshCatalogInBackground = () => {
+  if (backgroundRefreshPromise)
+  { return }
+  backgroundRefreshPromise = refreshKnowledgeDocuments({ page: 1, limit: 1, recordFailure: true })
+    .catch((error) => {
+      console.error('[library-catalog] background refresh failed', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    })
+    .finally(() => {
+      backgroundRefreshPromise = undefined
+    })
+}
+
 export const storeKnowledgeDocumentCatalog = async (value: unknown) => {
   if (!isDatabaseConfigured())
   { throw new Error('LIBRARY_CATALOG_DATABASE_NOT_CONFIGURED') }
@@ -265,7 +289,17 @@ export const listKnowledgeDocuments = async ({
   keyword?: string
   status?: string
 } = {}) => {
-  const catalog = await readCatalogRow()
+  let catalog
+  try {
+    catalog = await readCatalogRow()
+  }
+  catch (error) {
+    if (error instanceof Error && error.message === 'LIBRARY_CATALOG_EMPTY')
+    { return refreshKnowledgeDocuments({ page, limit, keyword, status, recordFailure: true }) }
+    throw error
+  }
+  if (shouldRefreshCatalog(catalog.refreshedAt))
+  { refreshCatalogInBackground() }
   const documents = Array.isArray(catalog.documents)
     ? catalog.documents as unknown as DifyKnowledgeDocument[]
     : []
