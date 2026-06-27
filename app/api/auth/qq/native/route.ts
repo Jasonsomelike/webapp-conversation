@@ -4,6 +4,7 @@ import {
   PENDING_QQ_COOKIE,
   PENDING_QQ_COOKIE_MAX_AGE,
   createPendingQqToken,
+  extractQqNumber,
   getQqIdentity,
   getQqProfile,
   resolveQqUser,
@@ -14,6 +15,7 @@ const schema = z.object({
   accessToken: z.string().min(16).max(512),
   openId: z.string().min(8).max(128),
   unionId: z.string().min(4).max(128).optional(),
+  qqNumber: z.string().min(5).max(12).optional(),
 })
 
 export async function POST(request: Request) {
@@ -30,6 +32,7 @@ export async function POST(request: Request) {
   let pendingIdentity: {
     openId: string
     unionId?: string
+    qqNumber?: string
     nickname?: string
     avatarUrl?: string
   } | undefined
@@ -59,9 +62,11 @@ export async function POST(request: Request) {
     }
 
     const profile = await getQqProfile(parsed.data.accessToken, appId, identity.openid)
+    const qqNumber = extractQqNumber(parsed.data, profile)
     pendingIdentity = {
       openId: identity.openid,
       unionId: identity.unionid,
+      qqNumber,
       nickname: profile.nickname,
       avatarUrl: profile.figureurl_qq_2 || profile.figureurl_2,
     }
@@ -69,6 +74,7 @@ export async function POST(request: Request) {
       appId,
       openId: identity.openid,
       unionId: identity.unionid,
+      qqNumber,
       nickname: profile.nickname,
     })
     const response = NextResponse.json({ ok: true })
@@ -99,6 +105,7 @@ export async function POST(request: Request) {
           appId,
           openId: pendingIdentity.openId,
           unionId: pendingIdentity.unionId,
+          qqNumber: pendingIdentity.qqNumber,
           nickname: pendingIdentity.nickname,
           avatarUrl: pendingIdentity.avatarUrl,
         }), {

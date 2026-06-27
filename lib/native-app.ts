@@ -11,6 +11,7 @@ export interface NativeQqLoginResult {
   accessToken: string
   openId: string
   unionId?: string
+  qqNumber?: string
   expiresIn?: string
   purpose?: 'login' | 'bind'
 }

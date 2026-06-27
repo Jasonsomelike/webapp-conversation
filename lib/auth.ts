@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { securityQuestions } from '@/lib/account-policy'
 import { db, isDatabaseConfigured } from '@/lib/db'
-import { ensureAccountLifecycleStorage, isAppUserDeleted } from '@/lib/account-lifecycle'
+import { deleteAppUserAccount, ensureAccountLifecycleStorage, isAppUserDeleted } from '@/lib/account-lifecycle'
 import { passwordPattern, passwordPolicyHint } from '@/lib/password-policy'
 
 const usernamePattern = /^[a-zA-Z][a-zA-Z0-9_-]{2,31}$/
@@ -40,8 +40,18 @@ export const registerUser = async (input: z.infer<typeof registerSchema>) => {
   await ensureAccountLifecycleStorage()
   const username = normalizeUsername(input.username)
   const existing = await db.appUser.findUnique({ where: { username } })
-  if (existing)
-  { throw new Error('USERNAME_EXISTS') }
+  if (existing) {
+    if (await isAppUserDeleted(existing.id)) {
+      await deleteAppUserAccount({
+        appUserId: existing.id,
+        actorUserId: existing.id,
+        allowSelf: true,
+      })
+    }
+    else {
+      throw new Error('USERNAME_EXISTS')
+    }
+  }
 
   const [passwordHash, securityAnswerHash] = await Promise.all([
     bcrypt.hash(input.password, 12),

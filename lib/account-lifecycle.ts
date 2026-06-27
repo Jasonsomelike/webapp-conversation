@@ -85,7 +85,6 @@ export const deleteAppUserAccount = async ({
         SELECT "id"::text AS "id"
         FROM "app_users"
         WHERE "id" = ${appUserId}::uuid
-          AND "deleted_at" IS NULL
         LIMIT 1
       `
 

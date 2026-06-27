@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getSession } from '@/lib/session'
-import { bindQqIdentityToUser, getQqIdentity, getQqIdentitySummary } from '@/lib/qq-auth'
+import { bindQqIdentityToUser, extractQqNumber, getQqIdentity, getQqIdentitySummary, getQqProfile } from '@/lib/qq-auth'
 
 const schema = z.object({
   accessToken: z.string().min(16).max(512),
   openId: z.string().min(8).max(128),
   unionId: z.string().min(4).max(128).optional(),
+  qqNumber: z.string().min(5).max(12).optional(),
 })
 
 export async function POST(request: Request) {
@@ -39,11 +40,15 @@ export async function POST(request: Request) {
         error: identityError instanceof Error ? identityError.message : String(identityError),
       })
     }
+    const profile = await getQqProfile(parsed.data.accessToken, appId, identity.openid)
+      .catch(() => null)
+    const qqNumber = extractQqNumber(parsed.data, profile)
     await bindQqIdentityToUser({
       appUserId: session.id,
       appId,
       openId: identity.openid,
       unionId: identity.unionid,
+      qqNumber,
     })
     const qq = await getQqIdentitySummary(session.id)
     return NextResponse.json({ ok: true, qq })
