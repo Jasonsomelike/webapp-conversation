@@ -7,6 +7,22 @@ export interface NativeDownloadSettings {
   appVersionCode?: number
 }
 
+export interface NativeDownloadTask {
+  id: string
+  url?: string
+  filename: string
+  mimeType?: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'deleted'
+  progress: number
+  downloadedBytes?: number
+  totalBytes?: number
+  uri?: string
+  isUpdate?: boolean
+  error?: string
+  createdAt?: number
+  updatedAt?: number
+}
+
 export interface NativeQqLoginResult {
   accessToken: string
   openId: string
@@ -30,6 +46,9 @@ declare global {
       saveBase64Image: (dataUrl: string, filename: string) => void
       saveBase64File?: (dataUrl: string, filename: string, mimeType?: string) => void
       downloadUrl?: (url: string, filename?: string) => void
+      getDownloadTasks?: () => string
+      openDownloadTask?: (id: string) => void
+      deleteDownloadTask?: (id: string) => void
       openExternalUrl?: (url: string) => void
       getBridgeVersion?: () => string
       loginWithQQ: () => void

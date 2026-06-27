@@ -45,10 +45,12 @@ export default function DocumentLibrary({
   const [result, setResult] = useState(initialResult)
   const [error, setError] = useState(initialError)
   const [refreshing, setRefreshing] = useState(false)
+  const [refreshPending, setRefreshPending] = useState(Boolean(initialResult.refresh_pending))
 
   useEffect(() => {
     setResult(initialResult)
     setError(initialError)
+    setRefreshPending(Boolean(initialResult.refresh_pending))
   }, [initialError, initialResult])
 
   const refreshDocuments = useCallback(async (showLoading = false) => {
@@ -64,25 +66,27 @@ export default function DocumentLibrary({
       if (status)
       { params.set('status', status) }
       params.set('refresh', '1')
+      params.set('mode', 'async')
       const response = await fetch(`/api/library/documents?${params}`, {
         credentials: 'include',
         cache: 'no-store',
       })
       if (!response.ok)
       {
-        const payload = await response.json().catch(() => null) as { detail?: string, error?: string } | null
-        throw new Error(payload?.detail || payload?.error || `LIBRARY_REFRESH_FAILED:${response.status}`)
+        const payload = await response.json().catch(() => null) as { detail?: string, error?: string, error_message?: string } | null
+        throw new Error(payload?.error_message || payload?.error || `LIBRARY_REFRESH_FAILED:${response.status}`)
       }
       const nextResult = await response.json() as DifyDocumentList
       setResult(nextResult)
-      if (nextResult.stale && nextResult.refresh_error)
-      { setError(`知识库同步失败：${nextResult.refresh_error}`) }
+      setRefreshPending(Boolean(nextResult.refresh_pending))
+      if (nextResult.stale && nextResult.refresh_error_message)
+      { setError(nextResult.refresh_error_message) }
       else
       { setError('') }
     }
     catch (caught) {
       if (showLoading)
-      { setError(`知识库同步失败：${caught instanceof Error ? caught.message : '请稍后重试。'}`) }
+      { setError(caught instanceof Error ? caught.message : '知识库同步请求已失败，请稍后重试。') }
     }
     finally {
       if (showLoading)
@@ -149,14 +153,21 @@ export default function DocumentLibrary({
         </form>
 
         <div className="flex items-center justify-end border-b border-black/[0.05] px-5 py-2 text-[10px] text-black/40">
-          <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${result.stale ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+          <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${refreshPending ? 'animate-pulse bg-blue-500' : result.stale ? 'bg-amber-500' : 'bg-emerald-500'}`} />
           服务端每 30 分钟同步
           {result.refreshed_at && ` · 最近更新 ${new Date(result.refreshed_at).toLocaleString('zh-CN', { hour12: false })}`}
+          {refreshPending && ' · 已发起后台刷新'}
         </div>
 
         {result.stale && result.data.length > 0 && (
           <div className="border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-xs text-amber-800">
-            本次同步暂时失败，当前展示最近一次成功更新的数据{result.refresh_error ? `。原因：${result.refresh_error}` : '。'}
+            {result.refresh_error_message || '本次同步暂时失败，当前展示最近一次成功更新的数据。'}
+          </div>
+        )}
+
+        {refreshPending && !result.stale && (
+          <div className="border-b border-blue-100 bg-blue-50 px-5 py-2.5 text-xs text-blue-700">
+            已通知服务端后台刷新知识库目录；当前先展示缓存数据，稍后会自动由定时任务更新。
           </div>
         )}
 
@@ -167,8 +178,10 @@ export default function DocumentLibrary({
               <div className="grid min-h-[420px] place-items-center p-10 text-center">
                 <div>
                   <DocumentTextIcon className="mx-auto h-12 w-12 text-black/20" />
-                  <h2 className="mt-4 font-semibold">没有找到文档</h2>
-                  <p className="mt-2 text-xs text-black/40">请调整搜索词或处理状态。</p>
+                  <h2 className="mt-4 font-semibold">{refreshPending ? '正在同步知识库目录' : '没有找到文档'}</h2>
+                  <p className="mt-2 text-xs text-black/40">
+                    {refreshPending ? '服务端已开始后台拉取知识库文档，稍后刷新即可看到最新目录。' : '请调整搜索词或处理状态。'}
+                  </p>
                 </div>
               </div>
             )

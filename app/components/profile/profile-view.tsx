@@ -67,7 +67,8 @@ export default function ProfileView({
   const [displayName, setDisplayName] = useState(session.name)
   const [savedProfile, setSavedProfile] = useState({ stage: initialStage, style: initialStyle, target: initialTarget, displayName: session.name })
   const [nativeApp, setNativeApp] = useState(false)
-  const [editing, setEditing] = useState(false)
+  const [editingLearner, setEditingLearner] = useState(false)
+  const [editingPreferences, setEditingPreferences] = useState(false)
   const [saving, setSaving] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const [deletingAccount, setDeletingAccount] = useState(false)
@@ -83,7 +84,9 @@ export default function ProfileView({
   const qqPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const qqTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { notify } = Toast
-  const dirty = stage !== savedProfile.stage || style !== savedProfile.style || target !== savedProfile.target || displayName !== savedProfile.displayName
+  const learnerDirty = displayName !== savedProfile.displayName
+  const preferencesDirty = stage !== savedProfile.stage || style !== savedProfile.style || target !== savedProfile.target
+  const dirty = learnerDirty || preferencesDirty
   const qqBound = qqIdentity.bound
   const qqDisplay = qqIdentity.displayId
     ? `QQ 标识：${qqIdentity.displayId}`
@@ -162,7 +165,7 @@ export default function ProfileView({
   }, [notify])
 
   useEffect(() => {
-    if (!editing || !dirty)
+    if ((!editingLearner && !editingPreferences) || !dirty)
     { return }
 
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -185,14 +188,18 @@ export default function ProfileView({
       globalThis.removeEventListener('beforeunload', beforeUnload)
       document.removeEventListener('click', interceptNavigation, true)
     }
-  }, [dirty, editing])
+  }, [dirty, editingLearner, editingPreferences])
 
-  const cancel = () => {
+  const cancelLearner = () => {
+    setDisplayName(savedProfile.displayName)
+    setEditingLearner(false)
+  }
+
+  const cancelPreferences = () => {
     setStage(savedProfile.stage)
     setStyle(savedProfile.style)
     setTarget(savedProfile.target)
-    setDisplayName(savedProfile.displayName)
-    setEditing(false)
+    setEditingPreferences(false)
   }
 
   const save = async () => {
@@ -206,7 +213,8 @@ export default function ProfileView({
       if (!response.ok)
       { throw new Error(`PROFILE_SAVE_FAILED:${response.status}`) }
       setSavedProfile({ stage, style, target, displayName })
-      setEditing(false)
+      setEditingLearner(false)
+      setEditingPreferences(false)
       notify({ type: 'success', message: '画像已更新' })
       globalThis.setTimeout(() => globalThis.location.reload(), 350)
     }
@@ -406,6 +414,19 @@ export default function ProfileView({
         <div className="relative overflow-hidden rounded-[24px] bg-[var(--studio-deep)] p-5 text-white shadow-[0_18px_48px_rgba(23,52,43,.16)] sm:p-6">
           <div className="absolute -right-12 -top-20 h-56 w-56 rounded-full bg-[var(--studio-accent)]/12 blur-2xl" />
           <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <button
+              type="button"
+              onClick={() => {
+                if (editingLearner)
+                { cancelLearner() }
+                else
+                { setEditingLearner(true) }
+              }}
+              className="absolute right-0 top-0 flex h-9 items-center justify-center gap-1.5 rounded-xl bg-white/10 px-3 text-[10px] font-semibold transition hover:bg-white/15"
+            >
+              {editingLearner ? <XMarkIcon className="h-3.5 w-3.5" /> : <PencilSquareIcon className="h-3.5 w-3.5" />}
+              {editingLearner ? '取消' : '编辑'}
+            </button>
             <div className="flex min-w-0 items-center gap-4">
               <label className="group relative block h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-[22px] bg-[var(--studio-accent)] text-[var(--studio-deep)] shadow-lg">
                 {avatarUrl
@@ -424,7 +445,7 @@ export default function ProfileView({
               </label>
               <div className="min-w-0">
                 <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--studio-accent)]">Learner center</div>
-                {editing
+                {editingLearner
                   ? (
                     <input
                       value={displayName}
@@ -438,7 +459,7 @@ export default function ProfileView({
                 <div className="mt-1 text-xs text-white/45">@{session.username} · {stage} · {style}</div>
               </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto] lg:min-w-[520px]">
+            <div className="grid gap-3 pt-8 sm:grid-cols-[1fr_auto] lg:min-w-[520px] lg:pt-0">
               <div className="grid grid-cols-3 divide-x divide-white/10 rounded-2xl bg-white/[0.06] py-3 text-center">
                 {[
                   [String(stats.conversations), '会话'],
@@ -451,20 +472,7 @@ export default function ProfileView({
                   </div>
                 ))}
               </div>
-              <div className="grid grid-cols-3 gap-2 sm:w-[270px]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (editing)
-                    { cancel() }
-                    else
-                    { setEditing(true) }
-                  }}
-                  className="flex h-11 items-center justify-center gap-1.5 rounded-xl bg-white/10 px-2 text-[10px] font-semibold transition hover:bg-white/15"
-                >
-                  {editing ? <XMarkIcon className="h-3.5 w-3.5" /> : <PencilSquareIcon className="h-3.5 w-3.5" />}
-                  {editing ? '取消' : '编辑'}
-                </button>
+              <div className="grid grid-cols-2 gap-2 sm:w-[190px]">
                 <button
                   type="button"
                   onClick={() => setDetailPanel('learner')}
@@ -481,19 +489,54 @@ export default function ProfileView({
                 </button>
               </div>
             </div>
+            {editingLearner && (
+              <div className="relative mt-4 flex justify-end gap-3 border-t border-white/10 pt-4 lg:absolute lg:bottom-0 lg:right-0 lg:mt-0 lg:border-0 lg:pt-0">
+                <button
+                  type="button"
+                  onClick={cancelLearner}
+                  disabled={saving}
+                  className="h-10 rounded-xl border border-white/15 px-4 text-xs font-semibold disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={save}
+                  disabled={saving || !learnerDirty}
+                  className="h-10 rounded-xl bg-[var(--studio-accent)] px-4 text-xs font-semibold text-[var(--studio-deep)] disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  {saving ? '保存中...' : '保存名称'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
         <div className="space-y-4">
           <PageCard className="p-5">
-            <div className="flex items-center gap-3">
-              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#e8f4ec] text-[#47715c]">
-                <AdjustmentsHorizontalIcon className="h-5 w-5" />
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#e8f4ec] text-[#47715c]">
+                  <AdjustmentsHorizontalIcon className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#748179]">Learning preferences</div>
+                  <h2 className="mt-1 text-base font-semibold">学习偏好设置</h2>
+                </div>
               </div>
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#748179]">Learning preferences</div>
-                <h2 className="mt-1 text-base font-semibold">学习偏好设置</h2>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (editingPreferences)
+                  { cancelPreferences() }
+                  else
+                  { setEditingPreferences(true) }
+                }}
+                className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-black/10 px-3 text-[10px] font-semibold transition hover:bg-black/[0.03]"
+              >
+                {editingPreferences ? <XMarkIcon className="h-3.5 w-3.5" /> : <PencilSquareIcon className="h-3.5 w-3.5" />}
+                {editingPreferences ? '取消' : '编辑'}
+              </button>
             </div>
 
             <div className="mt-5 grid gap-5 lg:grid-cols-3">
@@ -508,13 +551,13 @@ export default function ProfileView({
                     {(options as string[]).map(option => (
                       <button
                         key={option}
-                        disabled={!editing || saving}
+                        disabled={!editingPreferences || saving}
                         onClick={() => (setter as (value: string) => void)(option)}
                         className={`rounded-xl border px-3 py-2 text-xs transition ${
                           option === value
                             ? 'border-[#17342b] bg-[#17342b] font-semibold text-white'
                             : 'border-[#183129]/10 bg-[var(--studio-surface)] text-[var(--studio-muted)] hover:border-[var(--studio-accent-strong)]/30'
-                        } ${!editing ? 'cursor-default opacity-70' : ''}`}
+                        } ${!editingPreferences ? 'cursor-default opacity-70' : ''}`}
                       >
                         {option}
                       </button>
@@ -524,10 +567,10 @@ export default function ProfileView({
               ))}
             </div>
 
-            {editing && (
+            {editingPreferences && (
               <div className="mt-6 flex justify-end gap-3">
                 <button
-                  onClick={cancel}
+                  onClick={cancelPreferences}
                   disabled={saving}
                   className="h-11 rounded-xl border border-black/10 px-5 text-xs font-semibold disabled:opacity-50"
                 >
@@ -535,7 +578,7 @@ export default function ProfileView({
                 </button>
                 <button
                   onClick={save}
-                  disabled={saving || !dirty}
+                  disabled={saving || !preferencesDirty}
                   className="flex h-11 items-center gap-2 rounded-xl bg-[var(--studio-accent)] px-5 text-xs font-semibold text-[var(--studio-deep)] shadow-[0_10px_24px_rgba(132,153,58,.15)] disabled:cursor-not-allowed disabled:opacity-55"
                 >
                   {saving ? '保存中...' : '保存'}

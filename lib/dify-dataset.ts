@@ -43,6 +43,8 @@ export interface DifyDocumentList {
   refreshed_at?: string
   stale?: boolean
   refresh_error?: string
+  refresh_error_message?: string
+  refresh_pending?: boolean
 }
 
 interface DifyDocumentSegment {
@@ -106,7 +108,7 @@ const fetchKnowledgeDocuments = async ({
   const response = await fetchDify(
     `/datasets/${encodeURIComponent(datasetId)}/documents?${params}`,
     { method: 'GET' },
-    { apiKey, connectTimeoutMs: 8_000, retries: 1 },
+    { apiKey, connectTimeoutMs: 15_000, retries: 2 },
   )
   if (!response.ok)
   { throw new Error(`DIFY_DATASET_REQUEST_FAILED:${response.status}`) }
@@ -214,8 +216,31 @@ const filterCatalog = ({
     refreshed_at: refreshedAt.toISOString(),
     stale: Boolean(refreshError),
     refresh_error: refreshError || undefined,
+    refresh_error_message: describeKnowledgeCatalogError(refreshError),
   }
 }
+
+const emptyCatalogResult = ({
+  page = 1,
+  limit = 20,
+  refreshError,
+  refreshPending = false,
+}: {
+  page?: number
+  limit?: number
+  refreshError?: string | null
+  refreshPending?: boolean
+}): DifyDocumentList => ({
+  data: [],
+  has_more: false,
+  limit: Math.min(100, Math.max(1, limit)),
+  total: 0,
+  page: Math.max(1, page),
+  stale: Boolean(refreshError),
+  refresh_error: refreshError || undefined,
+  refresh_error_message: describeKnowledgeCatalogError(refreshError),
+  refresh_pending: refreshPending,
+})
 
 const readCatalogRow = async () => {
   if (!isDatabaseConfigured())
@@ -241,7 +266,7 @@ const shouldRefreshCatalog = (refreshedAt?: Date | string | null) => {
 
 const refreshCatalogInBackground = () => {
   if (backgroundRefreshPromise)
-  { return }
+  { return backgroundRefreshPromise }
   backgroundRefreshPromise = refreshKnowledgeDocuments({ page: 1, limit: 1, recordFailure: true })
     .catch((error) => {
       console.error('[library-catalog] background refresh failed', {
@@ -251,6 +276,28 @@ const refreshCatalogInBackground = () => {
     .finally(() => {
       backgroundRefreshPromise = undefined
     })
+  return backgroundRefreshPromise
+}
+
+export const requestKnowledgeDocumentRefresh = async () => {
+  await ensureKnowledgeDocumentCatalogTable()
+  return refreshCatalogInBackground()
+}
+
+export const describeKnowledgeCatalogError = (value?: string | null) => {
+  if (!value)
+  { return '' }
+  if (value.includes('DIFY_CONNECT_TIMEOUT') || value.includes('Timeout') || value.includes('timeout'))
+  { return 'Dify 知识库响应超时，已继续展示最近一次成功同步的数据；服务端会自动重试。' }
+  if (value.includes('DIFY_DATASET_NOT_CONFIGURED'))
+  { return '知识库 API 尚未配置，请检查服务端环境变量。' }
+  if (value.includes('DIFY_DATASET_REQUEST_FAILED:401') || value.includes('DIFY_DATASET_REQUEST_FAILED:403'))
+  { return '知识库 API 鉴权失败，请检查 Dify 知识库密钥。' }
+  if (value.includes('DIFY_DATASET_REQUEST_FAILED'))
+  { return 'Dify 知识库接口暂时不可用，已继续展示缓存数据。' }
+  if (value.includes('LIBRARY_CATALOG_SERVICE_TIMEOUT'))
+  { return '本地知识库目录服务响应超时，已继续展示缓存数据。' }
+  return '知识库同步暂时失败，已继续展示最近一次成功同步的数据。'
 }
 
 export const storeKnowledgeDocumentCatalog = async (value: unknown) => {
@@ -294,8 +341,14 @@ export const listKnowledgeDocuments = async ({
     catalog = await readCatalogRow()
   }
   catch (error) {
-    if (error instanceof Error && error.message === 'LIBRARY_CATALOG_EMPTY')
-    { return refreshKnowledgeDocuments({ page, limit, keyword, status, recordFailure: true }) }
+    if (error instanceof Error && error.message === 'LIBRARY_CATALOG_EMPTY') {
+      refreshCatalogInBackground()
+      return emptyCatalogResult({
+        page,
+        limit,
+        refreshPending: true,
+      })
+    }
     throw error
   }
   if (shouldRefreshCatalog(catalog.refreshedAt))

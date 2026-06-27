@@ -10,6 +10,7 @@ import FileItem from './file-item'
 import Button from '@/app/components/base/button'
 import cn from '@/utils/classnames'
 import { TransferMethod } from '@/types/app'
+import { isNetworkStudyApp } from '@/lib/native-app'
 
 interface Option {
   value: string
@@ -29,6 +30,7 @@ const FileUploaderInAttachment = ({
   const { t } = useTranslation()
   const files = useStore(s => s.files)
   const { handleRemoveFile, handleReUploadFile } = useFile(fileConfig)
+  const nativeApp = typeof window !== 'undefined' && isNetworkStudyApp()
   const options = [
     {
       value: TransferMethod.local_file,
@@ -47,9 +49,14 @@ const FileUploaderInAttachment = ({
       return (
         <div
           key={option.value}
-          title={option.label}
+          title={nativeApp && option.value === TransferMethod.local_file ? '使用 Android 文件选择器添加附件' : option.label}
           aria-label={option.label}
-          className='relative grid h-9 w-9 cursor-pointer place-items-center rounded-xl text-[var(--studio-muted)] transition hover:bg-black/[0.05] active:scale-95'
+          className={cn(
+            'relative grid h-10 w-10 cursor-pointer place-items-center rounded-2xl border transition active:scale-95',
+            nativeApp
+              ? 'border-black/10 bg-black/[0.035] text-[var(--studio-deep)] shadow-sm hover:bg-black/[0.055]'
+              : 'border-transparent text-[var(--studio-muted)] hover:bg-black/[0.05]',
+          )}
         >
           {option.icon}
           {option.value === TransferMethod.local_file && <FileInput fileConfig={fileConfig} />}
@@ -68,7 +75,7 @@ const FileUploaderInAttachment = ({
         {option.value === TransferMethod.local_file && <FileInput fileConfig={fileConfig} />}
       </Button>
     )
-  }, [compact, fileConfig, files.length])
+  }, [compact, fileConfig, files.length, nativeApp])
 
   const renderTrigger = useCallback((option: Option) => {
     return (open: boolean) => renderButton(option, open)

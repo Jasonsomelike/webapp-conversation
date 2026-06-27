@@ -1,5 +1,6 @@
+import { after } from 'next/server'
 import { NextResponse } from 'next/server'
-import { listKnowledgeDocuments, refreshKnowledgeDocuments } from '@/lib/dify-dataset'
+import { describeKnowledgeCatalogError, listKnowledgeDocuments, requestKnowledgeDocumentRefresh, refreshKnowledgeDocuments } from '@/lib/dify-dataset'
 import { getSession } from '@/lib/session'
 
 export const runtime = 'nodejs'
@@ -12,16 +13,21 @@ export async function GET(request: Request) {
 
   const params = new URL(request.url).searchParams
   try {
-    const loadDocuments = params.get('refresh') === '1'
+    const wantsRefresh = params.get('refresh') === '1'
+    if (wantsRefresh && params.get('mode') === 'async')
+    { after(() => requestKnowledgeDocumentRefresh()) }
+    const data = await (wantsRefresh && params.get('mode') !== 'async'
       ? refreshKnowledgeDocuments
-      : listKnowledgeDocuments
-    const data = await loadDocuments({
+      : listKnowledgeDocuments)({
       page: Number(params.get('page') || 1),
       limit: Number(params.get('limit') || 20),
       keyword: params.get('keyword') || '',
       status: params.get('status') || '',
     })
-    return NextResponse.json(data, {
+    return NextResponse.json({
+      ...data,
+      refresh_pending: wantsRefresh && params.get('mode') === 'async',
+    }, {
       headers: {
         'Cache-Control': 'private, no-store, no-cache, must-revalidate',
       },
@@ -35,6 +41,6 @@ export async function GET(request: Request) {
         ? 'Knowledge base catalog is not initialized'
         : 'Unable to load knowledge base documents'
     console.error('[library-documents] request failed', { detail })
-    return NextResponse.json({ error: message, detail }, { status: 503 })
+    return NextResponse.json({ error: message, detail, error_message: describeKnowledgeCatalogError(detail) }, { status: 503 })
   }
 }
