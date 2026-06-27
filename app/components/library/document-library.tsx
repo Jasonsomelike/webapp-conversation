@@ -28,8 +28,20 @@ const statusLabel: Record<string, string> = {
 }
 
 const formatDate = (timestamp?: number) => timestamp
-  ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(timestamp * 1000))
+  ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Shanghai' }).format(new Date(timestamp * 1000))
   : '—'
+
+const formatDateTime = (value: string) =>
+  new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(new Date(value))
 
 export default function DocumentLibrary({
   result: initialResult,
@@ -45,16 +57,33 @@ export default function DocumentLibrary({
   const [result, setResult] = useState(initialResult)
   const [error, setError] = useState(initialError)
   const [refreshing, setRefreshing] = useState(false)
+  const [refreshPending, setRefreshPending] = useState(Boolean(initialResult.refresh_pending))
+  const [refreshNotice, setRefreshNotice] = useState<{
+    tone: 'info' | 'success' | 'warning' | 'error'
+    message: string
+  } | null>(null)
 
   useEffect(() => {
     setResult(initialResult)
     setError(initialError)
+    setRefreshPending(Boolean(initialResult.refresh_pending))
   }, [initialError, initialResult])
 
   const refreshDocuments = useCallback(async (showLoading = false) => {
     if (showLoading)
-    { setRefreshing(true) }
+    {
+      setRefreshing(true)
+      setRefreshNotice({
+        tone: 'info',
+        message: '正在从服务端同步知识库目录，请稍等…',
+      })
+    }
+    const startedAt = Date.now()
     try {
+      if (showLoading) {
+        setError('')
+        setRefreshPending(false)
+      }
       const params = new URLSearchParams({
         page: String(initialResult.page),
         limit: '20',
@@ -64,18 +93,94 @@ export default function DocumentLibrary({
       if (status)
       { params.set('status', status) }
       params.set('refresh', '1')
+      params.set('mode', 'async')
+      params.set('_', String(Date.now()))
       const response = await fetch(`/api/library/documents?${params}`, {
         credentials: 'include',
         cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        },
       })
       if (!response.ok)
-      { throw new Error(`LIBRARY_REFRESH_FAILED:${response.status}`) }
-      setResult(await response.json())
-      setError('')
+      {
+        const payload = await response.json().catch(() => null) as { detail?: string, error?: string, error_message?: string } | null
+        throw new Error(payload?.error_message || payload?.error || `LIBRARY_REFRESH_FAILED:${response.status}`)
+      }
+      const nextResult = await response.json() as DifyDocumentList
+      setResult(nextResult)
+      setRefreshPending(Boolean(nextResult.refresh_pending))
+      const elapsedSeconds = Math.max(0.1, (Date.now() - startedAt) / 1000).toFixed(1)
+      if (nextResult.refresh_pending) {
+        setError('')
+        setRefreshNotice({
+          tone: 'info',
+          message: `已发起服务端后台同步，当前先展示 ${nextResult.total} 份缓存文档；稍后会自动更新（本次请求 ${elapsedSeconds}s）。`,
+        })
+        window.setTimeout(() => {
+          void (async () => {
+            const pollParams = new URLSearchParams({
+              page: String(initialResult.page),
+              limit: '20',
+              _: String(Date.now()),
+            })
+            if (keyword)
+            { pollParams.set('keyword', keyword) }
+            if (status)
+            { pollParams.set('status', status) }
+            const pollResponse = await fetch(`/api/library/documents?${pollParams}`, {
+              credentials: 'include',
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+              },
+            })
+            if (!pollResponse.ok)
+            { return }
+            const polledResult = await pollResponse.json() as DifyDocumentList
+            setResult(polledResult)
+            setRefreshPending(Boolean(polledResult.refresh_pending))
+            if (!polledResult.stale) {
+              setError('')
+              setRefreshNotice({
+                tone: 'success',
+                message: `后台刷新已完成：已同步 ${polledResult.total} 份文档${polledResult.refreshed_at ? `，最近更新 ${formatDateTime(polledResult.refreshed_at)}` : ''}`,
+              })
+            }
+          })().catch(() => {
+            // Keep the visible cached catalog; the server-side scheduled refresh will retry.
+          })
+        }, 6000)
+      }
+      else if (nextResult.stale && nextResult.refresh_error_message) {
+        if (!nextResult.data.length)
+        { setError(nextResult.refresh_error_message) }
+        else
+        { setError('') }
+        setRefreshNotice({
+          tone: 'warning',
+          message: `${nextResult.refresh_error_message}（本次请求 ${elapsedSeconds}s，当前仍展示 ${nextResult.total} 份缓存文档）`,
+        })
+      }
+      else {
+        setError('')
+        setRefreshNotice({
+          tone: 'success',
+          message: `刷新成功：已同步 ${nextResult.total} 份文档${nextResult.refreshed_at ? `，最近更新 ${formatDateTime(nextResult.refreshed_at)}` : ''}（${elapsedSeconds}s）`,
+        })
+      }
     }
-    catch {
-      if (showLoading)
-      { setError('知识库同步失败，请稍后重试。') }
+    catch (caught) {
+      if (showLoading) {
+        const message = caught instanceof Error ? caught.message : '知识库同步请求已失败，请稍后重试。'
+        setError(message)
+        setRefreshNotice({
+          tone: 'error',
+          message,
+        })
+      }
     }
     finally {
       if (showLoading)
@@ -85,6 +190,7 @@ export default function DocumentLibrary({
 
   const completed = result.data.filter(item => ['completed', 'available'].includes(item.indexing_status || item.display_status || '')).length
   const totalWords = result.data.reduce((sum, item) => sum + (item.word_count || 0), 0)
+  const refreshInProgress = refreshPending || refreshNotice?.tone === 'info'
   const summaryCards = [
     { label: '知识库文档', value: result.total, unit: '份', icon: CircleStackIcon },
     { label: '本页索引完成', value: completed, unit: '份', icon: CheckCircleIcon },
@@ -134,22 +240,47 @@ export default function DocumentLibrary({
             type="button"
             onClick={() => void refreshDocuments(true)}
             disabled={refreshing}
+            data-testid="library-refresh-button"
+            aria-busy={refreshing}
             className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-black/10 bg-white px-4 text-xs font-semibold disabled:opacity-50"
           >
             <ArrowPathIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            刷新
+            {refreshing ? '刷新中…' : '刷新'}
           </button>
         </form>
 
         <div className="flex items-center justify-end border-b border-black/[0.05] px-5 py-2 text-[10px] text-black/40">
-          <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${result.stale ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+          <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${refreshInProgress ? 'animate-pulse bg-blue-500' : result.stale ? 'bg-amber-500' : 'bg-emerald-500'}`} />
           服务端每 30 分钟同步
-          {result.refreshed_at && ` · 最近更新 ${new Date(result.refreshed_at).toLocaleString('zh-CN', { hour12: false })}`}
+          {result.refreshed_at && ` · 最近更新 ${formatDateTime(result.refreshed_at)}`}
+          {refreshInProgress && ' · 已发起后台刷新'}
         </div>
 
-        {result.stale && result.data.length > 0 && (
+        {(refreshing || refreshNotice) && (
+          <div
+            className={`border-b px-5 py-2.5 text-xs ${
+              refreshNotice?.tone === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                : refreshNotice?.tone === 'warning'
+                  ? 'border-amber-200 bg-amber-50 text-amber-800'
+                  : refreshNotice?.tone === 'error'
+                    ? 'border-red-200 bg-red-50 text-red-700'
+                    : 'border-blue-100 bg-blue-50 text-blue-700'
+            }`}
+          >
+            {refreshing ? '正在从服务端同步知识库目录，请稍等…' : refreshNotice?.message}
+          </div>
+        )}
+
+        {result.stale && result.data.length > 0 && !refreshInProgress && (
           <div className="border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-xs text-amber-800">
-            本次同步暂时失败，当前展示最近一次成功更新的数据。
+            {result.refresh_error_message || '本次同步暂时失败，当前展示最近一次成功更新的数据。'}
+          </div>
+        )}
+
+        {refreshPending && !result.stale && (
+          <div className="border-b border-blue-100 bg-blue-50 px-5 py-2.5 text-xs text-blue-700">
+            已通知服务端后台刷新知识库目录；当前先展示缓存数据，稍后会自动由定时任务更新。
           </div>
         )}
 
@@ -160,8 +291,10 @@ export default function DocumentLibrary({
               <div className="grid min-h-[420px] place-items-center p-10 text-center">
                 <div>
                   <DocumentTextIcon className="mx-auto h-12 w-12 text-black/20" />
-                  <h2 className="mt-4 font-semibold">没有找到文档</h2>
-                  <p className="mt-2 text-xs text-black/40">请调整搜索词或处理状态。</p>
+                  <h2 className="mt-4 font-semibold">{refreshPending ? '正在同步知识库目录' : '没有找到文档'}</h2>
+                  <p className="mt-2 text-xs text-black/40">
+                    {refreshPending ? '服务端已开始后台拉取知识库文档，稍后刷新即可看到最新目录。' : '请调整搜索词或处理状态。'}
+                  </p>
                 </div>
               </div>
             )

@@ -1,8 +1,32 @@
 import 'server-only'
 
+import type { Prisma } from '@prisma/client'
 import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
 
 let accountLifecycleStorageReady = false
+
+type AccountDeletionClient = Prisma.TransactionClient
+
+type OptionalAppUserScopedTable = 'conversation_shares' | 'user_account_extensions'
+
+const deleteFromOptionalAppUserScopedTable = async (
+  client: AccountDeletionClient,
+  tableName: OptionalAppUserScopedTable,
+  appUserId: string,
+) => {
+  try {
+    return Number(await client.$executeRawUnsafe(
+      `DELETE FROM "${tableName}" WHERE "app_user_id" = $1::uuid`,
+      appUserId,
+    ))
+  }
+  catch (error) {
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+    if (/relation .* does not exist|42P01/i.test(message))
+    { return 0 }
+    throw error
+  }
+}
 
 export const ensureAccountLifecycleStorage = async () => {
   if (accountLifecycleStorageReady || !isDatabaseConfigured())
@@ -40,7 +64,7 @@ export const assertAppUserActive = async (appUserId: string) => {
   { throw new Error('ACCOUNT_DELETED') }
 }
 
-export const softDeleteAppUser = async ({
+export const deleteAppUserAccount = async ({
   appUserId,
   actorUserId,
   allowSelf = false,
@@ -56,23 +80,45 @@ export const softDeleteAppUser = async ({
 
   return withDatabaseRetry(async () => {
     await ensureAccountLifecycleStorage()
-    const updated = await db.$queryRaw<Array<{ id: string }>>`
-      UPDATE "app_users"
-      SET
-        "deleted_at" = COALESCE("deleted_at", CURRENT_TIMESTAMP),
-        "locked_until" = CURRENT_TIMESTAMP + INTERVAL '100 years',
-        "failed_login_count" = 0,
-        "password_hash" = CONCAT('deleted:', "id"::text, ':', EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::text),
-        "updated_at" = CURRENT_TIMESTAMP
-      WHERE "id" = ${appUserId}::uuid
-        AND "deleted_at" IS NULL
-      RETURNING "id"::text AS "id"
-    `
+    return db.$transaction(async (tx) => {
+      const users = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"::text AS "id"
+        FROM "app_users"
+        WHERE "id" = ${appUserId}::uuid
+        LIMIT 1
+      `
 
-    if (!updated.length)
-    { throw new Error('USER_NOT_FOUND_OR_DELETED') }
+      if (!users.length)
+      { throw new Error('USER_NOT_FOUND_OR_DELETED') }
 
-    await db.qqIdentity.deleteMany({ where: { appUserId } }).catch(() => undefined)
-    return { ok: true }
+      const deleted = {
+        conversationShares: await deleteFromOptionalAppUserScopedTable(tx, 'conversation_shares', appUserId),
+        accountExtensions: await deleteFromOptionalAppUserScopedTable(tx, 'user_account_extensions', appUserId),
+        qqIdentities: (await tx.qqIdentity.deleteMany({ where: { appUserId } })).count,
+        references: (await tx.messageReference.deleteMany({ where: { appUserId } })).count,
+        messages: (await tx.chatMessage.deleteMany({ where: { appUserId } })).count,
+        conversations: (await tx.chatConversation.deleteMany({ where: { appUserId } })).count,
+        graphEdges: (await tx.graphEdge.deleteMany({ where: { appUserId } })).count,
+        graphNodes: (await tx.graphNode.deleteMany({ where: { appUserId } })).count,
+        reports: (await tx.userAnalysisReport.deleteMany({ where: { appUserId } })).count,
+        parsedUploads: (await tx.parsedUpload.deleteMany({ where: { appUserId } })).count,
+        profile: (await tx.userProfile.deleteMany({ where: { appUserId } })).count,
+        user: (await tx.appUser.deleteMany({ where: { id: appUserId } })).count,
+      }
+
+      if (!deleted.user)
+      { throw new Error('USER_NOT_FOUND_OR_DELETED') }
+
+      console.info('[account-lifecycle] account deleted with scoped data cleanup', {
+        appUserId,
+        actorUserId,
+        allowSelf,
+        deleted,
+      })
+
+      return { ok: true, deleted }
+    })
   })
 }
+
+export const softDeleteAppUser = deleteAppUserAccount

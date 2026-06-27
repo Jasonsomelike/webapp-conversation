@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import DocumentLibrary from '@/app/components/library/document-library'
-import { listKnowledgeDocuments, type DifyDocumentList } from '@/lib/dify-dataset'
+import { attachUserKnowledgeDocumentHitCounts, listKnowledgeDocuments, type DifyDocumentList } from '@/lib/dify-dataset'
 import { getSession } from '@/lib/session'
 
 export const dynamic = 'force-dynamic'
@@ -26,6 +26,7 @@ export default async function LibraryPage({
       keyword: params.keyword || '',
       status: params.status || '',
     })
+    result = await attachUserKnowledgeDocumentHitCounts(result, session.id)
   }
   catch (caught) {
     error = caught instanceof Error && caught.message === 'LIBRARY_CATALOG_EMPTY'

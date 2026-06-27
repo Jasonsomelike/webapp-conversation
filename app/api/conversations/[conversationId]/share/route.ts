@@ -46,7 +46,7 @@ export async function POST(
   { return NextResponse.json({ error: 'Conversation not found' }, { status: 404 }) }
 
   const messageIds = parsed.data.scope === 'selected'
-    ? [...new Set(parsed.data.messageIds)]
+    ? [...new Set(parsed.data.messageIds)].sort()
     : undefined
   if (messageIds?.length) {
     const ownedMessages = await withDatabaseRetry(() => db.chatMessage.count({

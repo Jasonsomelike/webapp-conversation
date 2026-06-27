@@ -26,6 +26,7 @@ import Toast from '@/app/components/base/toast'
 import Link from 'next/link'
 import { isNetworkStudyApp, type NativeQqLoginResult, type NativeQqResultEnvelope } from '@/lib/native-app'
 import { resetChatRuntime } from '@/app/components/chat/runtime-store'
+import { passwordPolicyHint } from '@/lib/password-policy'
 
 const stages = ['入门', '系统学习', '复习', '刷题', '备考']
 const styles = ['图示讲解', '公式推导', '例题驱动', '简洁回答']
@@ -36,6 +37,7 @@ interface QqIdentitySummary {
   displayId?: string
   openIdTail?: string
   unionId?: string
+  qqNumber?: string
   appIds: string[]
 }
 
@@ -65,20 +67,26 @@ export default function ProfileView({
   const [displayName, setDisplayName] = useState(session.name)
   const [savedProfile, setSavedProfile] = useState({ stage: initialStage, style: initialStyle, target: initialTarget, displayName: session.name })
   const [nativeApp, setNativeApp] = useState(false)
-  const [editing, setEditing] = useState(false)
+  const [editingLearner, setEditingLearner] = useState(false)
+  const [editingPreferences, setEditingPreferences] = useState(false)
   const [saving, setSaving] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const [deletingAccount, setDeletingAccount] = useState(false)
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false)
+  const [deleteAccountText, setDeleteAccountText] = useState('')
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl)
   const [avatarSaving, setAvatarSaving] = useState(false)
   const [qqIdentity, setQqIdentity] = useState<QqIdentitySummary>(initialQqIdentity)
   const [qqBinding, setQqBinding] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
   const [passwordSaving, setPasswordSaving] = useState(false)
+  const [detailPanel, setDetailPanel] = useState<'learner' | 'account' | null>(null)
   const qqPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const qqTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { notify } = Toast
-  const dirty = stage !== savedProfile.stage || style !== savedProfile.style || target !== savedProfile.target || displayName !== savedProfile.displayName
+  const learnerDirty = displayName !== savedProfile.displayName
+  const preferencesDirty = stage !== savedProfile.stage || style !== savedProfile.style || target !== savedProfile.target
+  const dirty = learnerDirty || preferencesDirty
   const qqBound = qqIdentity.bound
   const qqDisplay = qqIdentity.displayId
     ? `QQ 标识：${qqIdentity.displayId}`
@@ -157,7 +165,7 @@ export default function ProfileView({
   }, [notify])
 
   useEffect(() => {
-    if (!editing || !dirty)
+    if ((!editingLearner && !editingPreferences) || !dirty)
     { return }
 
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -180,14 +188,18 @@ export default function ProfileView({
       globalThis.removeEventListener('beforeunload', beforeUnload)
       document.removeEventListener('click', interceptNavigation, true)
     }
-  }, [dirty, editing])
+  }, [dirty, editingLearner, editingPreferences])
 
-  const cancel = () => {
+  const cancelLearner = () => {
+    setDisplayName(savedProfile.displayName)
+    setEditingLearner(false)
+  }
+
+  const cancelPreferences = () => {
     setStage(savedProfile.stage)
     setStyle(savedProfile.style)
     setTarget(savedProfile.target)
-    setDisplayName(savedProfile.displayName)
-    setEditing(false)
+    setEditingPreferences(false)
   }
 
   const save = async () => {
@@ -201,7 +213,8 @@ export default function ProfileView({
       if (!response.ok)
       { throw new Error(`PROFILE_SAVE_FAILED:${response.status}`) }
       setSavedProfile({ stage, style, target, displayName })
-      setEditing(false)
+      setEditingLearner(false)
+      setEditingPreferences(false)
       notify({ type: 'success', message: '画像已更新' })
       globalThis.setTimeout(() => globalThis.location.reload(), 350)
     }
@@ -229,17 +242,22 @@ export default function ProfileView({
   }
 
   const deleteAccount = async () => {
-    // eslint-disable-next-line no-alert
-    const typed = globalThis.prompt(`注销后账号将无法再次登录，QQ 绑定会解除，但历史学习数据会被保留用于审计与数据完整性。\n\n如确认，请输入账号名：${session.username}`)
-    if (typed !== session.username)
-    { return }
+    if (deleteAccountText !== session.username) {
+      notify({ type: 'error', message: '请先输入完整账号名再注销' })
+      return
+    }
     setDeletingAccount(true)
     try {
       resetChatRuntime()
-      const response = await fetch('/api/profile/account', { method: 'DELETE' })
+      const response = await fetch('/api/profile/account', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: session.username }),
+      })
       const result = await response.json().catch(() => ({}))
       if (!response.ok)
       { throw new Error(result.error || '注销账号失败') }
+      setDeleteAccountOpen(false)
       globalThis.location.replace('/login')
     }
     catch (error) {
@@ -391,60 +409,60 @@ export default function ProfileView({
   }
 
   return (
-    <div className="mx-auto max-w-[1350px] p-4 sm:p-6">
-      <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
-        <div className="space-y-5">
-          <div className="relative overflow-hidden rounded-[24px] bg-[var(--studio-deep)] p-6 text-white shadow-[0_20px_60px_rgba(23,52,43,.18)]">
-            <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--studio-accent)]/10 blur-2xl" />
-            <div className="relative">
-              <div className="flex items-center justify-between">
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--studio-accent)]">Learner profile</div>
-                <button
-                  onClick={() => {
-                    if (editing)
-                    { cancel() }
-                    else
-                    { setEditing(true) }
-                  }}
-                  className="flex h-8 items-center gap-1.5 rounded-xl bg-white/10 px-3 text-[10px] font-semibold transition hover:bg-white/15"
-                >
-                  {editing ? <XMarkIcon className="h-3.5 w-3.5" /> : <PencilSquareIcon className="h-3.5 w-3.5" />}
-                  {editing ? '取消' : '编辑'}
-                </button>
-              </div>
-              <div className="mt-7 flex items-center gap-4">
-                <label className="group relative block h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-2xl bg-[var(--studio-accent)] text-[var(--studio-deep)]">
-                  {avatarUrl
-                    ? <img src={avatarUrl} alt="用户头像" className="h-full w-full object-cover" />
-                    : <span className="grid h-full w-full place-items-center text-2xl font-semibold">{savedProfile.displayName.slice(0, 1)}</span>}
-                  <span className="absolute inset-0 grid place-items-center bg-black/45 opacity-0 transition group-hover:opacity-100">
-                    <CameraIcon className="h-5 w-5 text-white" />
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    disabled={avatarSaving}
-                    onChange={event => void uploadAvatar(event.target.files?.[0])}
-                    className="sr-only"
-                  />
-                </label>
-                <div>
-                  {editing
-                    ? (
-                      <input
-                        value={displayName}
-                        onChange={event => setDisplayName(event.target.value)}
-                        maxLength={64}
-                        className="h-10 w-full rounded-xl border border-white/20 bg-white/10 px-3 text-base font-semibold text-white outline-none placeholder:text-white/35"
-                        placeholder="输入显示名称"
-                      />
-                    )
-                    : <h2 className="text-xl font-semibold">{savedProfile.displayName}</h2>}
-                  <div className="mt-1 text-xs text-white/45">@{session.username}</div>
+    <div className="mx-auto w-full max-w-[1180px] px-4 py-4 sm:px-5 sm:py-5 xl:px-6">
+      <div className="space-y-4">
+        <div className="relative overflow-hidden rounded-[24px] bg-[var(--studio-deep)] p-5 text-white shadow-[0_18px_48px_rgba(23,52,43,.16)] sm:p-6">
+          <div className="absolute -right-12 -top-20 h-56 w-56 rounded-full bg-[var(--studio-accent)]/12 blur-2xl" />
+          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-center gap-4">
+              <label className="group relative block h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-[22px] bg-[var(--studio-accent)] text-[var(--studio-deep)] shadow-lg">
+                {avatarUrl
+                  ? <img src={avatarUrl} alt="用户头像" className="h-full w-full object-cover" />
+                  : <span className="grid h-full w-full place-items-center text-2xl font-semibold">{savedProfile.displayName.slice(0, 1)}</span>}
+                <span className="absolute inset-0 grid place-items-center bg-black/45 opacity-0 transition group-hover:opacity-100">
+                  <CameraIcon className="h-5 w-5 text-white" />
+                </span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  disabled={avatarSaving}
+                  onChange={event => void uploadAvatar(event.target.files?.[0])}
+                  className="sr-only"
+                />
+              </label>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--studio-accent)]">Learner center</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (editingLearner)
+                      { cancelLearner() }
+                      else
+                      { setEditingLearner(true) }
+                    }}
+                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-white/10 bg-white/[0.08] px-3 text-[10px] font-semibold text-white/80 transition hover:bg-white/15 hover:text-white"
+                  >
+                    {editingLearner ? <XMarkIcon className="h-3.5 w-3.5" /> : <PencilSquareIcon className="h-3.5 w-3.5" />}
+                    {editingLearner ? '取消编辑' : '编辑'}
+                  </button>
                 </div>
+                {editingLearner
+                  ? (
+                    <input
+                      value={displayName}
+                      onChange={event => setDisplayName(event.target.value)}
+                      maxLength={64}
+                      className="mt-2 h-11 w-full max-w-[320px] rounded-xl border border-white/20 bg-white/10 px-3 text-lg font-semibold text-white outline-none placeholder:text-white/35"
+                      placeholder="输入显示名称"
+                    />
+                  )
+                  : <h2 className="mt-1 truncate text-2xl font-semibold tracking-[-0.03em]">{savedProfile.displayName}</h2>}
+                <div className="mt-1 text-xs text-white/45">@{session.username} · {stage} · {style}</div>
               </div>
-
-              <div className="mt-7 grid grid-cols-3 divide-x divide-white/10 rounded-2xl bg-white/[0.06] py-4 text-center">
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto] lg:min-w-[520px] lg:pt-0">
+              <div className="grid grid-cols-3 divide-x divide-white/10 rounded-2xl bg-white/[0.06] py-3 text-center">
                 {[
                   [String(stats.conversations), '会话'],
                   [String(stats.references), '引用'],
@@ -456,62 +474,92 @@ export default function ProfileView({
                   </div>
                 ))}
               </div>
+              <div className="grid grid-cols-2 gap-2 sm:w-[190px]">
+                <button
+                  type="button"
+                  onClick={() => setDetailPanel('learner')}
+                  className="h-11 rounded-xl bg-white/10 px-2 text-[10px] font-semibold transition hover:bg-white/15"
+                >
+                  画像详情
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailPanel('account')}
+                  className="h-11 rounded-xl bg-white/10 px-2 text-[10px] font-semibold transition hover:bg-white/15"
+                >
+                  账户信息
+                </button>
+              </div>
             </div>
+            {editingLearner && (
+              <div className="relative flex justify-end gap-3 border-t border-white/10 pt-4 lg:absolute lg:bottom-0 lg:right-0 lg:border-0 lg:pt-0">
+                <button
+                  type="button"
+                  onClick={cancelLearner}
+                  disabled={saving}
+                  className="h-10 rounded-xl border border-white/15 px-4 text-xs font-semibold disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={save}
+                  disabled={saving || !learnerDirty}
+                  className="h-10 rounded-xl bg-[var(--studio-accent)] px-4 text-xs font-semibold text-[var(--studio-deep)] disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  {saving ? '保存中...' : '保存名称'}
+                </button>
+              </div>
+            )}
           </div>
-
-          <PageCard className="p-5">
-            <div className="mb-4 text-[10px] font-bold uppercase tracking-[0.18em] text-[#748179]">账户信息</div>
-            <div className="space-y-4">
-              {[
-                [FingerPrintIcon, 'Dify 用户 ID', session.difyUserId],
-                [CalendarDaysIcon, '加入时间', new Intl.DateTimeFormat('zh-CN', { dateStyle: 'long' }).format(new Date(joinedAt))],
-                [ShieldCheckIcon, '身份隔离', '已启用'],
-              ].map(([Icon, label, value]) => (
-                <div key={label as string} className="flex items-start gap-3">
-                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#f0f2ed] text-[#63736b]">
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[10px] text-[#89958f]">{label as string}</div>
-                    <div className="mt-1 break-all text-xs font-medium">{value as string}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </PageCard>
         </div>
 
-        <div className="space-y-5">
-          <PageCard className="p-6">
-            <div className="flex items-center gap-3">
-              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#e8f4ec] text-[#47715c]">
-                <AdjustmentsHorizontalIcon className="h-5 w-5" />
+        <div className="space-y-4">
+          <PageCard className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#e8f4ec] text-[#47715c]">
+                  <AdjustmentsHorizontalIcon className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#748179]">Learning preferences</div>
+                  <h2 className="mt-1 text-base font-semibold">学习偏好设置</h2>
+                </div>
               </div>
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#748179]">Learning preferences</div>
-                <h2 className="mt-1 text-base font-semibold">学习偏好设置</h2>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (editingPreferences)
+                  { cancelPreferences() }
+                  else
+                  { setEditingPreferences(true) }
+                }}
+                className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-black/10 px-3 text-[10px] font-semibold transition hover:bg-black/[0.03]"
+              >
+                {editingPreferences ? <XMarkIcon className="h-3.5 w-3.5" /> : <PencilSquareIcon className="h-3.5 w-3.5" />}
+                {editingPreferences ? '取消' : '编辑'}
+              </button>
             </div>
 
-            <div className="mt-7 space-y-7">
+            <div className="mt-5 grid gap-5 lg:grid-cols-3">
               {[
                 ['当前阶段', stages, stage, setStage],
                 ['偏好风格', styles, style, setStyle],
                 ['学习目标', targets, target, setTarget],
               ].map(([label, options, value, setter]) => (
                 <div key={label as string}>
-                  <div className="mb-3 text-xs font-semibold">{label as string}</div>
+                  <div className="mb-2 text-xs font-semibold">{label as string}</div>
                   <div className="flex flex-wrap gap-2">
                     {(options as string[]).map(option => (
                       <button
                         key={option}
-                        disabled={!editing || saving}
+                        disabled={!editingPreferences || saving}
                         onClick={() => (setter as (value: string) => void)(option)}
-                        className={`rounded-xl border px-4 py-2.5 text-xs transition ${
+                        className={`rounded-xl border px-3 py-2 text-xs transition ${
                           option === value
                             ? 'border-[#17342b] bg-[#17342b] font-semibold text-white'
                             : 'border-[#183129]/10 bg-[var(--studio-surface)] text-[var(--studio-muted)] hover:border-[var(--studio-accent-strong)]/30'
-                        } ${!editing ? 'cursor-default opacity-70' : ''}`}
+                        } ${!editingPreferences ? 'cursor-default opacity-70' : ''}`}
                       >
                         {option}
                       </button>
@@ -521,10 +569,10 @@ export default function ProfileView({
               ))}
             </div>
 
-            {editing && (
-              <div className="mt-8 flex justify-end gap-3">
+            {editingPreferences && (
+              <div className="mt-6 flex justify-end gap-3">
                 <button
-                  onClick={cancel}
+                  onClick={cancelPreferences}
                   disabled={saving}
                   className="h-11 rounded-xl border border-black/10 px-5 text-xs font-semibold disabled:opacity-50"
                 >
@@ -532,7 +580,7 @@ export default function ProfileView({
                 </button>
                 <button
                   onClick={save}
-                  disabled={saving || !dirty}
+                  disabled={saving || !preferencesDirty}
                   className="flex h-11 items-center gap-2 rounded-xl bg-[var(--studio-accent)] px-5 text-xs font-semibold text-[var(--studio-deep)] shadow-[0_10px_24px_rgba(132,153,58,.15)] disabled:cursor-not-allowed disabled:opacity-55"
                 >
                   {saving ? '保存中...' : '保存'}
@@ -541,9 +589,9 @@ export default function ProfileView({
             )}
           </PageCard>
 
-          <div className="grid gap-5 md:grid-cols-2">
-            <PageCard className="p-6">
-              <div className="mb-5 flex items-center gap-3">
+          <div className="grid gap-4 md:grid-cols-2">
+            <PageCard className="p-5">
+              <div className="mb-4 flex items-center gap-3">
                 <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#fff0df] text-[#a4653a]">
                   <AcademicCapIcon className="h-5 w-5" />
                 </div>
@@ -559,8 +607,8 @@ export default function ProfileView({
               </div>
             </PageCard>
 
-            <PageCard className="p-6">
-              <div className="mb-5 flex items-center gap-3">
+            <PageCard className="p-5">
+              <div className="mb-4 flex items-center gap-3">
                 <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#f1eafa] text-[#765692]">
                   <SparklesIcon className="h-5 w-5" />
                 </div>
@@ -575,7 +623,7 @@ export default function ProfileView({
             </PageCard>
           </div>
 
-          <div className="rounded-[22px] border border-[#5f866f]/15 bg-[#e8f4ec] p-6">
+          <div className="rounded-[22px] border border-[#5f866f]/15 bg-[#e8f4ec] p-5">
             <div className="flex items-start gap-3">
               <ShieldCheckIcon className="mt-0.5 h-5 w-5 shrink-0 text-[#4e755f]" />
               <div>
@@ -632,7 +680,7 @@ export default function ProfileView({
                 {passwordOpen && (
                   <form onSubmit={changePassword} className="space-y-3 border-t border-black/[0.06] bg-black/[0.018] p-5">
                     <input name="currentPassword" type="password" required placeholder="当前密码" className="h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm outline-none" />
-                    <input name="newPassword" type="password" required placeholder="新密码：至少 8 位字母和数字" className="h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm outline-none" />
+                    <input name="newPassword" type="password" required placeholder={`新密码：${passwordPolicyHint}`} className="h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm outline-none" />
                     <input name="confirmPassword" type="password" required placeholder="再次输入新密码" className="h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm outline-none" />
                     <button disabled={passwordSaving} className="h-11 w-full rounded-xl bg-[var(--studio-deep)] text-xs font-semibold text-white disabled:opacity-60">
                       {passwordSaving ? '保存中…' : '确认修改密码'}
@@ -686,7 +734,10 @@ export default function ProfileView({
               ? (
                 <button
                   type="button"
-                  onClick={() => void deleteAccount()}
+                  onClick={() => {
+                    setDeleteAccountText('')
+                    setDeleteAccountOpen(true)
+                  }}
                   disabled={deletingAccount}
                   className="flex w-full items-center gap-3 border-t border-black/[0.06] px-5 py-4 text-left text-red-700 transition hover:bg-red-50 disabled:opacity-50"
                 >
@@ -701,6 +752,165 @@ export default function ProfileView({
               )}
           </PageCard>
         </div>
+        {detailPanel && (
+          <div
+            role="presentation"
+            className="fixed inset-0 z-[80] flex items-end justify-center bg-black/35 px-3 pb-[calc(14px+env(safe-area-inset-bottom))] pt-[calc(14px+env(safe-area-inset-top))] backdrop-blur-[2px] sm:items-center"
+            onClick={() => setDetailPanel(null)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="max-h-[min(82dvh,720px)] w-full max-w-[560px] overflow-y-auto rounded-[28px] border border-black/10 bg-[var(--studio-surface)] p-5 shadow-[0_30px_90px_rgba(0,0,0,.28)]"
+              onClick={event => event.stopPropagation()}
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#748179]">
+                    {detailPanel === 'learner' ? 'Learner profile' : 'Account detail'}
+                  </div>
+                  <h3 className="mt-1 text-lg font-semibold">
+                    {detailPanel === 'learner' ? '学习者画像详情' : '账户信息'}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailPanel(null)}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-black/[0.04] text-black/45 transition hover:bg-black/[0.08]"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              </div>
+              {detailPanel === 'learner'
+                ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 rounded-2xl bg-[var(--studio-accent)]/20 p-4">
+                      <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[var(--studio-deep)] text-[var(--studio-accent)]">
+                        <SparklesIcon className="h-6 w-6" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-base font-semibold">{savedProfile.displayName}</div>
+                        <div className="mt-1 text-xs text-black/45">@{session.username}</div>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {[
+                        ['当前阶段', stage],
+                        ['偏好风格', style],
+                        ['学习目标', target],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-2xl border border-black/[0.06] bg-white/60 p-4">
+                          <div className="text-[10px] text-black/40">{label}</div>
+                          <div className="mt-1 text-sm font-semibold">{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="rounded-2xl bg-black/[0.025] p-4 text-xs leading-6 text-[#66736c]">
+                      当前处于“{stage}”阶段，偏好“{style}”，主要目标是“{target}”。这些画像只用于当前账号的对话、分析与学习建议，不会混入其他用户数据。
+                    </p>
+                  </div>
+                )
+                : (
+                  <div className="space-y-3">
+                    {[
+                      [FingerPrintIcon, 'Dify 用户 ID', session.difyUserId],
+                      [CalendarDaysIcon, '加入时间', new Intl.DateTimeFormat('zh-CN', { dateStyle: 'long' }).format(new Date(joinedAt))],
+                      [ShieldCheckIcon, '身份隔离', '已启用'],
+                      [LinkIcon, 'QQ 绑定', qqBound ? qqDisplay : '未绑定'],
+                    ].map(([Icon, label, value]) => (
+                      <div key={label as string} className="flex items-start gap-3 rounded-2xl border border-black/[0.06] bg-white/60 p-4">
+                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#f0f2ed] text-[#63736b]">
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[10px] text-[#89958f]">{label as string}</div>
+                          <div className="mt-0.5 break-all text-xs font-medium">{value as string}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+            </div>
+          </div>
+        )}
+        {deleteAccountOpen && (
+          <div
+            role="presentation"
+            className="fixed inset-0 z-[90] flex items-end justify-center bg-black/45 px-3 pb-[calc(14px+env(safe-area-inset-bottom))] pt-[calc(14px+env(safe-area-inset-top))] backdrop-blur-[2px] sm:items-center"
+            onClick={() => !deletingAccount && setDeleteAccountOpen(false)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-account-title"
+              className="w-full max-w-[520px] rounded-[28px] border border-red-200 bg-[var(--studio-surface)] p-5 shadow-[0_30px_90px_rgba(0,0,0,.28)]"
+              onClick={event => event.stopPropagation()}
+            >
+              <div className="flex items-start gap-3">
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-600">
+                  <TrashIcon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 id="delete-account-title" className="text-base font-semibold text-red-700">确认注销账号</h3>
+                  <p className="mt-2 text-xs leading-6 text-black/55">
+                    注销后，账号、QQ 绑定、头像、会话、消息、引用、画像、图谱、分析报告、上传解析与分享记录会从数据库同步删除，且不可恢复。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={deletingAccount}
+                  onClick={() => setDeleteAccountOpen(false)}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-black/[0.04] text-black/45 transition hover:bg-black/[0.08] disabled:opacity-50"
+                  aria-label="关闭"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="mt-5 rounded-2xl border border-red-100 bg-red-50/50 p-4">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label htmlFor="delete-account-confirm" className="text-xs font-semibold text-red-800">
+                    请输入账号名 @{session.username}
+                  </label>
+                  <button
+                    type="button"
+                    disabled={deletingAccount}
+                    onClick={() => setDeleteAccountText(session.username)}
+                    className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[10px] font-semibold text-red-600 shadow-sm transition hover:bg-red-100 disabled:opacity-50"
+                  >
+                    一键输入账户名
+                  </button>
+                </div>
+                <input
+                  id="delete-account-confirm"
+                  value={deleteAccountText}
+                  onChange={event => setDeleteAccountText(event.target.value)}
+                  disabled={deletingAccount}
+                  autoComplete="off"
+                  className="h-11 w-full rounded-xl border border-red-100 bg-white px-3 text-sm outline-none focus:border-red-300"
+                  placeholder={session.username}
+                />
+              </div>
+              <div className="mt-5 flex justify-end gap-3">
+                <button
+                  type="button"
+                  disabled={deletingAccount}
+                  onClick={() => setDeleteAccountOpen(false)}
+                  className="h-11 rounded-xl border border-black/10 px-5 text-xs font-semibold disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  disabled={deletingAccount || deleteAccountText !== session.username}
+                  onClick={() => void deleteAccount()}
+                  className="h-11 rounded-xl bg-red-600 px-5 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(220,38,38,.18)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {deletingAccount ? '正在注销…' : '确认注销并清除数据'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

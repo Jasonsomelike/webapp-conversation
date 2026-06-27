@@ -14,6 +14,7 @@ import {
   fileUpload,
   getSupportFileType,
   isAllowedFileExtension,
+  mergeUploadedFileResult,
 } from './utils'
 import {
   AUDIO_SIZE_LIMIT,
@@ -190,7 +191,7 @@ export const useFile = (fileConfig: FileUpload) => {
           handleUpdateFile({ ...uploadingFile, progress })
         },
         onSuccessCallback: (res) => {
-          handleUpdateFile({ ...uploadingFile, uploadedId: res.id, progress: 100 })
+          handleUpdateFile(mergeUploadedFileResult(uploadingFile, res))
         },
         onErrorCallback: () => {
           notify({ type: 'error', message: t('common.fileUploader.uploadFromComputerUploadError') })
@@ -292,7 +293,7 @@ export const useFile = (fileConfig: FileUpload) => {
             handleUpdateFile({ ...uploadingFile, progress })
           },
           onSuccessCallback: (res) => {
-            handleUpdateFile({ ...uploadingFile, uploadedId: res.id, progress: 100 })
+            handleUpdateFile(mergeUploadedFileResult(uploadingFile, res))
           },
           onErrorCallback: () => {
             notify({ type: 'error', message: t('common.fileUploader.uploadFromComputerUploadError') })

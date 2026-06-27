@@ -41,6 +41,9 @@ model QqIdentity {
   appId     String   @map("app_id") @db.VarChar(32)
   openId    String   @map("open_id") @db.VarChar(128)
   unionId   String?  @map("union_id") @db.VarChar(128)
+  canonicalId String? @map("canonical_id") @db.VarChar(160)
+  qqNumber  String?  @map("qq_number") @db.VarChar(32)
+  displayId String?  @map("display_id") @db.VarChar(32)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -48,6 +51,7 @@ model QqIdentity {
 
   @@unique([appId, openId])
   @@index([unionId])
+  @@index([canonicalId])
   @@index([appUserId])
   @@map("qq_identities")
 }

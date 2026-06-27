@@ -4,6 +4,7 @@ import { difyApiKey, fetchDify } from '@/lib/dify-server'
 import { getSessionFromRequest } from '@/lib/session'
 import { persistChatExchange } from '@/lib/user-data'
 import { extractKnowledgeReferences } from '@/lib/reference-extractor'
+import { toMessageText } from '@/lib/safe-text'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -47,6 +48,35 @@ const asRecord = (value: unknown): Record<string, any> | undefined =>
 const asRecordArray = (value: unknown): Record<string, unknown>[] =>
   Array.isArray(value) ? value.filter(item => asRecord(item)) as Record<string, unknown>[] : []
 
+const isDataUrl = (value: unknown) => typeof value === 'string' && /^data:/i.test(value)
+
+const normalizePersistedUserFiles = (body: Record<string, any>) => {
+  const source = asRecordArray(body.userFiles || body.user_files)
+  return source
+    .filter((file) => {
+      const type = String(file.type || '').toLowerCase()
+      const uploadFileId = String(file.upload_file_id || file.id || '')
+      const url = String(file.url || file.preview_url || file.display_url || file.base64Url || file.base64_url || '')
+      return Boolean(type || uploadFileId || url || file.name || file.filename)
+    })
+    .map((file) => {
+      const stableUrl = [file.url, file.preview_url, file.display_url]
+        .find(value => typeof value === 'string' && value && !isDataUrl(value)) as string | undefined
+      const {
+        base64Url: _base64Url,
+        base64_url: _base64UrlSnake,
+        ...rest
+      } = file
+      return {
+        ...rest,
+        url: stableUrl || '',
+        preview_url: stableUrl || '',
+        display_url: stableUrl || '',
+        belongs_to: 'user',
+      }
+    })
+}
+
 export async function POST(request: NextRequest) {
   const requestId = randomUUID()
   const session = getSessionFromRequest(request)
@@ -76,13 +106,14 @@ export async function POST(request: NextRequest) {
       { status: 400, headers: { 'X-Request-Id': requestId } },
     )
   }
-  const query = typeof body.query === 'string' ? body.query.trim() : ''
+  const query = toMessageText(body.query).trim()
   if (!query) {
     return Response.json(
       { error: '请输入问题后再发送', requestId },
       { status: 400, headers: { 'X-Request-Id': requestId } },
     )
   }
+  const userFiles = normalizePersistedUserFiles(body)
   const relayUrl = signedChatRelayUrl({
     rawBody,
     appUserId: session.id,
@@ -160,10 +191,10 @@ export async function POST(request: NextRequest) {
 
               relayConversationId = event.conversation_id || relayConversationId
               relayMessageId = event.message_id || event.id || relayMessageId
-              if ((event.event === 'message' || event.event === 'agent_message') && typeof event.answer === 'string')
-              { relayAnswer += event.answer }
-              if (event.event === 'message_replace' && typeof event.answer === 'string')
-              { relayAnswer = event.answer }
+              if (event.event === 'message' || event.event === 'agent_message')
+              { relayAnswer += toMessageText(event.answer) }
+              if (event.event === 'message_replace')
+              { relayAnswer = toMessageText(event.answer) }
               if (event.event === 'message_end')
               { relayMetadata = event.metadata || relayMetadata }
               if (event.event === 'agent_log' && relayAgentLogBytes < 2_000_000) {
@@ -236,8 +267,8 @@ export async function POST(request: NextRequest) {
 
                 readRelayEvents(relayDecoder.decode())
                 const relayPayload = relayPersistPayload || {}
-                const finalQuery = String(relayPayload.query || query)
-                const finalAnswer = String(relayPayload.answer || relayAnswer)
+                const finalQuery = toMessageText(relayPayload.query || query)
+                const finalAnswer = toMessageText(relayPayload.answer || relayAnswer)
                 const finalConversationId = String(
                   relayPayload.conversationId
                   || relayPayload.conversation_id
@@ -259,6 +290,7 @@ export async function POST(request: NextRequest) {
                     ? relayPayload.agent_logs
                     : relayAgentLogs
                 const finalAssistantFiles = asRecordArray(relayPayload.assistantFiles || relayPayload.assistant_files)
+                const finalUserFiles = asRecordArray(relayPayload.userFiles || relayPayload.user_files)
                 await persistChatExchange({
                   appUserId: session.id,
                   query: finalQuery,
@@ -273,6 +305,7 @@ export async function POST(request: NextRequest) {
                     answer: finalAnswer,
                   }),
                   assistantFiles: finalAssistantFiles.length ? finalAssistantFiles : relayAssistantFiles,
+                  userFiles: finalUserFiles.length ? finalUserFiles : userFiles,
                 }).catch(error => console.error('[dify-chat] relay persist failed', { requestId, error }))
                 if (relayClientConnected)
                 { controller.close() }
@@ -426,10 +459,10 @@ export async function POST(request: NextRequest) {
         const event = JSON.parse(data)
         conversationId = event.conversation_id || conversationId
         messageId = event.message_id || event.id || messageId
-        if ((event.event === 'message' || event.event === 'agent_message') && typeof event.answer === 'string')
-        { answer += event.answer }
-        if (event.event === 'message_replace' && typeof event.answer === 'string')
-        { answer = event.answer }
+        if (event.event === 'message' || event.event === 'agent_message')
+        { answer += toMessageText(event.answer) }
+        if (event.event === 'message_replace')
+        { answer = toMessageText(event.answer) }
         if (event.event === 'message_end')
         { metadata = event.metadata || metadata }
         if (event.event === 'agent_log' && agentLogBytes < 2_000_000) {
@@ -515,6 +548,7 @@ export async function POST(request: NextRequest) {
               answer,
             }),
             assistantFiles,
+            userFiles,
           }).catch(error => console.error('[dify-chat] persist failed', { requestId, error }))
           if (clientConnected)
           { controller.close() }

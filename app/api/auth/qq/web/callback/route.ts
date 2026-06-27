@@ -5,6 +5,7 @@ import {
   PENDING_QQ_COOKIE_MAX_AGE,
   bindQqIdentityToUser,
   createPendingQqToken,
+  extractQqNumber,
   getQqIdentity,
   getQqProfile,
   resolveQqUser,
@@ -104,6 +105,7 @@ export async function GET(request: NextRequest) {
     tokenUrl.searchParams.set('redirect_uri', redirectUri)
     tokenUrl.searchParams.set('fmt', 'json')
     tokenUrl.searchParams.set('need_openid', '1')
+    tokenUrl.searchParams.set('unionid', '1')
     const tokenResponse = await fetch(tokenUrl, {
       cache: 'no-store',
       signal: AbortSignal.timeout(12_000),
@@ -145,6 +147,7 @@ export async function GET(request: NextRequest) {
       })
     }
     const profile = await getQqProfile(token.access_token, appId, verifiedIdentity.openid)
+    const qqNumber = extractQqNumber(profile)
     if (purpose === 'bind') {
       const session = await getSession()
       if (!session)
@@ -154,6 +157,7 @@ export async function GET(request: NextRequest) {
         appId,
         openId: verifiedIdentity.openid,
         unionId: verifiedIdentity.unionid,
+        qqNumber,
       })
       const response = NextResponse.redirect(new URL('/profile?qq_bound=1', origin))
       response.cookies.set(stateCookie, '', { path: '/', maxAge: 0 })
@@ -166,6 +170,7 @@ export async function GET(request: NextRequest) {
         appId,
         openId: verifiedIdentity.openid,
         unionId: verifiedIdentity.unionid,
+        qqNumber,
         nickname: profile.nickname,
       })
     }
@@ -178,6 +183,7 @@ export async function GET(request: NextRequest) {
           appId,
           openId: verifiedIdentity.openid,
           unionId: verifiedIdentity.unionid,
+          qqNumber,
           nickname: profile.nickname,
           avatarUrl: profile.figureurl_qq_2 || profile.figureurl_2,
         }), {

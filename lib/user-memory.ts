@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
+import { auditMemorySourceConsistency } from '@/lib/memory-consistency'
 
 const compact = (value: string, max = 360) => {
   const text = value.replace(/\s+/g, ' ').trim()
@@ -21,7 +22,7 @@ export const buildCrossConversationMemory = async ({
   if (!isDatabaseConfigured())
   { return '' }
 
-  const [profile, conversations, messages, references] = await withDatabaseRetry(() => Promise.all([
+  const [profile, conversations] = await withDatabaseRetry(() => Promise.all([
     db.userProfile.findUnique({ where: { appUserId } }),
     db.chatConversation.findMany({
       where: {
@@ -33,25 +34,37 @@ export const buildCrossConversationMemory = async ({
       take: 12,
       select: { difyConversationId: true, title: true },
     }),
-    db.chatMessage.findMany({
-      where: {
-        appUserId,
-        ...(excludeConversationId ? { difyConversationId: { not: excludeConversationId } } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 36,
-      select: { role: true, content: true, difyConversationId: true, difyMessageId: true, createdAt: true },
-    }),
-    db.messageReference.findMany({
-      where: {
-        appUserId,
-        ...(excludeConversationId ? { difyConversationId: { not: excludeConversationId } } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-      select: { documentName: true, pageNumber: true, quote: true },
-    }),
   ]))
+  const activeConversationIds = conversations.map(conversation => conversation.difyConversationId)
+
+  auditMemorySourceConsistency({
+    appUserId,
+    activeConversationIds,
+    reason: 'cross-conversation-memory',
+  }).catch(error => console.warn('[memory-consistency] audit failed', { appUserId, error }))
+
+  const [messages, references] = activeConversationIds.length
+    ? await withDatabaseRetry(() => Promise.all([
+      db.chatMessage.findMany({
+        where: {
+          appUserId,
+          difyConversationId: { in: activeConversationIds },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 36,
+        select: { role: true, content: true, difyConversationId: true, difyMessageId: true, createdAt: true },
+      }),
+      db.messageReference.findMany({
+        where: {
+          appUserId,
+          difyConversationId: { in: activeConversationIds },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: { documentName: true, pageNumber: true, quote: true },
+      }),
+    ]))
+    : [[], []]
 
   if (!conversations.length && !messages.length && !references.length && !profile)
   { return '' }

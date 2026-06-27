@@ -2,6 +2,8 @@ import { API_PREFIX } from '@/config'
 import Toast from '@/app/components/base/toast'
 import type { AnnotationReply, MessageEnd, MessageReplace, ThoughtItem } from '@/app/components/chat/type'
 import type { VisionFile } from '@/types/app'
+import { isNetworkStudyApp } from '@/lib/native-app'
+import { normalizeTextFields, toMessageText } from '@/lib/safe-text'
 
 const TIME_OUT = 100000
 
@@ -27,6 +29,48 @@ const toFriendlyNetworkError = (error: unknown) => {
   if (/failed\s*to\s*fetch|networkerror|load failed|request timeout/i.test(message))
   { return '网络连接失败，请检查网络或稍后重试' }
   return message
+}
+
+const isChatMessagesEndpoint = (endpoint: string) => /^\/?chat-messages(?:\?|$)/.test(endpoint)
+
+const withNativeServerRelay = (urlWithPrefix: string, endpoint: string) => {
+  if (!isNetworkStudyApp() || !isChatMessagesEndpoint(endpoint))
+  { return urlWithPrefix }
+
+  try {
+    const nextUrl = new URL(urlWithPrefix, globalThis.location.origin)
+    if (nextUrl.origin !== globalThis.location.origin)
+    { return urlWithPrefix }
+    nextUrl.searchParams.set('serverRelay', '1')
+    return nextUrl.pathname + nextUrl.search + nextUrl.hash
+  }
+  catch {
+    const separator = urlWithPrefix.includes('?') ? '&' : '?'
+    return `${urlWithPrefix}${separator}serverRelay=1`
+  }
+}
+
+const withoutNativeServerRelay = (urlWithPrefix: string) => {
+  try {
+    const nextUrl = new URL(urlWithPrefix, globalThis.location.origin)
+    nextUrl.searchParams.delete('serverRelay')
+    return nextUrl.origin === globalThis.location.origin
+      ? `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
+      : nextUrl.toString()
+  }
+  catch {
+    return urlWithPrefix.replace(
+      /([?&])serverRelay=1(&?)/,
+      (_match, prefix: string, suffix: string) => suffix ? prefix : '',
+    )
+  }
+}
+
+const shouldRetryNativeRelay = (urlWithPrefix: string, statusOrCode?: number | string) => {
+  if (!isNetworkStudyApp() || !urlWithPrefix.includes('serverRelay=1'))
+  { return false }
+  const value = String(statusOrCode || '')
+  return !value || ['502', '503', '504', 'DIFY_CONNECT_TIMEOUT', 'DIFY_REQUEST_FAILED'].some(code => value.includes(code))
 }
 
 export interface WorkflowStartedResponse {
@@ -150,6 +194,17 @@ function unicodeToChar(text: string) {
   })
 }
 
+const streamTextFrom = (value: unknown, eventName: string) => {
+  if (value && typeof value === 'object')
+  {
+    console.warn(`[chat-stream] ${eventName} returned non-string answer`, value)
+  }
+  return unicodeToChar(toMessageText(value))
+}
+
+const normalizeThoughtPayload = (value: Record<string, any>): ThoughtItem =>
+  normalizeTextFields(value, ['thought', 'tool', 'tool_input', 'observation']) as ThoughtItem
+
 const handleStream = (
   response: Response,
   onData: IOnData,
@@ -190,112 +245,116 @@ const handleStream = (
       safelyCall(name, () => onCompleted?.(hasError))
       resolve(!hasError)
     }
-  function read() {
-    let hasError = false
-    reader?.read().then(async (result: any) => {
-      if (result.done) {
-        await persistPromise
-        finish('completed')
-        return
-      }
-      buffer += decoder.decode(result.value, { stream: true })
-      const lines = buffer.split('\n')
-      try {
-        lines.forEach((message) => {
-          if (message.startsWith('data: ')) { // check if it starts with data:
-            try {
-              bufferObj = JSON.parse(message.substring(6)) as Record<string, any>// remove data: and parse as json
-            }
-            catch (e) {
+    function read() {
+      let hasError = false
+      reader?.read().then(async (result: any) => {
+        if (result.done) {
+          await persistPromise
+          finish('completed')
+          return
+        }
+        buffer += decoder.decode(result.value, { stream: true })
+        const lines = buffer.split('\n')
+        try {
+          lines.forEach((message) => {
+            if (message.startsWith('data: ')) { // check if it starts with data:
+              try {
+                bufferObj = JSON.parse(message.substring(6)) as Record<string, any>// remove data: and parse as json
+              }
+              catch {
               // mute handle message cut off
-              safelyCall('partial-data', () => onData('', isFirstMessage, {
-                conversationId: bufferObj?.conversation_id,
-                messageId: bufferObj?.message_id,
-              }))
-              return
-            }
-            if (bufferObj.status === 400 || !bufferObj.event) {
-              safelyCall('error-data', () => onData('', false, {
-                conversationId: undefined,
-                messageId: '',
-                errorMessage: bufferObj?.message,
-                errorCode: bufferObj?.code,
-              }))
-              hasError = true
-              finish('error-completed', true)
-              return
-            }
-            if (bufferObj.event === 'message' || bufferObj.event === 'agent_message') {
+                safelyCall('partial-data', () => onData('', isFirstMessage, {
+                  conversationId: bufferObj?.conversation_id,
+                  messageId: bufferObj?.message_id,
+                }))
+                return
+              }
+              if (bufferObj.status === 400 || !bufferObj.event) {
+                safelyCall('error-data', () => onData('', false, {
+                  conversationId: undefined,
+                  messageId: '',
+                  errorMessage: bufferObj?.message,
+                  errorCode: bufferObj?.code,
+                }))
+                hasError = true
+                finish('error-completed', true)
+                return
+              }
+              if (bufferObj.event === 'message' || bufferObj.event === 'agent_message') {
               // can not use format here. Because message is splited.
-              safelyCall('message', () => onData(unicodeToChar(bufferObj.answer), isFirstMessage, {
-                conversationId: bufferObj.conversation_id,
-                taskId: bufferObj.task_id,
-                messageId: bufferObj.id,
-              }))
-              isFirstMessage = false
+                safelyCall('message', () => onData(streamTextFrom(bufferObj.answer, bufferObj.event), isFirstMessage, {
+                  conversationId: bufferObj.conversation_id,
+                  taskId: bufferObj.task_id,
+                  messageId: bufferObj.id,
+                }))
+                isFirstMessage = false
+              }
+              else if (bufferObj.event === 'agent_thought') {
+                safelyCall('agent-thought', () => onThought?.(normalizeThoughtPayload(bufferObj)))
+              }
+              else if (bufferObj.event === 'message_file') {
+                safelyCall('message-file', () => onFile?.({
+                  ...bufferObj,
+                  belongs_to: 'assistant',
+                  url: bufferObj.url || bufferObj.file_url || '',
+                  name: bufferObj.name || bufferObj.filename,
+                } as VisionFile))
+              } else if (bufferObj.event === 'relay_persist' && bufferObj.data) {
+                persistPromise = globalThis.fetch('/api/chat-persist', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(bufferObj.data),
+                }).then(async (persistResponse) => {
+                  if (!persistResponse.ok)
+                  { throw new Error(`CHAT_PERSIST_FAILED:${persistResponse.status}`) }
+                }).catch(error => console.error('[chat-persist] browser callback failed', error))
+              }
+              else if (bufferObj.event === 'message_end') {
+                safelyCall('message-end', () => onMessageEnd?.(bufferObj as MessageEnd))
+              }
+              else if (bufferObj.event === 'message_replace') {
+                safelyCall('message-replace', () => onMessageReplace?.({
+                  ...bufferObj,
+                  answer: streamTextFrom(bufferObj.answer, 'message_replace'),
+                } as MessageReplace))
+              }
+              else if (bufferObj.event === 'workflow_started') {
+                safelyCall('workflow-started', () => onWorkflowStarted?.(bufferObj as WorkflowStartedResponse))
+              }
+              else if (bufferObj.event === 'workflow_finished') {
+                safelyCall('workflow-finished', () => onWorkflowFinished?.(bufferObj as WorkflowFinishedResponse))
+              }
+              else if (bufferObj.event === 'node_started') {
+                safelyCall('node-started', () => onNodeStarted?.(bufferObj as NodeStartedResponse))
+              }
+              else if (bufferObj.event === 'node_finished') {
+                safelyCall('node-finished', () => onNodeFinished?.(bufferObj as NodeFinishedResponse))
+              }
             }
-            else if (bufferObj.event === 'agent_thought') {
-              safelyCall('agent-thought', () => onThought?.(bufferObj as ThoughtItem))
-            }
-            else if (bufferObj.event === 'message_file') {
-              safelyCall('message-file', () => onFile?.({
-                ...bufferObj,
-                url: bufferObj.url || bufferObj.file_url || '',
-                name: bufferObj.name || bufferObj.filename,
-              } as VisionFile))
-            } else if (bufferObj.event === 'relay_persist' && bufferObj.data) {
-              persistPromise = globalThis.fetch('/api/chat-persist', {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(bufferObj.data),
-              }).then(async (persistResponse) => {
-                if (!persistResponse.ok)
-                { throw new Error(`CHAT_PERSIST_FAILED:${persistResponse.status}`) }
-              }).catch(error => console.error('[chat-persist] browser callback failed', error))
-            }
-            else if (bufferObj.event === 'message_end') {
-              safelyCall('message-end', () => onMessageEnd?.(bufferObj as MessageEnd))
-            }
-            else if (bufferObj.event === 'message_replace') {
-              safelyCall('message-replace', () => onMessageReplace?.(bufferObj as MessageReplace))
-            }
-            else if (bufferObj.event === 'workflow_started') {
-              safelyCall('workflow-started', () => onWorkflowStarted?.(bufferObj as WorkflowStartedResponse))
-            }
-            else if (bufferObj.event === 'workflow_finished') {
-              safelyCall('workflow-finished', () => onWorkflowFinished?.(bufferObj as WorkflowFinishedResponse))
-            }
-            else if (bufferObj.event === 'node_started') {
-              safelyCall('node-started', () => onNodeStarted?.(bufferObj as NodeStartedResponse))
-            }
-            else if (bufferObj.event === 'node_finished') {
-              safelyCall('node-finished', () => onNodeFinished?.(bufferObj as NodeFinishedResponse))
-            }
-          }
-        })
-        buffer = lines[lines.length - 1]
-      }
-      catch (e) {
-        safelyCall('stream-parse-error', () => onData('', false, {
+          })
+          buffer = lines[lines.length - 1]
+        }
+        catch (e) {
+          safelyCall('stream-parse-error', () => onData('', false, {
+            conversationId: undefined,
+            messageId: '',
+            errorMessage: `${e}`,
+          }))
+          hasError = true
+          finish('parse-error-completed', true)
+          return
+        }
+        if (!hasError) { read() }
+      }).catch((error: unknown) => {
+        safelyCall('stream-read-error', () => onData('', false, {
           conversationId: undefined,
           messageId: '',
-          errorMessage: `${e}`,
+          errorMessage: toFriendlyNetworkError(error),
         }))
-        hasError = true
-        finish('parse-error-completed', true)
-        return
-      }
-      if (!hasError) { read() }
-    }).catch((error: unknown) => {
-      safelyCall('stream-read-error', () => onData('', false, {
-        conversationId: undefined,
-        messageId: '',
-        errorMessage: toFriendlyNetworkError(error),
-      }))
-      finish('read-error-completed', true)
-    })
-  }
+        finish('read-error-completed', true)
+      })
+    }
     if (!reader) {
       safelyCall('missing-reader', () => onData('', false, {
         conversationId: undefined,
@@ -402,13 +461,24 @@ export const upload = (fetchOptions: any): Promise<any> => {
   return new Promise((resolve, reject) => {
     const xhr = options.xhr
     xhr.open(options.method, options.url)
-    for (const key in options.headers) { xhr.setRequestHeader(key, options.headers[key]) }
+    for (const key in options.headers || {}) { xhr.setRequestHeader(key, options.headers[key]) }
 
-    xhr.withCredentials = true
+    xhr.withCredentials = options.withCredentials ?? true
     xhr.onreadystatechange = function () {
       if (xhr.readyState === 4) {
-        if (xhr.status === 200) { resolve({ id: xhr.response }) }
-        else { reject(xhr) }
+        if (/^2\d{2}$/.test(String(xhr.status))) {
+          const rawResponse = String(xhr.responseText || xhr.response || '').trim()
+          try {
+            const parsed = JSON.parse(rawResponse)
+            resolve({ id: parsed?.id || rawResponse, data: parsed })
+          }
+          catch {
+            resolve({ id: rawResponse })
+          }
+        }
+        else {
+          reject(xhr)
+        }
       }
     }
     xhr.upload.onprogress = options.onprogress
@@ -430,6 +500,7 @@ export const ssePost = (
     onWorkflowFinished,
     onNodeStarted,
     onNodeFinished,
+    getAbortController,
     onError,
   }: IOtherOptions,
 ) => {
@@ -439,46 +510,76 @@ export const ssePost = (
     // when the request is redirected to the cross-origin browser relay.
     credentials: 'same-origin',
   }, fetchOptions)
+  options.headers = new Headers(options.headers)
 
   const urlPrefix = API_PREFIX
-  const urlWithPrefix = `${urlPrefix}${url.startsWith('/') ? url : `/${url}`}`
+  const urlWithPrefix = withNativeServerRelay(
+    `${urlPrefix}${url.startsWith('/') ? url : `/${url}`}`,
+    url,
+  )
 
   const { body } = options
   if (body) { options.body = JSON.stringify(body) }
+  if (isNetworkStudyApp())
+  { options.headers.set('X-Network-Study-App', 'android') }
 
-  return globalThis.fetch(urlWithPrefix, options)
-    .then(async (res: Response) => {
-      if (!/^(2|3)\d{2}$/.test(String(res.status))) {
-        const text = await res.text().catch(() => '')
-        let data: Record<string, any> = {}
-        try {
-          data = text ? JSON.parse(text) : {}
+  const abortController = new AbortController()
+  options.signal = abortController.signal
+  getAbortController?.(abortController)
+
+  const send = (targetUrl: string, retriedFromNativeRelay = false): Promise<boolean | false> => {
+    const requestOptions = {
+      ...options,
+      headers: new Headers(options.headers),
+    }
+    return globalThis.fetch(targetUrl, requestOptions)
+      .then(async (res: Response) => {
+        if (!/^(2|3)\d{2}$/.test(String(res.status))) {
+          const text = await res.text().catch(() => '')
+          let data: Record<string, any> = {}
+          try {
+            data = text ? JSON.parse(text) : {}
+          }
+          catch {
+            // Preserve non-JSON diagnostics returned by an upstream proxy.
+          }
+          const requestId = data.requestId || res.headers.get('X-Request-Id')
+          const baseMessage = data.error || data.message || text || `请求失败（HTTP ${res.status}）`
+          const message = requestId ? `${baseMessage}（请求 ID：${requestId}）` : baseMessage
+          if (!retriedFromNativeRelay && shouldRetryNativeRelay(targetUrl, res.status || data.code)) {
+            console.warn('[chat] native server relay failed, retrying browser relay', {
+              status: res.status,
+              requestId,
+              message: baseMessage,
+            })
+            return send(withoutNativeServerRelay(targetUrl), true)
+          }
+          Toast.notify({ type: 'error', message })
+          onError?.(message, data.code)
+          return false
         }
-        catch {
-          // Preserve non-JSON diagnostics returned by an upstream proxy.
+        return handleStream(res, (str: string, isFirstMessage: boolean, moreInfo: IOnDataMoreInfo) => {
+          if (moreInfo.errorMessage) {
+            Toast.notify({ type: 'error', message: moreInfo.errorMessage })
+            onError?.(moreInfo.errorMessage, moreInfo.errorCode)
+            return
+          }
+          onData?.(str, isFirstMessage, moreInfo)
+        }, onCompleted, onThought, onMessageEnd, onMessageReplace, onFile, onWorkflowStarted, onWorkflowFinished, onNodeStarted, onNodeFinished)
+      })
+      .catch((e) => {
+        const message = toFriendlyNetworkError(e)
+        if (!retriedFromNativeRelay && shouldRetryNativeRelay(targetUrl)) {
+          console.warn('[chat] native server relay network error, retrying browser relay', e)
+          return send(withoutNativeServerRelay(targetUrl), true)
         }
-        const requestId = data.requestId || res.headers.get('X-Request-Id')
-        const baseMessage = data.error || data.message || text || `请求失败（HTTP ${res.status}）`
-        const message = requestId ? `${baseMessage}（请求 ID：${requestId}）` : baseMessage
         Toast.notify({ type: 'error', message })
-        onError?.(message, data.code)
+        onError?.(message)
         return false
-      }
-      return handleStream(res, (str: string, isFirstMessage: boolean, moreInfo: IOnDataMoreInfo) => {
-        if (moreInfo.errorMessage) {
-          Toast.notify({ type: 'error', message: moreInfo.errorMessage })
-          onError?.(moreInfo.errorMessage, moreInfo.errorCode)
-          return
-        }
-        onData?.(str, isFirstMessage, moreInfo)
-      }, onCompleted, onThought, onMessageEnd, onMessageReplace, onFile, onWorkflowStarted, onWorkflowFinished, onNodeStarted, onNodeFinished)
-    })
-    .catch((e) => {
-      const message = toFriendlyNetworkError(e)
-      Toast.notify({ type: 'error', message })
-      onError?.(message)
-      return false
-    })
+      })
+  }
+
+  return send(urlWithPrefix)
 }
 
 export const request = (url: string, options = {}, otherOptions?: IOtherOptions) => {

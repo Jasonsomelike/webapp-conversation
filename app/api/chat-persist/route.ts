@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server'
 import { extractKnowledgeReferences } from '@/lib/reference-extractor'
 import { getSessionFromRequest } from '@/lib/session'
 import { persistChatExchange } from '@/lib/user-data'
+import { toMessageText } from '@/lib/safe-text'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -13,10 +14,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json() as Record<string, any>
+    const query = toMessageText(body.query)
+    const answer = toMessageText(body.answer)
     await persistChatExchange({
       appUserId: session.id,
-      query: String(body.query || ''),
-      answer: String(body.answer || ''),
+      query,
+      answer,
       conversationId: String(body.conversationId || ''),
       messageId: String(body.messageId || ''),
       metadata: body.metadata,
@@ -24,9 +27,10 @@ export async function POST(request: NextRequest) {
       references: extractKnowledgeReferences({
         metadata: body.metadata,
         agentLogs: Array.isArray(body.agentLogs) ? body.agentLogs : [],
-        answer: String(body.answer || ''),
+        answer,
       }),
       assistantFiles: Array.isArray(body.assistantFiles) ? body.assistantFiles : [],
+      userFiles: Array.isArray(body.userFiles) ? body.userFiles : Array.isArray(body.user_files) ? body.user_files : [],
     })
     return Response.json({ ok: true })
   }

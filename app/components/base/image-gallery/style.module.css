@@ -18,10 +18,31 @@
   box-shadow: 0 14px 34px rgba(20, 35, 29, 0.12);
 }
 
+.errorItem {
+  max-width: 100%;
+  min-height: 96px;
+  max-height: 210px;
+  margin-right: 8px;
+  margin-bottom: 8px;
+  border: 1px dashed rgba(239, 68, 68, 0.38);
+  border-radius: 8px;
+  background: rgba(254, 242, 242, 0.88);
+  color: rgb(185, 28, 28);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 18px;
+  padding: 12px;
+  text-align: center;
+}
+
 .img-1 .item {
   width: auto !important;
   max-width: min(100%, 330px) !important;
   height: auto;
+}
+
+.img-1 .errorItem {
+  width: min(100%, 330px) !important;
 }
 
 .item:nth-child(3n) {

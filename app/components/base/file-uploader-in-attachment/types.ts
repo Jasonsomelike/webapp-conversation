@@ -29,6 +29,9 @@ export interface FileEntity {
   uploadedId?: string
   base64Url?: string
   url?: string
+  previewUrl?: string
+  displayUrl?: string
+  sourceUrl?: string
   isRemote?: boolean
 }
 

@@ -66,14 +66,8 @@ export const listVisibleAdminUsers = async (): Promise<AdminUserListItem[]> =>
         ) AS "references"
       FROM "app_users" u
       WHERE u."deleted_at" IS NULL
-        AND LOWER(u."username") NOT LIKE 'guest_%'
-        AND LOWER(u."username") NOT LIKE 'test%'
-        AND LOWER(u."username") NOT LIKE 'demo%'
-        AND LOWER(u."username") NOT LIKE 'internal%'
-        AND LOWER(u."username") NOT LIKE 'system%'
-        AND LOWER(u."username") NOT LIKE 'deleted_%'
       ORDER BY u."created_at" DESC
-      LIMIT 300
+      LIMIT 500
     `
 
     return rows.map(row => ({

@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { db, isDatabaseConfigured } from '@/lib/db'
+import { deleteConversationMemorySources } from '@/lib/memory-consistency'
 import { getSessionFromRequest } from '@/lib/session'
 
 export async function DELETE(
@@ -17,17 +18,41 @@ export async function DELETE(
   if (!conversationId || conversationId === '-1')
   { return NextResponse.json({ error: 'Invalid conversation id' }, { status: 400 }) }
 
-  const result = await db.chatConversation.updateMany({
-    where: {
+  const deletedAt = new Date()
+  const result = await db.$transaction(async (tx) => {
+    const conversation = await tx.chatConversation.updateMany({
+      where: {
+        appUserId: session.id,
+        difyConversationId: conversationId,
+        deletedAt: null,
+      },
+      data: { deletedAt },
+    })
+
+    if (!conversation.count)
+    { return null }
+
+    const memorySources = await deleteConversationMemorySources({
+      client: tx,
       appUserId: session.id,
-      difyConversationId: conversationId,
-      deletedAt: null,
-    },
-    data: { deletedAt: new Date() },
+      conversationId,
+      reason: 'conversation-delete',
+    })
+    console.info('[memory-consistency] conversation deleted with memory cleanup', {
+      appUserId: session.id,
+      conversationId,
+      deletedAt: deletedAt.toISOString(),
+      memorySources,
+    })
+
+    return {
+      conversations: conversation.count,
+      memorySources,
+    }
   })
 
-  if (!result.count)
+  if (!result)
   { return NextResponse.json({ error: 'Conversation not found' }, { status: 404 }) }
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, deleted: result })
 }

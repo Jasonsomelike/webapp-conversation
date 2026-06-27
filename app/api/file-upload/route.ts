@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { NextRequest } from 'next/server'
 import { getInfo, isDifyConfigured } from '@/app/api/utils/common'
 import { fetchDify } from '@/lib/dify-server'
@@ -6,6 +7,51 @@ import { getSessionFromRequest } from '@/lib/session'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
+
+const uploadViaLibraryFileService = async (file: File, user: string) => {
+  const baseUrl = process.env.LIBRARY_FILE_SERVICE_URL?.replace(/\/$/, '')
+  const token = process.env.LIBRARY_FILE_SERVICE_TOKEN
+  if (!baseUrl || !token)
+  { return null }
+
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('user', user)
+  const requestId = randomUUID()
+  const response = await fetch(`${baseUrl}/files/upload`, {
+    method: 'POST',
+    headers: {
+      'X-Internal-Token': token,
+      'X-Request-Id': requestId,
+    },
+    body: formData,
+    cache: 'no-store',
+  })
+  return { response, requestId }
+}
+
+const uploadDirectlyToDify = async (formData: FormData) => {
+  let lastError: unknown
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetchDify('/files/upload', {
+        method: 'POST',
+        body: formData,
+      }, { connectTimeoutMs: 30_000, retries: 1 })
+      if (response.ok || ![408, 425, 429, 500, 502, 503, 504].includes(response.status))
+      { return response }
+      lastError = new Error(`DIFY_UPLOAD_RETRYABLE_STATUS:${response.status}`)
+      await response.body?.cancel()
+    }
+    catch (error) {
+      lastError = error
+    }
+
+    if (attempt < 2)
+    { await new Promise(resolve => setTimeout(resolve, 400 * (attempt + 1))) }
+  }
+  throw lastError instanceof Error ? lastError : new Error('DIFY_UPLOAD_FAILED')
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,18 +98,38 @@ export async function POST(request: NextRequest) {
     if (!user)
     { return new Response('Unauthorized', { status: 401 }) }
     formData.append('user', user)
-    const upstream = await fetchDify('/files/upload', {
-      method: 'POST',
-      body: formData,
-    }, { connectTimeoutMs: 30_000, retries: 0 })
-    if (!upstream.ok) {
-      const message = await upstream.text()
-      return new Response(message || 'Upload failed', { status: upstream.status })
+    let upstream = await uploadDirectlyToDify(formData).catch(async (error) => {
+      console.warn('[file-upload] direct Dify upload failed, trying library file service', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return null
+    })
+    if (!upstream?.ok) {
+      const directStatus = upstream?.status
+      const directMessage = upstream ? await upstream.text().catch(() => '') : ''
+      const fallback = await uploadViaLibraryFileService(file, user).catch((error) => {
+        console.error('[file-upload] library file service fallback failed', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+        return null
+      })
+      if (fallback?.response.ok)
+      { upstream = fallback.response }
+      else {
+        const fallbackMessage = fallback ? await fallback.response.text().catch(() => '') : ''
+        return new Response(
+          fallbackMessage || directMessage || 'Upload failed',
+          {
+            status: fallback?.response.status || directStatus || 502,
+            headers: fallback?.requestId ? { 'X-Request-Id': fallback.requestId } : undefined,
+          },
+        )
+      }
     }
     const result = await upstream.json() as { id?: string }
     if (!result.id)
     { return new Response('Upload response did not contain a file ID', { status: 502 }) }
-    return new Response(result.id)
+    return Response.json(result)
   }
   catch (error) {
     return new Response(error instanceof Error ? error.message : 'Upload failed', { status: 500 })

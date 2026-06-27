@@ -3,9 +3,10 @@ import { AcademicCapIcon, CalendarDaysIcon } from '@heroicons/react/24/outline'
 import { db, withDatabaseRetry } from '@/lib/db'
 import { getConversationSharePayload } from '@/lib/conversation-share'
 import SharedMarkdown from '@/app/components/base/shared-markdown'
+import { toMessageText } from '@/lib/safe-text'
 
-const visibleMarkdown = (content: string) =>
-  content
+const visibleMarkdown = (content: unknown) =>
+  toMessageText(content)
     .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
     .replace(/<think\b[^>]*>[\s\S]*$/gi, '')
     .trim()
@@ -73,16 +74,16 @@ export default async function SharedConversationPage({
   const visibleMessages = visibleGroups.flatMap(group => group.messages)
 
   return (
-    <main className="min-h-screen bg-[#f3f5f3] px-3 py-6 text-[#18231f] sm:px-6">
-      <div className="mx-auto max-w-3xl">
-        <header className="rounded-[26px] bg-[#17342b] p-6 text-white shadow-[0_22px_60px_rgba(23,52,43,.18)]">
-          <div className="flex items-center gap-3">
+    <main className="min-h-screen max-w-[100vw] overflow-x-hidden bg-[#f3f5f3] px-3 py-6 text-[#18231f] sm:px-6">
+      <div className="mx-auto max-w-3xl min-w-0">
+        <header className="min-w-0 overflow-hidden rounded-[26px] bg-[#17342b] p-5 text-white shadow-[0_22px_60px_rgba(23,52,43,.18)] sm:p-6">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#d9f36d] text-[#17342b]">
               <AcademicCapIcon className="h-6 w-6" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="text-xs font-semibold text-[#d9f36d]">知行网络学堂 · 分享对话</div>
-              <h1 className="mt-1 text-xl font-semibold">{conversation.title || '网络学习会话'}</h1>
+              <h1 className="mt-1 break-words text-xl font-semibold">{conversation.title || '网络学习会话'}</h1>
             </div>
           </div>
           <div className="mt-5 flex flex-wrap gap-4 text-xs text-white/50">
@@ -104,14 +105,14 @@ export default async function SharedConversationPage({
               key={message.id}
               className={`rounded-[22px] border p-5 shadow-[0_10px_30px_rgba(31,54,46,.05)] ${
                 message.role === 'user'
-                  ? 'ml-auto max-w-[88%] border-[#bcd3ea] bg-[#e7f2ff]'
-                  : 'border-black/[0.07] bg-white'
+                  ? 'ml-auto max-w-[88%] min-w-0 border-[#bcd3ea] bg-[#e7f2ff] max-sm:max-w-[96%] max-sm:p-4'
+                  : 'min-w-0 border-black/[0.07] bg-white max-sm:p-4'
               }`}
             >
               <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-black/35">
                 {message.role === 'user' ? '用户' : '计网Agent'}
               </div>
-              <SharedMarkdown content={visibleMarkdown(message.content)} />
+              <SharedMarkdown content={visibleMarkdown(message.content)} shareToken={token} />
             </article>
           ))}
         </div>

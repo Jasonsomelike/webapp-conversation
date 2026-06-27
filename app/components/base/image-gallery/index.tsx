@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import cn from 'classnames'
 import s from './style.module.css'
 import ImagePreview from '@/app/components/base/image-uploader/image-preview'
+import { isNetworkStudyApp } from '@/lib/native-app'
 
 interface Props {
   srcs: string[]
@@ -31,24 +32,60 @@ const ImageGallery: FC<Props> = ({
   srcs,
 }) => {
   const [imagePreviewUrl, setImagePreviewUrl] = useState('')
+  const [failedUrls, setFailedUrls] = useState<Set<string>>(() => new Set())
 
   const validSrcs = srcs.filter(src => src && src.trim() !== '')
   const imgNum = validSrcs.length
   const imgStyle = getWidthStyle(imgNum)
+  const openImage = (src: string) => {
+    if (isNetworkStudyApp())
+    { setImagePreviewUrl(src) }
+    else
+    { window.open(src, '_blank', 'noopener,noreferrer') }
+  }
 
   if (imgNum === 0) { return null }
 
   return (
     <div className={cn(s[`img-${imgNum}`], 'flex flex-wrap')}>
       {validSrcs.map((src, index) => (
-        <img
-          key={index}
-          className={s.item}
-          style={imgStyle}
-          src={src}
-          alt=''
-          onClick={() => setImagePreviewUrl(src)}
-        />
+        failedUrls.has(src)
+          ? (
+            <button
+              key={`${src}-${index}`}
+              type="button"
+              className={s.errorItem}
+              style={imgStyle}
+              onClick={() => {
+                setFailedUrls((previous) => {
+                  const next = new Set(previous)
+                  next.delete(src)
+                  return next
+                })
+              }}
+            >
+              图片加载失败，点击重试
+            </button>
+          )
+          : (
+            <img
+              key={`${src}-${index}`}
+              className={s.item}
+              style={imgStyle}
+              src={src}
+              alt=''
+              loading='lazy'
+              decoding='async'
+              onError={() => {
+                setFailedUrls((previous) => {
+                  const next = new Set(previous)
+                  next.add(src)
+                  return next
+                })
+              }}
+              onClick={() => openImage(src)}
+            />
+          )
       ))}
       {
         imagePreviewUrl && (

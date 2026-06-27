@@ -3,6 +3,7 @@ import 'server-only'
 import type { Prisma } from '@prisma/client'
 import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
 import { fetchDify } from '@/lib/dify-server'
+import { cleanReferenceDocumentName } from '@/lib/reference-extractor'
 
 export interface DifyKnowledgeDocument {
   id: string
@@ -43,6 +44,8 @@ export interface DifyDocumentList {
   refreshed_at?: string
   stale?: boolean
   refresh_error?: string
+  refresh_error_message?: string
+  refresh_pending?: boolean
 }
 
 interface DifyDocumentSegment {
@@ -106,23 +109,62 @@ const fetchKnowledgeDocuments = async ({
   const response = await fetchDify(
     `/datasets/${encodeURIComponent(datasetId)}/documents?${params}`,
     { method: 'GET' },
-    { apiKey, connectTimeoutMs: 8_000, retries: 1 },
+    { apiKey, connectTimeoutMs: 30_000, retries: 2 },
   )
   if (!response.ok)
   { throw new Error(`DIFY_DATASET_REQUEST_FAILED:${response.status}`) }
   return response.json()
 }
 
+const describeErrorWithCause = (error: unknown) => {
+  if (!(error instanceof Error))
+  { return String(error) }
+  const cause = (error as { cause?: unknown }).cause
+  const causeMessage = cause instanceof Error
+    ? cause.message
+    : cause
+      ? String(cause)
+      : ''
+  return causeMessage ? `${error.message}:${causeMessage}` : error.message
+}
+
+const libraryCatalogServiceUrls = () => {
+  const rawUrls = [
+    process.env.LIBRARY_FILE_SERVICE_URL,
+    process.env.DIFY_API_BASE_URL
+      ? `${new URL(process.env.DIFY_API_BASE_URL).origin}/custom-library`
+      : '',
+    process.env.NEXT_PUBLIC_API_URL
+      ? `${new URL(process.env.NEXT_PUBLIC_API_URL).origin}/custom-library`
+      : '',
+  ].filter(Boolean) as string[]
+  const candidates: string[] = []
+  rawUrls.forEach((rawUrl) => {
+    try {
+      const url = new URL(rawUrl.replace(/\/$/, ''))
+      candidates.push(url.toString().replace(/\/$/, ''))
+      if (url.hostname === 'dify.jasonsome.cn' && !url.port) {
+        url.port = '22380'
+        candidates.push(url.toString().replace(/\/$/, ''))
+      }
+    }
+    catch {
+      candidates.push(rawUrl.replace(/\/$/, ''))
+    }
+  })
+  return [...new Set(candidates)]
+}
+
 const fetchCompleteKnowledgeCatalog = async () => {
-  const serviceUrl = process.env.LIBRARY_FILE_SERVICE_URL?.replace(/\/$/, '')
   const serviceToken = process.env.LIBRARY_FILE_SERVICE_TOKEN
-  if (serviceUrl && serviceToken) {
+  const serviceUrls = serviceToken ? libraryCatalogServiceUrls() : []
+  if (serviceUrls.length && serviceToken) {
     const serviceErrors: string[] = []
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (const serviceUrl of serviceUrls) {
       const controller = new AbortController()
       const timeout = setTimeout(
         () => controller.abort(new Error('LIBRARY_CATALOG_SERVICE_TIMEOUT')),
-        25_000,
+        8_000,
       )
       try {
         const response = await fetch(`${serviceUrl}/library/documents/catalog`, {
@@ -134,18 +176,17 @@ const fetchCompleteKnowledgeCatalog = async () => {
           const result = await response.json() as { data?: unknown }
           return normalizeCatalogDocuments(result.data)
         }
-        serviceErrors.push(`attempt-${attempt + 1}:${response.status}`)
+        const detail = await response.text().catch(() => '')
+        serviceErrors.push(`${new URL(serviceUrl).host}:${response.status}:${detail.slice(0, 120)}`)
         if (response.status === 401 || response.status === 403)
         { break }
       }
       catch (error) {
-        serviceErrors.push(`attempt-${attempt + 1}:${error instanceof Error ? error.message : String(error)}`)
+        serviceErrors.push(`${serviceUrl}:${describeErrorWithCause(error)}`)
       }
       finally {
         clearTimeout(timeout)
       }
-      if (attempt < 2)
-      { await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1))) }
     }
     console.warn('[library-catalog] local catalog service unavailable, using Dify API fallback', {
       errors: serviceErrors,
@@ -196,6 +237,10 @@ const filterCatalog = ({
   refreshedAt: Date
   refreshError?: string | null
 }): DifyDocumentList => {
+  const suppressCachedFallbackError = Boolean(
+    documents.length > 0
+    && refreshError?.includes('DIFY_DATASET_NOT_CONFIGURED'),
+  )
   const safePage = Math.max(1, page)
   const safeLimit = Math.min(100, Math.max(1, limit))
   const normalizedKeyword = keyword.trim().toLowerCase()
@@ -212,10 +257,33 @@ const filterCatalog = ({
     total: filtered.length,
     page: safePage,
     refreshed_at: refreshedAt.toISOString(),
-    stale: Boolean(refreshError),
-    refresh_error: refreshError || undefined,
+    stale: Boolean(refreshError) && !suppressCachedFallbackError,
+    refresh_error: suppressCachedFallbackError ? undefined : refreshError || undefined,
+    refresh_error_message: suppressCachedFallbackError ? undefined : describeKnowledgeCatalogError(refreshError),
   }
 }
+
+const emptyCatalogResult = ({
+  page = 1,
+  limit = 20,
+  refreshError,
+  refreshPending = false,
+}: {
+  page?: number
+  limit?: number
+  refreshError?: string | null
+  refreshPending?: boolean
+}): DifyDocumentList => ({
+  data: [],
+  has_more: false,
+  limit: Math.min(100, Math.max(1, limit)),
+  total: 0,
+  page: Math.max(1, page),
+  stale: Boolean(refreshError),
+  refresh_error: refreshError || undefined,
+  refresh_error_message: describeKnowledgeCatalogError(refreshError),
+  refresh_pending: refreshPending,
+})
 
 const readCatalogRow = async () => {
   if (!isDatabaseConfigured())
@@ -227,6 +295,53 @@ const readCatalogRow = async () => {
   if (!catalog)
   { throw new Error('LIBRARY_CATALOG_EMPTY') }
   return catalog
+}
+
+const CATALOG_REFRESH_INTERVAL_MS = 30 * 60 * 1000
+let backgroundRefreshPromise: Promise<unknown> | undefined
+
+const shouldRefreshCatalog = (refreshedAt?: Date | string | null) => {
+  if (!refreshedAt)
+  { return true }
+  const timestamp = new Date(refreshedAt).getTime()
+  return !Number.isFinite(timestamp) || Date.now() - timestamp >= CATALOG_REFRESH_INTERVAL_MS
+}
+
+const refreshCatalogInBackground = () => {
+  if (backgroundRefreshPromise)
+  { return backgroundRefreshPromise }
+  backgroundRefreshPromise = refreshKnowledgeDocuments({ page: 1, limit: 1, recordFailure: true })
+    .catch((error) => {
+      console.error('[library-catalog] background refresh failed', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    })
+    .finally(() => {
+      backgroundRefreshPromise = undefined
+    })
+  return backgroundRefreshPromise
+}
+
+export const requestKnowledgeDocumentRefresh = async () => {
+  await ensureKnowledgeDocumentCatalogTable()
+  void refreshCatalogInBackground()
+  return { refresh_pending: true }
+}
+
+export const describeKnowledgeCatalogError = (value?: string | null) => {
+  if (!value)
+  { return '' }
+  if (value.includes('DIFY_CONNECT_TIMEOUT') || value.includes('Timeout') || value.includes('timeout'))
+  { return 'Dify 知识库响应超时，已继续展示最近一次成功同步的数据；服务端会自动重试。' }
+  if (value.includes('DIFY_DATASET_NOT_CONFIGURED'))
+  { return '知识库 API 尚未配置，请检查服务端环境变量。' }
+  if (value.includes('DIFY_DATASET_REQUEST_FAILED:401') || value.includes('DIFY_DATASET_REQUEST_FAILED:403'))
+  { return '知识库 API 鉴权失败，请检查 Dify 知识库密钥。' }
+  if (value.includes('DIFY_DATASET_REQUEST_FAILED'))
+  { return 'Dify 知识库接口暂时不可用，已继续展示缓存数据。' }
+  if (value.includes('LIBRARY_CATALOG_SERVICE_TIMEOUT'))
+  { return '本地知识库目录服务响应超时，已继续展示缓存数据。' }
+  return '知识库同步暂时失败，已继续展示最近一次成功同步的数据。'
 }
 
 export const storeKnowledgeDocumentCatalog = async (value: unknown) => {
@@ -265,7 +380,23 @@ export const listKnowledgeDocuments = async ({
   keyword?: string
   status?: string
 } = {}) => {
-  const catalog = await readCatalogRow()
+  let catalog
+  try {
+    catalog = await readCatalogRow()
+  }
+  catch (error) {
+    if (error instanceof Error && error.message === 'LIBRARY_CATALOG_EMPTY') {
+      refreshCatalogInBackground()
+      return emptyCatalogResult({
+        page,
+        limit,
+        refreshPending: true,
+      })
+    }
+    throw error
+  }
+  if (shouldRefreshCatalog(catalog.refreshedAt))
+  { refreshCatalogInBackground() }
   const documents = Array.isArray(catalog.documents)
     ? catalog.documents as unknown as DifyKnowledgeDocument[]
     : []
@@ -278,6 +409,52 @@ export const listKnowledgeDocuments = async ({
     refreshedAt: catalog.refreshedAt,
     refreshError: catalog.refreshError,
   })
+}
+
+const documentHitKey = (value: unknown) =>
+  cleanReferenceDocumentName(value)
+    .toLocaleLowerCase('zh-CN')
+    .replace(/\s+/g, '')
+
+export const attachUserKnowledgeDocumentHitCounts = async (
+  result: DifyDocumentList,
+  appUserId: string,
+): Promise<DifyDocumentList> => {
+  if (!isDatabaseConfigured() || !result.data.length)
+  { return result }
+
+  try {
+    const rows = await withDatabaseRetry(() => db.messageReference.groupBy({
+      by: ['documentName'],
+      where: {
+        appUserId,
+        documentName: { not: null },
+      },
+      _count: { _all: true },
+    }))
+    const hitCounts = new Map<string, number>()
+    rows.forEach((row) => {
+      const key = documentHitKey(row.documentName)
+      if (!key)
+      { return }
+      hitCounts.set(key, (hitCounts.get(key) || 0) + row._count._all)
+    })
+
+    return {
+      ...result,
+      data: result.data.map(document => ({
+        ...document,
+        hit_count: hitCounts.get(documentHitKey(document.name)) || 0,
+      })),
+    }
+  }
+  catch (error) {
+    console.warn('[library-documents] failed to attach user hit counts', {
+      appUserId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return result
+  }
 }
 
 export const refreshKnowledgeDocuments = async ({

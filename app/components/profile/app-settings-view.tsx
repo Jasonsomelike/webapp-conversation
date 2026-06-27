@@ -11,6 +11,7 @@ import {
   PaintBrushIcon,
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
+import DownloadCenterCard from '@/app/components/profile/download-center-card'
 import { isNetworkStudyApp, readNativeDownloadSettings, type NativeDownloadSettings } from '@/lib/native-app'
 import { isThemeId, themes, type ThemeId } from '@/lib/themes'
 
@@ -68,7 +69,9 @@ export default function AppSettingsView({ initialTheme }: { initialTheme: string
   useEffect(() => {
     refresh()
     globalThis.addEventListener('network-study-download-directory-changed', refresh)
-    return () => globalThis.removeEventListener('network-study-download-directory-changed', refresh)
+    return () => {
+      globalThis.removeEventListener('network-study-download-directory-changed', refresh)
+    }
   }, [refresh])
 
   const checkUpdate = useCallback(async () => {
@@ -137,7 +140,10 @@ export default function AppSettingsView({ initialTheme }: { initialTheme: string
     if (!latest?.apkUrl)
     { return }
     if (window.NetworkStudyApp?.downloadUrl)
-    { window.NetworkStudyApp.downloadUrl(latest.apkUrl, latest.apkName || `知行网络学堂-${latest.tagName}.apk`) }
+    {
+      window.NetworkStudyApp.downloadUrl(latest.apkUrl, latest.apkName || `知行网络学堂-${latest.tagName}.apk`)
+      globalThis.setTimeout(refresh, 250)
+    }
     else
     { openExternal(latest.apkUrl) }
   }
@@ -235,6 +241,8 @@ export default function AppSettingsView({ initialTheme }: { initialTheme: string
           {!checkingUpdate && !updateError && !latest && <div className="text-[var(--studio-muted)]">点击“检查更新”获取最新版本。</div>}
         </div>
       </PageCard>
+
+      {isApp && <DownloadCenterCard className="mt-5" />}
 
       <PageCard className="mt-5 p-6">
         <div className="flex items-start gap-4">

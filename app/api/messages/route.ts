@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { getInfo, setSession } from '@/app/api/utils/common'
 import { db, isDatabaseConfigured } from '@/lib/db'
+import { toMessageText } from '@/lib/safe-text'
 
 export async function GET(request: NextRequest) {
   const { sessionId, session } = getInfo(request)
@@ -47,11 +48,21 @@ export async function GET(request: NextRequest) {
       const rawPayload = message.rawPayload && typeof message.rawPayload === 'object' && !Array.isArray(message.rawPayload)
         ? message.rawPayload as Record<string, any>
         : undefined
+      const userMessage = userMessages.get(message.difyMessageId)
+      const userRawPayload = userMessage?.rawPayload && typeof userMessage.rawPayload === 'object' && !Array.isArray(userMessage.rawPayload)
+        ? userMessage.rawPayload as Record<string, any>
+        : undefined
+      const userFiles = Array.isArray(userRawPayload?.userFiles)
+        ? userRawPayload.userFiles.map((file: Record<string, unknown>) => ({ ...file, belongs_to: 'user' }))
+        : []
+      const assistantFiles = Array.isArray(rawPayload?.assistantFiles)
+        ? rawPayload.assistantFiles.map((file: Record<string, unknown>) => ({ ...file, belongs_to: 'assistant' }))
+        : []
       return {
         id: message.difyMessageId || message.id,
-        query: userMessages.get(message.difyMessageId)?.content || '',
-        answer: message.content,
-        message_files: rawPayload?.assistantFiles || [],
+        query: toMessageText(userMessage?.content),
+        answer: toMessageText(message.content),
+        message_files: [...userFiles, ...assistantFiles],
         agent_thoughts: [],
         feedback: null,
         workflowProcess: rawPayload?.workflowProcess,

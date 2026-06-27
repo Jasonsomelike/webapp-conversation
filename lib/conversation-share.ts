@@ -19,6 +19,9 @@ const key = () => createHash('sha256')
 
 const shareLifetimeMs = 30 * 24 * 60 * 60 * 1000
 
+const normaliseMessageIds = (messageIds?: string[]) =>
+  [...new Set(messageIds || [])].filter(Boolean).sort()
+
 const ensureConversationSharesTable = async () => {
   await db.$executeRaw`
     CREATE TABLE IF NOT EXISTS "conversation_shares" (
@@ -62,11 +65,31 @@ const normalisePayload = (payload: ConversationSharePayload): ConversationShareP
 export const createStoredConversationShare = async (
   payload: Omit<ConversationSharePayload, 'expiresAt'>,
 ) => {
-  const token = randomBytes(16).toString('base64url')
   const expiresAt = Date.now() + shareLifetimeMs
-  const messageIdsJson = JSON.stringify(payload.messageIds || [])
-  await withDatabaseRetry(async () => {
+  const messageIds = normaliseMessageIds(payload.messageIds)
+  const messageIdsJson = JSON.stringify(messageIds)
+  const token = await withDatabaseRetry(async () => {
     await ensureConversationSharesTable()
+    const existing = await db.$queryRaw<Array<{ token: string }>>`
+      SELECT "token"
+      FROM "conversation_shares"
+      WHERE "app_user_id" = ${payload.appUserId}::uuid
+        AND "dify_conversation_id" = ${payload.conversationId}
+        AND "scope" = ${payload.scope}
+        AND COALESCE("message_ids", '[]'::jsonb) = ${messageIdsJson}::jsonb
+        AND "expires_at" > CURRENT_TIMESTAMP
+      ORDER BY "created_at" DESC
+      LIMIT 1
+    `
+    if (existing[0]?.token) {
+      await db.$executeRaw`
+        UPDATE "conversation_shares"
+        SET "expires_at" = ${new Date(expiresAt)}
+        WHERE "token" = ${existing[0].token}
+      `
+      return existing[0].token
+    }
+    const newToken = randomBytes(16).toString('base64url')
     await db.$executeRaw`
       INSERT INTO "conversation_shares" (
         "id",
@@ -79,7 +102,7 @@ export const createStoredConversationShare = async (
       )
       VALUES (
         ${randomUUID()}::uuid,
-        ${token},
+        ${newToken},
         ${payload.appUserId}::uuid,
         ${payload.conversationId},
         ${payload.scope},
@@ -87,6 +110,7 @@ export const createStoredConversationShare = async (
         ${new Date(expiresAt)}
       )
     `
+    return newToken
   })
   return { token, expiresAt }
 }

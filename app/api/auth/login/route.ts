@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
           appId: pendingQq.appId,
           openId: pendingQq.openId,
           unionId: pendingQq.unionId,
+          qqNumber: pendingQq.qqNumber,
         })
         response.cookies.set(PENDING_QQ_COOKIE, '', { path: '/', maxAge: 0 })
       }

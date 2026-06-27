@@ -31,6 +31,7 @@ interface FileInAttachmentItemProps {
   onRemove?: (fileId: string) => void
   onReUpload?: (fileId: string) => void
   canPreview?: boolean
+  compact?: boolean
 }
 const FileInAttachmentItem = ({
   file,
@@ -39,11 +40,75 @@ const FileInAttachmentItem = ({
   onRemove,
   onReUpload,
   canPreview,
+  compact,
 }: FileInAttachmentItemProps) => {
   const { id, name, type, progress, supportFileType, base64Url, url, isRemote } = file
   const ext = getFileExtension(name, type, isRemote)
   const isImageFile = supportFileType === SupportUploadFileTypes.image
   const [imagePreviewUrl, setImagePreviewUrl] = useState('')
+  if (compact || !showDownloadAction) {
+    return (
+      <>
+        <div className={cn(
+          'group relative flex h-28 w-28 shrink-0 flex-col items-center justify-center overflow-hidden rounded-2xl border border-black/5 bg-black/[0.035] p-2 text-center shadow-sm sm:h-32 sm:w-32',
+          progress === -1 && 'border-state-destructive-border bg-state-destructive-hover',
+        )}>
+          {isImageFile
+            ? (
+              <FileImageRender
+                className='absolute inset-0 h-full w-full object-cover'
+                imageUrl={base64Url || url || ''}
+              />
+            )
+            : (
+              <>
+                <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white shadow-sm">
+                  <FileTypeIcon
+                    type={getFileAppearanceType(name, type)}
+                    size='lg'
+                  />
+                </div>
+                <div className='mt-2 line-clamp-2 max-w-full break-all px-1 text-[11px] font-semibold leading-4 text-text-secondary' title={name}>
+                  {name}
+                </div>
+              </>
+            )}
+          {progress >= 0 && !fileIsUploaded(file) && (
+            <div className='absolute inset-0 z-10 grid place-items-center bg-black/35 text-white'>
+              <ProgressCircle percentage={progress} />
+            </div>
+          )}
+          {progress === -1 && (
+            <button
+              type="button"
+              className='absolute inset-0 z-10 grid place-items-center bg-black/35 text-white'
+              onClick={() => onReUpload?.(id)}
+            >
+              <ReplayLine className='h-5 w-5' />
+            </button>
+          )}
+          {showDeleteAction && (
+            <button
+              type="button"
+              aria-label="移除文件"
+              className='absolute right-1 top-1 z-20 grid h-6 w-6 place-items-center rounded-full bg-black/55 text-white shadow-sm backdrop-blur transition hover:bg-black/70 sm:opacity-0 sm:group-hover:opacity-100'
+              onClick={() => onRemove?.(id)}
+            >
+              ×
+            </button>
+          )}
+        </div>
+        {
+          imagePreviewUrl && canPreview && (
+            <ImagePreview
+              url={imagePreviewUrl}
+              onCancel={() => setImagePreviewUrl('')}
+            />
+          )
+        }
+      </>
+    )
+  }
   return (
     <>
       <div className={cn(

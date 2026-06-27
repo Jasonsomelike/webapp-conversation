@@ -1,38 +1,123 @@
 'use client'
 
 import { upload } from '@/service/base'
+import type { UploadedFileResult } from '@/app/components/base/upload-result'
+import { normalizeUploadedFileResult } from '@/app/components/base/upload-result'
 
 interface ImageUploadParams {
   file: File
   onProgressCallback: (progress: number) => void
-  onSuccessCallback: (res: { id: string }) => void
+  onSuccessCallback: (res: UploadedFileResult) => void
   onErrorCallback: () => void
 }
 type ImageUpload = (v: ImageUploadParams) => void
-export const imageUpload: ImageUpload = ({
+const maxUploadBytes = 600 * 1024
+const maxUploadEdge = 1600
+
+export const compressImageForUpload = async (file: File): Promise<File> => {
+  if (!file.type.startsWith('image/') || file.type === 'image/gif')
+  { return file }
+  if (file.size <= maxUploadBytes)
+  { return file }
+
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const element = new Image()
+    element.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve(element)
+    }
+    element.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('IMAGE_DECODE_FAILED'))
+    }
+    element.src = url
+  })
+
+  const scale = Math.min(1, maxUploadEdge / Math.max(image.width, image.height))
+  const width = Math.max(1, Math.round(image.width * scale))
+  const height = Math.max(1, Math.round(image.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context)
+  { return file }
+  context.drawImage(image, 0, 0, width, height)
+
+  const blob = await new Promise<Blob | null>(resolve =>
+    canvas.toBlob(resolve, 'image/jpeg', 0.82),
+  )
+  if (!blob || blob.size >= file.size)
+  { return file }
+  const filename = file.name.replace(/\.[^.]+$/, '') || 'image'
+  return new File([blob], `${filename}.jpg`, { type: 'image/jpeg', lastModified: file.lastModified })
+}
+
+export const imageUpload: ImageUpload = async ({
   file,
   onProgressCallback,
   onSuccessCallback,
   onErrorCallback,
 }) => {
-  const formData = new FormData()
-  formData.append('file', file)
+  let uploadFile = file
+  try {
+    uploadFile = await compressImageForUpload(file)
+  }
+  catch {
+    uploadFile = file
+  }
+  const ticketController = new AbortController()
+  const ticketTimer = globalThis.setTimeout(() => ticketController.abort(), 3000)
+  const ticket = await fetch('/api/file-upload-ticket', {
+    method: 'POST',
+    credentials: 'include',
+    signal: ticketController.signal,
+  }).then(async (response) => {
+    if (!response.ok)
+    { throw new Error(await response.text().catch(() => 'UPLOAD_TICKET_FAILED')) }
+    return response.json() as Promise<{ url: string, user: string, requestId: string }>
+  }).catch(() => null).finally(() => {
+    globalThis.clearTimeout(ticketTimer)
+  })
+  const createFormData = (user?: string) => {
+    const formData = new FormData()
+    formData.append('file', uploadFile)
+    if (user)
+    { formData.append('user', user) }
+    return formData
+  }
   const onProgress = (e: ProgressEvent) => {
     if (e.lengthComputable) {
-      const percent = Math.floor(e.loaded / e.total * 100)
+      const percent = Math.min(99, Math.floor(e.loaded / e.total * 100))
       onProgressCallback(percent)
     }
   }
 
-  upload({
+  const uploadOnce = (directTicket?: { url: string, user: string, requestId: string } | null) => upload({
     xhr: new XMLHttpRequest(),
-    data: formData,
+    ...(directTicket?.url
+      ? { url: directTicket.url, withCredentials: false, headers: { 'X-Request-Id': directTicket.requestId } }
+      : {}),
+    data: createFormData(directTicket?.user),
     onprogress: onProgress,
-  })
-    .then((res: { id: string }) => {
-      onSuccessCallback(res)
-    })
-    .catch(() => {
-      onErrorCallback()
-    })
+  }) as Promise<UploadedFileResult>
+
+  try {
+    const res = await uploadOnce(ticket)
+    onSuccessCallback(normalizeUploadedFileResult(res))
+  }
+  catch {
+    if (ticket?.url) {
+      try {
+        const fallbackRes = await uploadOnce(null)
+        onSuccessCallback(normalizeUploadedFileResult(fallbackRes))
+        return
+      }
+      catch {
+        // Fall through to the unified upload error below.
+      }
+    }
+    onErrorCallback()
+  }
 }

@@ -5,7 +5,9 @@ import hmac
 import json
 import logging
 import os
+import queue
 import re
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -14,6 +16,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import psycopg2
+import psycopg2.extras
 import requests
 from flask import Flask, Response, request, send_file, stream_with_context
 
@@ -29,6 +32,10 @@ DIFY_APP_API_KEY = os.getenv("DIFY_APP_API_KEY", "")
 DIFY_CHAT_API_URL = os.getenv(
     "DIFY_CHAT_API_URL",
     "http://api:5001/v1/chat-messages",
+)
+DIFY_FILE_UPLOAD_API_URL = os.getenv(
+    "DIFY_FILE_UPLOAD_API_URL",
+    "http://api:5001/v1/files/upload",
 )
 CHAT_RELAY_ALLOWED_ORIGIN = os.getenv(
     "CHAT_RELAY_ALLOWED_ORIGIN",
@@ -64,11 +71,14 @@ def add_file_cors_headers(response: Response) -> Response:
 
 
 def error_response(message: str, status: int, request_id: str) -> Response:
+    headers = {"X-Request-Id": request_id}
+    if request.path.startswith(("/files/upload", "/chat-messages")):
+        headers.update(cors_headers())
     return Response(
         f"{message}. requestId={request_id}\n",
         status=status,
         content_type="text/plain; charset=utf-8",
-        headers={"X-Request-Id": request_id},
+        headers=headers,
     )
 
 
@@ -221,6 +231,137 @@ def storage_file_response(
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+def header_token_is_valid() -> bool:
+    provided = request.headers.get("X-Internal-Token", "")
+    return bool(
+        INTERNAL_TOKEN
+        and provided
+        and hmac.compare_digest(provided.encode(), INTERNAL_TOKEN.encode())
+    )
+
+
+def jsonish(value):
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+    return value or {}
+
+
+def epoch_seconds(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return int(value.timestamp())
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+@app.get("/library/documents/catalog")
+def document_catalog():
+    request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+    if not header_token_is_valid():
+        return error_response("Unauthorized", 401, request_id)
+
+    try:
+        max_rows = min(10000, max(1, int(request.args.get("limit", "10000"))))
+    except ValueError:
+        return error_response("Invalid limit", 400, request_id)
+
+    try:
+        with database_connection() as connection:
+            connection.set_session(readonly=True, autocommit=False)
+            with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'documents'
+                    """
+                )
+                available_columns = {row["column_name"] for row in cursor.fetchall()}
+
+                field_expressions = {
+                    "id": "id::text",
+                    "position": "position",
+                    "data_source_type": "data_source_type",
+                    "data_source_info": "data_source_info",
+                    "data_source_detail_dict": "data_source_detail_dict",
+                    "name": "name",
+                    "created_from": "created_from",
+                    "created_at": "created_at",
+                    "tokens": "tokens",
+                    "indexing_status": "indexing_status",
+                    "display_status": "display_status",
+                    "error": "error",
+                    "enabled": "enabled",
+                    "archived": "archived",
+                    "word_count": "word_count",
+                    "hit_count": "hit_count",
+                    "doc_form": "doc_form",
+                }
+                selected = []
+                for field_name, expression in field_expressions.items():
+                    source_column = expression.split("::", 1)[0]
+                    if source_column in available_columns:
+                        selected.append(f"{expression} AS {field_name}")
+                    else:
+                        selected.append(f"NULL AS {field_name}")
+
+                order_by = (
+                    "position DESC NULLS LAST, created_at DESC NULLS LAST"
+                    if "position" in available_columns and "created_at" in available_columns
+                    else "id DESC"
+                )
+                cursor.execute(
+                    f"""
+                    SELECT {', '.join(selected)}
+                    FROM documents
+                    WHERE (%s = '' OR dataset_id::text = %s)
+                    ORDER BY {order_by}
+                    LIMIT %s
+                    """,
+                    (DATASET_ID, DATASET_ID, max_rows),
+                )
+                rows = cursor.fetchall()
+
+        documents = []
+        for row in rows:
+            data_source_info = jsonish(row.get("data_source_info"))
+            data_source_detail = jsonish(row.get("data_source_detail_dict"))
+            documents.append({
+                "id": str(row.get("id")),
+                "position": row.get("position"),
+                "data_source_type": row.get("data_source_type"),
+                "data_source_info": data_source_info,
+                "data_source_detail_dict": data_source_detail,
+                "name": row.get("name") or str(row.get("id")),
+                "created_from": row.get("created_from"),
+                "created_at": epoch_seconds(row.get("created_at")),
+                "tokens": row.get("tokens"),
+                "indexing_status": row.get("indexing_status"),
+                "display_status": row.get("display_status"),
+                "error": row.get("error"),
+                "enabled": row.get("enabled"),
+                "archived": row.get("archived"),
+                "word_count": row.get("word_count"),
+                "hit_count": row.get("hit_count") or 0,
+                "doc_form": row.get("doc_form"),
+            })
+
+        return {
+            "data": documents,
+            "total": len(documents),
+            "requestId": request_id,
+        }
+    except Exception as error:
+        logger.exception("[library-file-service] catalog failed requestId=%s", request_id)
+        return error_response(f"Document catalog failed: {type(error).__name__}", 500, request_id)
 
 @app.get("/page-images/<batch>/<filename>")
 def page_image_file(batch: str, filename: str):
@@ -453,7 +594,7 @@ def cors_headers() -> dict[str, str]:
         "Access-Control-Allow-Origin": allowed_origin,
         "Access-Control-Allow-Credentials": "true",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Headers": "Content-Type, X-Network-Study-App, X-Request-Id",
         "Access-Control-Expose-Headers": "X-Request-Id",
         "Vary": "Origin",
     }
@@ -464,6 +605,99 @@ def chat_error(message: str, status: int, request_id: str) -> Response:
         json.dumps({"error": message, "requestId": request_id}, ensure_ascii=False),
         status=status,
         content_type="application/json; charset=utf-8",
+        headers={**cors_headers(), "X-Request-Id": request_id},
+    )
+
+
+def upload_ticket_is_valid(request_id: str, user: str) -> bool:
+    provided = request.headers.get("X-Internal-Token", "")
+    if (
+        INTERNAL_TOKEN
+        and provided
+        and hmac.compare_digest(provided.encode(), INTERNAL_TOKEN.encode())
+    ):
+        return True
+
+    expires = request.args.get("expires", "")
+    signature = request.args.get("signature", "")
+    try:
+        expires_at = int(expires)
+    except ValueError:
+        return False
+    now = int(time.time())
+    if (
+        not INTERNAL_TOKEN
+        or not user
+        or not request_id
+        or expires_at < now
+        or expires_at > now + 180
+    ):
+        return False
+    canonical = f"{user}\n{request_id}\n{expires}"
+    expected = base64.urlsafe_b64encode(
+        hmac.new(INTERNAL_TOKEN.encode(), canonical.encode(), hashlib.sha256).digest()
+    ).decode().rstrip("=")
+    return bool(signature and hmac.compare_digest(signature, expected))
+
+
+@app.route("/files/upload", methods=["OPTIONS"])
+def files_upload_options():
+    return Response(status=204, headers=cors_headers())
+
+
+@app.post("/files/upload")
+def files_upload():
+    upload_file = request.files.get("file")
+    user = request.form.get("user", "").strip()
+    request_id = (
+        request.headers.get("X-Request-Id")
+        or request.args.get("requestId")
+        or str(uuid.uuid4())
+    )
+    if not upload_ticket_is_valid(request_id, user):
+        return error_response("Upload ticket is invalid", 401, request_id)
+    if not DIFY_APP_API_KEY:
+        return error_response("Dify app key is not configured", 503, request_id)
+
+    if upload_file is None or not user:
+        return error_response("Missing file or user", 400, request_id)
+
+    try:
+        upstream = requests.post(
+            DIFY_FILE_UPLOAD_API_URL,
+            headers={"Authorization": f"Bearer {DIFY_APP_API_KEY}"},
+            data={"user": user},
+            files={
+                "file": (
+                    upload_file.filename or "upload",
+                    upload_file.stream,
+                    upload_file.mimetype or "application/octet-stream",
+                ),
+            },
+            timeout=(10, 120),
+        )
+    except requests.RequestException as error:
+        logger.exception("[file-upload] connect failed requestId=%s", request_id)
+        return error_response(f"Dify upload failed: {type(error).__name__}", 503, request_id)
+
+    if not upstream.ok:
+        logger.error(
+            "[file-upload] upstream failed requestId=%s status=%s body=%s",
+            request_id,
+            upstream.status_code,
+            upstream.text[:500],
+        )
+        return Response(
+            upstream.text or "Upload failed",
+            status=upstream.status_code,
+            content_type=upstream.headers.get("Content-Type", "text/plain; charset=utf-8"),
+            headers={**cors_headers(), "X-Request-Id": request_id},
+        )
+
+    return Response(
+        upstream.content,
+        status=upstream.status_code,
+        content_type=upstream.headers.get("Content-Type", "application/json"),
         headers={**cors_headers(), "X-Request-Id": request_id},
     )
 
@@ -662,20 +896,52 @@ def chat_messages():
         decoder = codecs.getincrementaldecoder("utf-8")()
         event_buffer = ""
         completed = False
+        stream_queue = queue.Queue()
+
+        def pump_upstream():
+            nonlocal completed, event_buffer
+            try:
+                for chunk in upstream.iter_content(chunk_size=8192):
+                    if not chunk:
+                        continue
+                    stream_queue.put(("chunk", chunk))
+                    event_buffer += decoder.decode(chunk)
+                    blocks = re.split(r"\r?\n\r?\n", event_buffer)
+                    event_buffer = blocks.pop() or ""
+                    for block in blocks:
+                        read_event_block(block)
+                event_buffer += decoder.decode(b"", final=True)
+                if event_buffer:
+                    read_event_block(event_buffer)
+                completed = True
+                stream_queue.put(("done", None))
+            except Exception as error:
+                logger.exception("[chat-relay] upstream stream failed requestId=%s", request_id)
+                stream_queue.put(("error", str(error)))
+            finally:
+                upstream.close()
+
+        threading.Thread(target=pump_upstream, daemon=True).start()
         try:
-            for chunk in upstream.iter_content(chunk_size=8192):
-                if not chunk:
+            while True:
+                try:
+                    item_type, payload = stream_queue.get(timeout=15)
+                except queue.Empty:
+                    yield b": keep-alive\n\n"
                     continue
-                yield chunk
-                event_buffer += decoder.decode(chunk)
-                blocks = re.split(r"\r?\n\r?\n", event_buffer)
-                event_buffer = blocks.pop() or ""
-                for block in blocks:
-                    read_event_block(block)
-            event_buffer += decoder.decode(b"", final=True)
-            if event_buffer:
-                read_event_block(event_buffer)
-            completed = True
+
+                if item_type == "chunk":
+                    yield payload
+                    continue
+                if item_type == "error":
+                    yield (
+                        'data: {"status":400,"event":"error","code":"DIFY_STREAM_INTERRUPTED",'
+                        '"message":"Dify stream interrupted"}\n\n'
+                    ).encode("utf-8")
+                    break
+                if item_type == "done":
+                    break
+
             if completed and state["conversationId"] and state["messageId"]:
                 persist_event = {
                     "event": "relay_persist",
@@ -688,6 +954,7 @@ def chat_messages():
                         "workflowProcess": state["workflowProcess"],
                         "agentLogs": state["agentLogs"],
                         "assistantFiles": state["assistantFiles"],
+                        "userFiles": body.get("userFiles") or body.get("user_files") or [],
                     },
                 }
                 yield (

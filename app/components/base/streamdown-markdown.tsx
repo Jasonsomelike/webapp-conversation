@@ -11,13 +11,45 @@ import {
   toAbsoluteDifyAssetUrl,
   toDifyAssetProxyUrl,
 } from '@/lib/dify-assets'
+import { isNetworkStudyApp } from '@/lib/native-app'
 
 interface StreamdownMarkdownProps {
   content: string
   className?: string
+  shareToken?: string
 }
 
-const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElement>) => {
+const toSharedAssetProxyUrl = (value: string, shareToken?: string, download = false, filename = '') => {
+  if (!shareToken)
+  { return toDifyAssetProxyUrl(value, download, filename) }
+  const url = toAbsoluteDifyAssetUrl(value)
+  if (!url)
+  { return '' }
+  try {
+    const target = new URL(url)
+    const isDifyAsset = target.protocol === 'https:'
+      && ['dify.jasonsome.cn', 'www.jasonsome.cn', 'jasonsome.cn'].includes(target.hostname)
+      && (target.hostname !== 'dify.jasonsome.cn' || !target.port || target.port === '22380')
+      && (target.pathname.startsWith('/files/') || target.pathname.startsWith('/page-images/'))
+    if (!isDifyAsset)
+    { return toDifyAssetProxyUrl(value, download, filename) }
+  }
+  catch {
+    return toDifyAssetProxyUrl(value, download, filename)
+  }
+  const params = new URLSearchParams({ url })
+  if (download)
+  { params.set('download', '1') }
+  if (filename)
+  { params.set('filename', filename) }
+  return `/api/share/${encodeURIComponent(shareToken)}/file-proxy?${params}`
+}
+
+interface MarkdownImageProps extends ImgHTMLAttributes<HTMLImageElement> {
+  shareToken?: string
+}
+
+const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) => {
   const [preview, setPreview] = useState(false)
   const [failed, setFailed] = useState(false)
   const [sourceInfo, setSourceInfo] = useState<{
@@ -28,12 +60,12 @@ const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElemen
   }>()
   const sourceUrl = String(src)
   const absoluteSourceUrl = toAbsoluteDifyAssetUrl(sourceUrl)
-  const imageUrl = toDifyAssetProxyUrl(sourceUrl)
+  const imageUrl = toSharedAssetProxyUrl(sourceUrl, shareToken)
 
   const pageNumber = sourceInfo?.pageNumber || Number(sourceUrl.match(/\/page-images\/[^/]+\/page_(\d+)\./i)?.[1] || 0) || undefined
   const sourceFilename = sourceInfo?.documentName || String(alt).match(/([^\n|]+?\.(?:pdf|docx?|pptx?))/i)?.[1]?.replace(/^[\s\-–—*#>|![\]()"'“”‘’]+/, '').trim()
   const isKnowledgeSource = Boolean(pageNumber || sourceUrl.includes('/page-images/'))
-  const isGeneratedImage = sourceUrl.includes('/files/tools/')
+  const isGeneratedImage = sourceUrl.includes('/files/tools/') || sourceUrl.includes('/api/generated-files/')
   const sourceLabel = isKnowledgeSource
     ? `来源：${sourceFilename || '课程知识库原页'}${pageNumber ? ` · 第 ${pageNumber} 页` : ''}`
     : isGeneratedImage
@@ -42,9 +74,19 @@ const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElemen
         ? `图片说明：${alt}`
         : '来源：回答附图'
   const originalLabel = isKnowledgeSource ? '查看来源' : '查看原图'
+  const showOriginalLink = !isGeneratedImage
   const sourceHref = isKnowledgeSource
     ? sourceInfo?.previewUrl || `/api/sources/image-info?redirect=1&url=${encodeURIComponent(absoluteSourceUrl)}`
     : imageUrl
+  const disableNativeGeneratedPreview = isGeneratedImage && isNetworkStudyApp()
+  const openPreview = () => {
+    if (disableNativeGeneratedPreview)
+    { return }
+    if (isNetworkStudyApp())
+    { setPreview(true) }
+    else
+    { window.open(imageUrl, '_blank', 'noopener,noreferrer') }
+  }
   const getReturnContext = (element?: HTMLElement | null) => {
     if (typeof window === 'undefined')
     { return { returnTo: '', messageId: '', conversationId: '' } }
@@ -131,10 +173,12 @@ const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElemen
       <span className='markdown-media-error'>
         <span>{sourceLabel} · 图片加载失败</span>
         <button type='button' onClick={() => setFailed(false)}>重试</button>
-        <a href={sourceHrefWithReturn()} onClick={(event) => {
-          rememberReturnPosition(event.currentTarget)
-          event.currentTarget.href = sourceHrefWithReturn(event.currentTarget)
-        }}>{originalLabel}</a>
+        {showOriginalLink && (
+          <a href={sourceHrefWithReturn()} onClick={(event) => {
+            rememberReturnPosition(event.currentTarget)
+            event.currentTarget.href = sourceHrefWithReturn(event.currentTarget)
+          }}>{originalLabel}</a>
+        )}
       </span>
     )
   }
@@ -144,33 +188,40 @@ const MarkdownImage = ({ src = '', alt = '' }: ImgHTMLAttributes<HTMLImageElemen
       <figure className='markdown-source-figure my-4 max-w-full overflow-hidden rounded-xl border border-black/10 bg-black/[0.025] shadow-sm'>
         <span
           role='button'
-          tabIndex={0}
-          className='markdown-media group relative block max-w-full overflow-hidden text-left'
-          onClick={() => setPreview(true)}
+          tabIndex={disableNativeGeneratedPreview ? -1 : 0}
+          className={`markdown-media group relative block max-w-full overflow-hidden text-left ${disableNativeGeneratedPreview ? 'cursor-default' : ''}`}
+          onClick={openPreview}
           onKeyDown={(event) => {
+            if (disableNativeGeneratedPreview)
+            { return }
             if (event.key === 'Enter' || event.key === ' ')
-            { setPreview(true) }
+            { openPreview() }
           }}
         >
           <img src={imageUrl} alt={alt} loading='lazy' onError={() => setFailed(true)} />
-          <span className='pointer-events-none absolute inset-x-0 bottom-0 translate-y-full bg-black/65 px-3 py-2 text-[11px] text-white transition-transform group-hover:translate-y-0'>
-            点击放大查看
-          </span>
+          {!disableNativeGeneratedPreview && (
+            <span className='pointer-events-none absolute inset-x-0 bottom-0 translate-y-full bg-black/65 px-3 py-2 text-[11px] text-white transition-transform group-hover:translate-y-0'>
+              点击放大查看
+            </span>
+          )}
         </span>
         <figcaption className='flex flex-wrap items-center justify-between gap-2 border-t border-black/10 px-3 py-2 text-[11px] text-[var(--studio-muted)]'>
           <span>{sourceLabel}</span>
-          <a
-            href={sourceHrefWithReturn()}
-            rel='noreferrer'
-            onClick={(event) => {
-              event.stopPropagation()
-              rememberReturnPosition(event.currentTarget)
-              event.currentTarget.href = sourceHrefWithReturn(event.currentTarget)
-            }}
-            className='font-semibold text-[var(--studio-accent-strong)]'
-          >
-            {originalLabel}
-          </a>
+          {showOriginalLink && (
+            <a
+              href={sourceHrefWithReturn()}
+              target={isKnowledgeSource ? undefined : '_blank'}
+              rel='noreferrer'
+              onClick={(event) => {
+                event.stopPropagation()
+                rememberReturnPosition(event.currentTarget)
+                event.currentTarget.href = sourceHrefWithReturn(event.currentTarget)
+              }}
+              className='font-semibold text-[var(--studio-accent-strong)]'
+            >
+              {originalLabel}
+            </a>
+          )}
         </figcaption>
       </figure>
       {preview && <ImagePreview url={imageUrl} onCancel={() => setPreview(false)} />}
@@ -181,11 +232,16 @@ const childText = (children: ReactNode) => Array.isArray(children)
   ? children.map(child => String(child)).join('').trim()
   : String(children || '').trim()
 
+interface MarkdownLinkProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
+  shareToken?: string
+}
+
 const MarkdownLink = ({
   href = '',
   children,
+  shareToken,
   ...props
-}: AnchorHTMLAttributes<HTMLAnchorElement>) => {
+}: MarkdownLinkProps) => {
   const downloadable = isDownloadableAsset(href)
   const filename = (() => {
     const label = childText(children)
@@ -198,7 +254,7 @@ const MarkdownLink = ({
       return '下载文件'
     }
   })()
-  const target = toDifyAssetProxyUrl(href, downloadable, filename)
+  const target = toSharedAssetProxyUrl(href, shareToken, downloadable, filename)
 
   if (downloadable) {
     const extension = filename.split('.').pop()?.toUpperCase() || 'FILE'
@@ -221,14 +277,14 @@ const MarkdownLink = ({
   )
 }
 
-export function StreamdownMarkdown({ content, className = '' }: StreamdownMarkdownProps) {
+export function StreamdownMarkdown({ content, className = '', shareToken }: StreamdownMarkdownProps) {
   return (
     <div className={`streamdown-markdown ${className}`}>
       <Streamdown
         defaultOrigin='https://dify.jasonsome.cn:22380'
         components={{
-          img: MarkdownImage,
-          a: MarkdownLink,
+          img: props => <MarkdownImage {...props} shareToken={shareToken} />,
+          a: props => <MarkdownLink {...props} shareToken={shareToken} />,
         }}
       >
         {normalizeAssistantMarkdown(content)}

@@ -6,6 +6,7 @@ import {
   ShieldCheckIcon,
   SparklesIcon,
 } from '@heroicons/react/24/outline'
+import AboutVersionBadge from '@/app/components/about/about-version-badge'
 import PageCard from '@/app/components/workspace/page-card'
 
 export default function AboutPage() {
@@ -18,7 +19,7 @@ export default function AboutPage() {
           </div>
           <h2 className="mt-5 text-2xl font-semibold">知行网络学堂</h2>
           <p className="mt-2 text-sm text-white/55">计算机网络个性化 AI 学习空间</p>
-          <div className="mt-3 text-xs text-white/35">Web / Android · 版本 1.10</div>
+          <AboutVersionBadge />
         </div>
         <div className="space-y-5 p-5 sm:p-7">
           <p className="text-sm leading-7 text-[var(--studio-muted)]">

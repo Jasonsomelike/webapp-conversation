@@ -12,6 +12,23 @@ const nextConfig = {
   experimental: {
     // appDir: true,
   },
+  async headers() {
+    return [
+      {
+        source: '/downloads/:path*.apk',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/vnd.android.package-archive',
+          },
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=3600, immutable',
+          },
+        ],
+      },
+    ]
+  },
   poweredByHeader: false,
 }
 

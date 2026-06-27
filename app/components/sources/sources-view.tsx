@@ -4,29 +4,65 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ArrowDownTrayIcon,
+  ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
   BookOpenIcon,
   DocumentMagnifyingGlassIcon,
+  ExclamationTriangleIcon,
   MagnifyingGlassIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
 import type { KnowledgeReference } from '@/lib/learning-types'
 import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
+import ImagePreview from '@/app/components/base/image-uploader/image-preview'
+import { ResizableSplitHandle, useResizableSplit } from '@/app/components/base/resizable-split'
 
-export default function SourcesView({ initialReferences }: { initialReferences: KnowledgeReference[] }) {
+const inferPageFromImageUrl = (value?: string | null) =>
+  Number(String(value || '').match(/\/page_(\d+)\./i)?.[1] || 0) || undefined
+
+const inferOriginalPdfPageFromQuote = (value?: string | null) =>
+  Number(String(value || '').match(/原\s*PDF\s*第\s*(\d{1,5})\s*页/i)?.[1] || 0) || undefined
+
+interface SourcesViewProps {
+  initialReferences: KnowledgeReference[]
+  loadError?: string
+}
+
+export default function SourcesView({ initialReferences, loadError = '' }: SourcesViewProps) {
+  const safeReferences = useMemo(
+    () => initialReferences.filter((item): item is KnowledgeReference =>
+      Boolean(item && typeof item === 'object' && item.id && item.documentName),
+    ),
+    [initialReferences],
+  )
   const [query, setQuery] = useState('')
-  const [selectedId, setSelectedId] = useState(initialReferences[0]?.id)
+  const [selectedId, setSelectedId] = useState(safeReferences[0]?.id)
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
+  const [previewImageUrl, setPreviewImageUrl] = useState('')
+  const [showLoadError, setShowLoadError] = useState(Boolean(loadError))
+  const sourcesSplit = useResizableSplit({
+    storageKey: 'network-study-sources-list-width',
+    cssVariable: '--sources-list-width',
+    defaultSize: 380,
+    minSize: 300,
+    maxSize: 620,
+    minTrailingSize: 620,
+    label: '调整引用列表宽度',
+  })
 
   const [imageError, setImageError] = useState(false)
-  const filtered = useMemo(() => initialReferences.filter(item =>
+  const filtered = useMemo(() => safeReferences.filter(item =>
     `${item.documentName} ${item.topic} ${item.quote}`.toLowerCase().includes(query.toLowerCase()),
-  ), [query, initialReferences])
-  const selected = initialReferences.find(item => item.id === selectedId) || filtered[0]
-  const documentCount = new Set(initialReferences.map(item => item.documentName)).size
+  ), [query, safeReferences])
+  const selected = safeReferences.find(item => item.id === selectedId) || filtered[0]
+  const documentCount = new Set(safeReferences.map(item => item.documentName)).size
+  const selectedPreviewPage = selected
+    ? inferPageFromImageUrl(selected.pageImageUrl) || selected.pageNumber || selected.originalPageNumber || 1
+    : 1
+  const originalPageNumber = inferOriginalPdfPageFromQuote(selected?.quote)
   const documentPreviewUrl = selected
-    ? `/sources/preview/${selected.id}?page=${selected.originalPageNumber || selected.pageNumber || 1}&filename=${encodeURIComponent(selected.documentName)}&returnTo=${encodeURIComponent('/sources')}`
+    ? `/sources/preview/${selected.id}?page=${selectedPreviewPage}&filename=${encodeURIComponent(selected.documentName)}&returnTo=${encodeURIComponent('/sources')}`
     : ''
   const documentDownloadUrl = selected
     ? `/api/sources/${selected.id}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`
@@ -38,6 +74,14 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
   useEffect(() => {
     setImageError(false)
   }, [selected?.id])
+  useEffect(() => {
+    setShowLoadError(Boolean(loadError))
+  }, [loadError])
+  useEffect(() => {
+    if (selectedId && safeReferences.some(item => item.id === selectedId))
+    { return }
+    setSelectedId(safeReferences[0]?.id)
+  }, [safeReferences, selectedId])
   useEffect(() => {
     if (!mobileDetailOpen)
     { return }
@@ -55,8 +99,8 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
       window.NetworkStudyApp?.setShellState('/sources', '我的文档引用', '可追溯学习')
     }
   }, [mobileDetailOpen])
-  const averageScore = initialReferences.length
-    ? Math.round(initialReferences.reduce((sum, item) => sum + (item.score || 0), 0) / initialReferences.length * 100)
+  const averageScore = safeReferences.length
+    ? Math.round(safeReferences.reduce((sum, item) => sum + (item.score || 0), 0) / safeReferences.length * 100)
     : 0
 
   const exportReferences = () => {
@@ -65,7 +109,7 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
       ...filtered.map(item => [
         item.documentName,
         String(item.pageNumber || ''),
-        String(item.originalPageNumber || ''),
+        String(inferOriginalPdfPageFromQuote(item.quote) || ''),
         String(item.score || ''),
         item.quote || '',
       ]),
@@ -127,22 +171,28 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
 
     const sourcePreview = pageImageHref && !imageError
       ? (
-        <a
-          href={documentPreviewUrl || pageImageHref}
+        <div
           className={`group mt-5 inline-block max-w-full overflow-hidden rounded-2xl border border-black/10 bg-black/[0.025] p-2 text-left shadow-sm ${mobile ? 'w-full' : 'sm:max-w-[50%]'}`}
         >
-          <img
-            src={pageImageHref}
-            alt={`${selected.documentName} 来源页`}
-            loading="lazy"
-            onError={() => setImageError(true)}
-            className={`w-full rounded-xl object-contain transition-transform duration-200 group-hover:scale-[1.01] ${mobile ? 'max-h-[34dvh]' : 'max-h-[240px]'}`}
-          />
+          <button
+            type="button"
+            className="block w-full cursor-zoom-in overflow-hidden rounded-xl"
+            onClick={() => setPreviewImageUrl(pageImageHref)}
+            aria-label="放大来源页图片"
+          >
+            <img
+              src={pageImageHref}
+              alt={`${selected.documentName} 来源页`}
+              loading="lazy"
+              onError={() => setImageError(true)}
+              className={`w-full rounded-xl object-contain transition-transform duration-200 group-hover:scale-[1.01] ${mobile ? 'max-h-[34dvh]' : 'max-h-[240px]'}`}
+            />
+          </button>
           <div className="flex items-center justify-between gap-3 px-2 pb-1 pt-2 text-[10px] text-black/45">
-            <span>点击查看完整 PDF</span>
-            <span className="font-semibold text-[var(--studio-accent-strong)]">第 {selected.originalPageNumber || selected.pageNumber || 1} 页</span>
+            <a href={documentPreviewUrl} className="font-semibold text-[var(--studio-accent-strong)]">点击查看来源 PDF</a>
+            <span className="font-semibold text-[var(--studio-accent-strong)]">第 {selectedPreviewPage} 页</span>
           </div>
-        </a>
+        </div>
       )
       : (
         <div className="mt-5 rounded-2xl border border-dashed border-black/10 bg-black/[0.025] px-5 py-10 text-center">
@@ -156,8 +206,10 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
       <>
         <div className="flex flex-wrap gap-2 text-[10px]">
           <span className="rounded-full bg-[var(--studio-accent)]/35 px-3 py-1.5 font-semibold text-[var(--studio-accent-strong)]">{selected.topic}</span>
-          {selected.pageNumber && <span className="rounded-full bg-black/[0.04] px-3 py-1.5">分卷第 {selected.pageNumber} 页</span>}
-          {selected.originalPageNumber && <span className="rounded-full bg-orange-50 px-3 py-1.5 text-orange-700">原 PDF 第 {selected.originalPageNumber} 页</span>}
+          {selectedPreviewPage && <span className="rounded-full bg-black/[0.04] px-3 py-1.5">PDF 第 {selectedPreviewPage} 页</span>}
+          {originalPageNumber && (
+            <span className="rounded-full bg-orange-50 px-3 py-1.5 text-orange-700">原书映射第 {originalPageNumber} 页</span>
+          )}
         </div>
         <h2 className={`mt-4 break-words font-semibold ${mobile ? 'text-base leading-6' : 'text-lg leading-7'}`}>{selected.documentName}</h2>
         <div className="mt-1 text-xs text-black/40">{selected.datasetName || '课程知识库'}</div>
@@ -174,9 +226,38 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
 
   return (
     <div className="mx-auto max-w-[1450px] p-4 sm:p-6">
+      {showLoadError && loadError && (
+        <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-xs font-semibold">引用数据暂时未完全加载</div>
+              <div className="mt-1 text-[11px] leading-5">{loadError}</div>
+            </div>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-white px-3 text-[11px] font-semibold text-amber-800 shadow-sm"
+            >
+              <ArrowPathIcon className="h-3.5 w-3.5" />重试
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowLoadError(false)}
+              className="grid h-9 w-9 place-items-center rounded-xl bg-white text-amber-700 shadow-sm"
+              aria-label="关闭提示"
+            >
+              <XMarkIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
         {[
-          ['引用记录', initialReferences.length, '条'],
+          ['引用记录', safeReferences.length, '条'],
           ['命中文档', documentCount, '份'],
           ['平均相关度', averageScore, '%'],
         ].map(([label, value, unit]) => (
@@ -212,7 +293,7 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
           </button>
         </div>
 
-        {!initialReferences.length
+        {!safeReferences.length
           ? (
             <div className="grid min-h-[500px] place-items-center p-10 text-center">
               <div>
@@ -226,10 +307,14 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
             </div>
           )
           : (
-            <div className="grid min-h-[580px] min-w-0 lg:grid-cols-[380px_1fr]">
-              <aside className="min-w-0 border-b border-black/[0.07] bg-black/[0.018] p-3 lg:border-b-0 lg:border-r">
-                <div className="mb-2 px-2 py-2 text-[10px] font-bold uppercase tracking-[0.18em] text-black/40">当前账号引用 · {filtered.length}</div>
-                <div className="space-y-2 lg:max-h-[535px] lg:overflow-y-auto">
+            <div
+              ref={sourcesSplit.containerRef}
+              style={sourcesSplit.containerStyle}
+              className="grid min-h-[580px] min-w-0 lg:grid-cols-[var(--sources-list-width)_8px_minmax(0,1fr)]"
+            >
+              <aside className="flex min-h-0 min-w-0 flex-col border-b border-black/[0.07] bg-black/[0.018] p-3 lg:border-b-0 lg:border-r">
+                <div className="shrink-0 px-2 py-2 text-[10px] font-bold uppercase tracking-[0.18em] text-black/40">当前账号引用 · {filtered.length}</div>
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                   {filtered.map(item => (
                     <button
                       key={item.id}
@@ -246,7 +331,7 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
                     >
                       <div className="line-clamp-2 text-xs font-semibold leading-5">{item.documentName}</div>
                       <div className="mt-2 flex items-center justify-between text-[10px] text-black/40">
-                        <span>{item.pageNumber ? `第 ${item.pageNumber} 页` : '未标注页码'}</span>
+                        <span>{inferPageFromImageUrl(item.pageImageUrl) || item.pageNumber ? `第 ${inferPageFromImageUrl(item.pageImageUrl) || item.pageNumber} 页` : '未标注页码'}</span>
                         <span>{item.score ? `${Math.round(item.score * 100)}%` : '—'}</span>
                       </div>
                       <p className="mt-2 line-clamp-2 break-words text-[11px] leading-5 text-black/45 [overflow-wrap:anywhere]">{item.quote}</p>
@@ -254,6 +339,11 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
                   ))}
                 </div>
               </aside>
+
+              <ResizableSplitHandle
+                separatorProps={sourcesSplit.separatorProps}
+                className="border-r border-black/[0.06] bg-black/[0.018] hover:bg-[var(--studio-accent)]/20"
+              />
 
               <section className="hidden min-w-0 p-6 sm:p-8 lg:block">
                 {renderSelectedDetails()}
@@ -289,6 +379,12 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
         ), document.body,
         )
         : null}
+      {previewImageUrl && (
+        <ImagePreview
+          url={previewImageUrl}
+          onCancel={() => setPreviewImageUrl('')}
+        />
+      )}
     </div>
   )
 }

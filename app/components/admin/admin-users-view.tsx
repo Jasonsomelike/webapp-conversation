@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ArrowPathIcon,
   ChatBubbleLeftRightIcon,
@@ -9,6 +10,7 @@ import {
   MagnifyingGlassIcon,
   TrashIcon,
   UserGroupIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
 import Toast from '@/app/components/base/toast'
@@ -33,7 +35,10 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
   const [query, setQuery] = useState('')
   const [savingId, setSavingId] = useState('')
   const [deletingId, setDeletingId] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<AdminUserRow>()
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [conversationUser, setConversationUser] = useState<AdminUserRow>()
+  const [portalReady, setPortalReady] = useState(false)
   const { notify } = Toast
   const filtered = useMemo(() => users.filter(user =>
     `${user.username} ${user.displayName} ${user.difyUserId}`.toLowerCase().includes(query.trim().toLowerCase()),
@@ -41,6 +46,33 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
 
   const patchLocal = (id: string, patch: Partial<AdminUserRow>) =>
     setUsers(current => current.map(user => user.id === id ? { ...user, ...patch } : user))
+
+  useEffect(() => {
+    setPortalReady(true)
+  }, [])
+
+  useEffect(() => {
+    if (!deleteTarget)
+    { return }
+
+    const html = document.documentElement
+    const body = document.body
+    const previousHtmlOverflow = html.style.overflow
+    const previousBodyOverflow = body.style.overflow
+    const previousBodyPosition = body.style.position
+    const previousBodyWidth = body.style.width
+    html.style.overflow = 'hidden'
+    body.style.overflow = 'hidden'
+    body.style.position = 'relative'
+    body.style.width = '100%'
+
+    return () => {
+      html.style.overflow = previousHtmlOverflow
+      body.style.overflow = previousBodyOverflow
+      body.style.position = previousBodyPosition
+      body.style.width = previousBodyWidth
+    }
+  }, [deleteTarget])
 
   const save = async (user: AdminUserRow, unlock = false) => {
     setSavingId(user.id)
@@ -70,18 +102,24 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
   }
 
   const deleteUser = async (user: AdminUserRow) => {
-    // eslint-disable-next-line no-alert
-    const typed = globalThis.prompt(`将注销账号 @${user.username}，该账号将无法再次登录，QQ 绑定也会解除。\n\n如确认，请输入账号名：${user.username}`)
-    if (typed !== user.username)
-    { return }
+    if (deleteConfirmText !== user.username) {
+      notify({ type: 'error', message: '请先输入完整账户名再注销' })
+      return
+    }
 
     setDeletingId(user.id)
     try {
-      const response = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' })
+      const response = await fetch(`/api/admin/users/${user.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user.username }),
+      })
       const result = await response.json().catch(() => ({}))
       if (!response.ok)
       { throw new Error(result.error || '删除用户失败') }
       setUsers(current => current.filter(item => item.id !== user.id))
+      setDeleteTarget(undefined)
+      setDeleteConfirmText('')
       notify({ type: 'success', message: '用户已注销' })
     }
     catch (error) {
@@ -158,7 +196,10 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
                 </button>
                 <button
                   type="button"
-                  onClick={() => void deleteUser(user)}
+                  onClick={() => {
+                    setDeleteTarget(user)
+                    setDeleteConfirmText('')
+                  }}
                   disabled={deletingId === user.id}
                   className="grid h-10 w-10 place-items-center rounded-xl border border-red-100 bg-red-50 text-red-600 disabled:opacity-50"
                   title="注销/删除用户"
@@ -177,6 +218,89 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
           username={conversationUser.username}
           onClose={() => setConversationUser(undefined)}
         />
+      )}
+      {portalReady && deleteTarget && createPortal(
+        <div
+          role="presentation"
+          className="fixed inset-0 z-[9999] grid place-items-center overflow-hidden bg-black/50 px-3 py-[calc(16px+env(safe-area-inset-top))] backdrop-blur-[3px]"
+          onClick={() => deletingId ? undefined : setDeleteTarget(undefined)}
+          onWheel={event => event.preventDefault()}
+          onTouchMove={event => event.preventDefault()}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-delete-user-title"
+            className="max-h-[min(86dvh,680px)] w-full max-w-[520px] overflow-y-auto overscroll-contain rounded-[28px] border border-red-200 bg-[var(--studio-surface)] p-5 shadow-[0_30px_90px_rgba(0,0,0,.34)]"
+            onClick={event => event.stopPropagation()}
+            onWheel={event => event.stopPropagation()}
+            onTouchMove={event => event.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-600">
+                <TrashIcon className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 id="admin-delete-user-title" className="text-base font-semibold text-red-700">确认注销用户</h3>
+                <p className="mt-2 text-xs leading-6 text-black/55">
+                  将注销 @{deleteTarget.username}。账号、QQ 绑定、头像、会话、消息、引用、画像、图谱、分析报告、上传解析与分享记录会从数据库同步删除，且不可恢复。
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={Boolean(deletingId)}
+                onClick={() => setDeleteTarget(undefined)}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-black/[0.04] text-black/45 transition hover:bg-black/[0.08] disabled:opacity-50"
+                aria-label="关闭"
+              >
+                <XMarkIcon className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-5 rounded-2xl border border-red-100 bg-red-50/50 p-4">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label htmlFor="admin-delete-user-confirm" className="text-xs font-semibold text-red-800">
+                  请输入账户名 @{deleteTarget.username}
+                </label>
+                <button
+                  type="button"
+                  disabled={Boolean(deletingId)}
+                  onClick={() => setDeleteConfirmText(deleteTarget.username)}
+                  className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[10px] font-semibold text-red-600 shadow-sm transition hover:bg-red-100 disabled:opacity-50"
+                >
+                  一键输入账户名
+                </button>
+              </div>
+              <input
+                id="admin-delete-user-confirm"
+                value={deleteConfirmText}
+                onChange={event => setDeleteConfirmText(event.target.value)}
+                disabled={Boolean(deletingId)}
+                autoComplete="off"
+                className="h-11 w-full rounded-xl border border-red-100 bg-white px-3 text-sm outline-none focus:border-red-300"
+                placeholder={deleteTarget.username}
+              />
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={Boolean(deletingId)}
+                onClick={() => setDeleteTarget(undefined)}
+                className="h-11 rounded-xl border border-black/10 px-5 text-xs font-semibold disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(deletingId) || deleteConfirmText !== deleteTarget.username}
+                onClick={() => void deleteUser(deleteTarget)}
+                className="h-11 rounded-xl bg-red-600 px-5 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(220,38,38,.18)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deletingId === deleteTarget.id ? '正在注销…' : '确认注销并清除数据'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

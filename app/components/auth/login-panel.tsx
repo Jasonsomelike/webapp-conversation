@@ -15,10 +15,11 @@ import {
 } from '@heroicons/react/24/outline'
 import { securityQuestions } from '@/lib/account-policy'
 import { isNetworkStudyApp, type NativeQqLoginResult, type NativeQqResultEnvelope } from '@/lib/native-app'
+import { passwordPolicyHint } from '@/lib/password-policy'
 
 type Mode = 'login' | 'register' | 'forgot'
 
-const passwordHint = '至少 8 位，同时包含字母和数字'
+const passwordHint = passwordPolicyHint
 
 const qqLoginErrorMessage = (error: string) => {
   if (error === 'config')

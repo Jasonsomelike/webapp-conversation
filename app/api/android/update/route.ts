@@ -5,6 +5,14 @@ export const dynamic = 'force-dynamic'
 
 const owner = 'Jasonsomelike'
 const repo = 'network-study-android'
+const hostedApkBaseUrl = 'https://www.jasonsome.cn/downloads'
+const hostedApkSizes: Record<string, number> = {
+  'network-study-android-v1.11.0.apk': 3752815,
+  'network-study-android-v1.12.0.apk': 3752815,
+  'network-study-android-v1.13.0.apk': 3753111,
+  'network-study-android-v1.14.0.apk': 3753235,
+  'network-study-android-v1.14.3.apk': 3756591,
+}
 
 const versionFromTag = (tag: string) =>
   tag.replace(/^v/i, '').trim()
@@ -40,6 +48,10 @@ export async function GET() {
       || apkAssets[0]
     const tagName = release.tag_name || ''
     const versionName = versionFromTag(tagName)
+    const hostedApkName = versionName
+      ? `network-study-android-v${versionName}.apk`
+      : apk?.name || 'network-study-android-latest.apk'
+    const hostedApkUrl = `${hostedApkBaseUrl}/${encodeURIComponent(hostedApkName)}`
 
     return NextResponse.json({
       latest: {
@@ -49,11 +61,12 @@ export async function GET() {
         name: release.name || tagName,
         notes: release.body || '',
         htmlUrl: release.html_url || `https://github.com/${owner}/${repo}/releases`,
-        apkUrl: apk?.browser_download_url || '',
-        apkName: apk?.name || '',
-        apkSize: apk?.size || 0,
+        apkUrl: hostedApkUrl,
+        apkName: hostedApkName,
+        apkSize: hostedApkSizes[hostedApkName] || apk?.size || 0,
         publishedAt: release.published_at || '',
         mandatory: false,
+        downloadMirror: hostedApkBaseUrl,
       },
       checkedAt: new Date().toISOString(),
     }, {
