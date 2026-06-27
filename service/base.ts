@@ -3,6 +3,7 @@ import Toast from '@/app/components/base/toast'
 import type { AnnotationReply, MessageEnd, MessageReplace, ThoughtItem } from '@/app/components/chat/type'
 import type { VisionFile } from '@/types/app'
 import { isNetworkStudyApp } from '@/lib/native-app'
+import { normalizeTextFields, toMessageText } from '@/lib/safe-text'
 
 const TIME_OUT = 100000
 
@@ -194,20 +195,15 @@ function unicodeToChar(text: string) {
 }
 
 const streamTextFrom = (value: unknown, eventName: string) => {
-  if (typeof value === 'string')
-  { return unicodeToChar(value) }
-  if (value == null)
-  { return '' }
-  if (typeof value === 'object') {
+  if (value && typeof value === 'object')
+  {
     console.warn(`[chat-stream] ${eventName} returned non-string answer`, value)
-    const record = value as Record<string, unknown>
-    const candidate = record.answer || record.content || record.text || record.message
-    if (typeof candidate === 'string')
-    { return unicodeToChar(candidate) }
-    return ''
   }
-  return unicodeToChar(String(value))
+  return unicodeToChar(toMessageText(value))
 }
+
+const normalizeThoughtPayload = (value: Record<string, any>): ThoughtItem =>
+  normalizeTextFields(value, ['thought', 'tool', 'tool_input', 'observation']) as ThoughtItem
 
 const handleStream = (
   response: Response,
@@ -265,7 +261,7 @@ const handleStream = (
               try {
                 bufferObj = JSON.parse(message.substring(6)) as Record<string, any>// remove data: and parse as json
               }
-              catch (e) {
+              catch {
               // mute handle message cut off
                 safelyCall('partial-data', () => onData('', isFirstMessage, {
                   conversationId: bufferObj?.conversation_id,
@@ -294,7 +290,7 @@ const handleStream = (
                 isFirstMessage = false
               }
               else if (bufferObj.event === 'agent_thought') {
-                safelyCall('agent-thought', () => onThought?.(bufferObj as ThoughtItem))
+                safelyCall('agent-thought', () => onThought?.(normalizeThoughtPayload(bufferObj)))
               }
               else if (bufferObj.event === 'message_file') {
                 safelyCall('message-file', () => onFile?.({

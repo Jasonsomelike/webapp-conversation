@@ -3,9 +3,10 @@ import { AcademicCapIcon, CalendarDaysIcon } from '@heroicons/react/24/outline'
 import { db, withDatabaseRetry } from '@/lib/db'
 import { getConversationSharePayload } from '@/lib/conversation-share'
 import SharedMarkdown from '@/app/components/base/shared-markdown'
+import { toMessageText } from '@/lib/safe-text'
 
-const visibleMarkdown = (content: string) =>
-  content
+const visibleMarkdown = (content: unknown) =>
+  toMessageText(content)
     .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
     .replace(/<think\b[^>]*>[\s\S]*$/gi, '')
     .trim()

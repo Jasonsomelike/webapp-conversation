@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { getQqIdentity, getQqProfile, resolveQqUser } from '@/lib/qq-auth'
+import {
+  PENDING_QQ_COOKIE,
+  PENDING_QQ_COOKIE_MAX_AGE,
+  createPendingQqToken,
+  getQqIdentity,
+  getQqProfile,
+  resolveQqUser,
+} from '@/lib/qq-auth'
 import { setSessionCookie } from '@/lib/session'
 
 const schema = z.object({
@@ -20,6 +27,12 @@ export async function POST(request: Request) {
   }
 
   const appId = process.env.QQ_MOBILE_APP_ID || '1904508499'
+  let pendingIdentity: {
+    openId: string
+    unionId?: string
+    nickname?: string
+    avatarUrl?: string
+  } | undefined
   try {
     let identity = {
       client_id: appId,
@@ -46,6 +59,12 @@ export async function POST(request: Request) {
     }
 
     const profile = await getQqProfile(parsed.data.accessToken, appId, identity.openid)
+    pendingIdentity = {
+      openId: identity.openid,
+      unionId: identity.unionid,
+      nickname: profile.nickname,
+      avatarUrl: profile.figureurl_qq_2 || profile.figureurl_2,
+    }
     const user = await resolveQqUser({
       appId,
       openId: identity.openid,
@@ -71,10 +90,26 @@ export async function POST(request: Request) {
       error: error instanceof Error ? error.message : String(error),
     })
     if (error instanceof Error && error.message === 'QQ_NOT_BOUND') {
-      return NextResponse.json({
+      const response = NextResponse.json({
         error: '该 QQ 尚未绑定学习账号，请先使用账号密码登录/注册后在“我的画像”中绑定 QQ。',
         needBinding: true,
       }, { status: 409 })
+      if (pendingIdentity) {
+        response.cookies.set(PENDING_QQ_COOKIE, createPendingQqToken({
+          appId,
+          openId: pendingIdentity.openId,
+          unionId: pendingIdentity.unionId,
+          nickname: pendingIdentity.nickname,
+          avatarUrl: pendingIdentity.avatarUrl,
+        }), {
+          httpOnly: true,
+          sameSite: 'lax',
+          secure: true,
+          path: '/',
+          maxAge: PENDING_QQ_COOKIE_MAX_AGE,
+        })
+      }
+      return response
     }
     if (error instanceof Error && (error.message === 'QQ_ACCOUNT_DELETED' || error.message === 'ACCOUNT_DELETED')) {
       return NextResponse.json({ error: '该账号已注销，无法继续登录。' }, { status: 403 })

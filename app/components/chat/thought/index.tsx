@@ -4,6 +4,7 @@ import React from 'react'
 import type { ThoughtItem, ToolInfoInThought } from '../type'
 import Tool from './tool'
 import type { Emoji } from '@/types/tools'
+import { toMessageText } from '@/lib/safe-text'
 
 export interface IThoughtProps {
   thought: ThoughtItem
@@ -11,15 +12,16 @@ export interface IThoughtProps {
   isFinished: boolean
 }
 
-function getValue(value: string, isValueArray: boolean, index: number) {
+function getValue(value: unknown, isValueArray: boolean, index: number) {
+  const text = toMessageText(value)
   if (isValueArray) {
     try {
-      return JSON.parse(value)[index]
+      return toMessageText(JSON.parse(text)[index])
     }
-    catch (e) {
+    catch {
     }
   }
-  return value
+  return text
 }
 
 const Thought: FC<IThoughtProps> = ({
@@ -28,12 +30,14 @@ const Thought: FC<IThoughtProps> = ({
   isFinished,
 }) => {
   const [toolNames, isValueArray]: [string[], boolean] = (() => {
+    const toolText = toMessageText(thought.tool)
     try {
-      if (Array.isArray(JSON.parse(thought.tool))) { return [JSON.parse(thought.tool), true] }
+      const parsed = JSON.parse(toolText)
+      if (Array.isArray(parsed)) { return [parsed.map(item => toMessageText(item, '工具')), true] }
     }
-    catch (e) {
+    catch {
     }
-    return [[thought.tool], false]
+    return [[toolText], false]
   })()
 
   const toolThoughtList = toolNames.map((toolName, index) => {

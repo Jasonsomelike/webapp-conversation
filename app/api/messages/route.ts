@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { getInfo, setSession } from '@/app/api/utils/common'
 import { db, isDatabaseConfigured } from '@/lib/db'
+import { toMessageText } from '@/lib/safe-text'
 
 export async function GET(request: NextRequest) {
   const { sessionId, session } = getInfo(request)
@@ -59,8 +60,8 @@ export async function GET(request: NextRequest) {
         : []
       return {
         id: message.difyMessageId || message.id,
-        query: userMessage?.content || '',
-        answer: message.content,
+        query: toMessageText(userMessage?.content),
+        answer: toMessageText(message.content),
         message_files: [...userFiles, ...assistantFiles],
         agent_thoughts: [],
         feedback: null,

@@ -25,6 +25,7 @@ import { APP_ID, APP_INFO, isShowPrompt, promptTemplate } from '@/config'
 import type { Annotation as AnnotationType } from '@/types/log'
 import { addFileInfos, sortAgentSorts } from '@/utils/tools'
 import ConversationShareDialog from '@/app/components/chat/conversation-share-dialog'
+import { normalizeTextFields, toMessageText } from '@/lib/safe-text'
 
 export interface IMainProps {
   params: any
@@ -36,25 +37,14 @@ const cloneChatItem = (item: ChatItem): ChatItem => {
   return JSON.parse(JSON.stringify(item)) as ChatItem
 }
 
-const toMessageText = (value: unknown) => {
-  if (typeof value === 'string') {
-    if (value === '[object Object]')
-    { return '' }
-    return value
-  }
-  if (value == null)
-  { return '' }
-  if (typeof value === 'object') {
-    console.warn('[chat] non-string message payload ignored', value)
-    const record = value as Record<string, unknown>
-    const candidate = record.answer || record.content || record.text || record.message || record.query
-    return typeof candidate === 'string' ? candidate : ''
-  }
-  return String(value)
-}
-
 const normalizeExchangeMessageId = (id: string) =>
   id.replace(/^question-/, '').replace(/^answer-placeholder-/, '').trim()
+
+const normalizeThoughtForChat = (thought: any) =>
+  normalizeTextFields(thought || {}, ['thought', 'tool', 'tool_input', 'observation']) as any
+
+const normalizeWorkflowNodeForChat = (node: any) =>
+  normalizeTextFields(node || {}, ['id', 'node_id', 'node_type', 'title', 'status', 'error']) as any
 
 const isDataUrl = (value?: string) => Boolean(value && /^data:/i.test(value))
 
@@ -1438,27 +1428,28 @@ const Main: FC<IMainProps> = () => {
       },
       onThought(thought) {
         isAgentMode = true
+        const normalizedThought = normalizeThoughtForChat(thought)
         const response = responseItem as any
-        if (thought.message_id && !hasSetResponseId) {
-          response.id = thought.message_id
-          questionId = `question-${thought.message_id}`
+        if (normalizedThought.message_id && !hasSetResponseId) {
+          response.id = normalizedThought.message_id
+          questionId = `question-${normalizedThought.message_id}`
           questionItem.id = questionId
           hasSetResponseId = true
         }
         // responseItem.id = thought.message_id;
         if (response.agent_thoughts.length === 0) {
-          response.agent_thoughts.push(thought)
+          response.agent_thoughts.push(normalizedThought)
         }
         else {
           const lastThought = response.agent_thoughts[response.agent_thoughts.length - 1]
           // thought changed but still the same thought, so update.
-          if (lastThought.id === thought.id) {
-            thought.thought = lastThought.thought
-            thought.message_files = lastThought.message_files
-            responseItem.agent_thoughts![response.agent_thoughts.length - 1] = thought
+          if (lastThought.id === normalizedThought.id) {
+            normalizedThought.thought = lastThought.thought
+            normalizedThought.message_files = lastThought.message_files
+            responseItem.agent_thoughts![response.agent_thoughts.length - 1] = normalizedThought
           }
           else {
-            responseItem.agent_thoughts!.push(thought)
+            responseItem.agent_thoughts!.push(normalizedThought)
           }
         }
         // has switched to other conversation
@@ -1550,7 +1541,7 @@ const Main: FC<IMainProps> = () => {
       },
       onWorkflowFinished: ({ data }) => {
         if (responseItem.workflowProcess)
-        { responseItem.workflowProcess.status = data.status as WorkflowRunningStatus }
+        { responseItem.workflowProcess.status = toMessageText(data.status, WorkflowRunningStatus.Succeeded) as WorkflowRunningStatus }
         updateCurrentQA({
           responseItem,
           questionId,
@@ -1561,11 +1552,12 @@ const Main: FC<IMainProps> = () => {
         })
       },
       onNodeStarted: ({ data }) => {
+        const node = normalizeWorkflowNodeForChat(data)
         responseItem.workflowProcess?.tracing.push({
-          ...data,
+          ...node,
           status: 'running',
           elapsed_time: 0,
-          title: data.title || data.node_type,
+          title: node.title || node.node_type,
         } as any)
         updateCurrentQA({
           responseItem,
@@ -1578,12 +1570,13 @@ const Main: FC<IMainProps> = () => {
       },
       onNodeFinished: ({ data }) => {
         const tracing = responseItem.workflowProcess?.tracing
+        const node = normalizeWorkflowNodeForChat(data)
         if (tracing) {
-          const currentIndex = tracing.findIndex(item => item.node_id === data.node_id)
+          const currentIndex = tracing.findIndex(item => item.node_id === node.node_id)
           if (currentIndex >= 0)
-          { tracing[currentIndex] = data as any }
+          { tracing[currentIndex] = node as any }
           else
-          { tracing.push(data as any) }
+          { tracing.push(node as any) }
         }
         updateCurrentQA({
           responseItem,

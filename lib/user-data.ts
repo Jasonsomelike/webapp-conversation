@@ -5,6 +5,7 @@ import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
 import type { KnowledgeReference, LearningAnalysis, WeakTopic } from '@/lib/learning-types'
 import type { ExtractedReference } from '@/lib/reference-extractor'
 import { cleanReferenceDocumentName, extractKnowledgeReferences } from '@/lib/reference-extractor'
+import { toMessageText } from '@/lib/safe-text'
 
 interface RetrieverResource extends ExtractedReference {
   content?: string
@@ -51,22 +52,6 @@ const pageFromDocumentName = (name: string, segmentPosition?: number) => {
 const toJson = (value: unknown) =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 
-const toPersistedText = (value: unknown, fallback = '') => {
-  if (typeof value === 'string') {
-    if (value === '[object Object]')
-    { return fallback }
-    return value
-  }
-  if (value == null)
-  { return fallback }
-  if (typeof value === 'object') {
-    const record = value as Record<string, unknown>
-    const candidate = record.answer || record.content || record.text || record.message || record.query
-    return typeof candidate === 'string' ? candidate : fallback
-  }
-  return String(value)
-}
-
 const isDataUrl = (value: unknown) => typeof value === 'string' && /^data:/i.test(value)
 
 const normalizePersistedFile = (file: Record<string, unknown>, belongsTo: 'user' | 'assistant') => {
@@ -102,8 +87,8 @@ export const persistChatExchange = async ({
   { return }
 
   const resources = references || metadata?.retriever_resources || []
-  const safeQuery = toPersistedText(query, '')
-  const safeAnswer = toPersistedText(answer, '')
+  const safeQuery = toMessageText(query, '')
+  const safeAnswer = toMessageText(answer, '')
   const normalizedUserFiles = (userFiles || []).map(file => normalizePersistedFile(file, 'user'))
   const normalizedAssistantFiles = (assistantFiles || []).map(file => normalizePersistedFile(file, 'assistant'))
   const userRawPayload = normalizedUserFiles.length

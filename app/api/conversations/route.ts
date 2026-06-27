@@ -4,6 +4,7 @@ import { getInfo, setSession } from '@/app/api/utils/common'
 import { db, isDatabaseConfigured } from '@/lib/db'
 import { auditMemorySourceConsistency, recoverMissingConversationRows } from '@/lib/memory-consistency'
 import { toConversationPreview } from '@/lib/message-preview'
+import { toMessageText } from '@/lib/safe-text'
 
 export async function GET(request: NextRequest) {
   const { sessionId, session } = getInfo(request)
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     data: conversations.map((conversation) => {
       const preview = previews.get(conversation.difyConversationId)
-      const previewText = preview ? toConversationPreview(preview.content, 96) : ''
+      const previewText = preview ? toConversationPreview(toMessageText(preview.content), 96) : ''
       return {
         id: conversation.difyConversationId,
         name: conversation.title || '网络学习会话',

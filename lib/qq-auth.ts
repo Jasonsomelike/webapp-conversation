@@ -21,6 +21,7 @@ interface QqProfile {
 }
 
 let qqIdentityStorageReady = false
+let qqIdentityUnionBackfillReady = false
 
 export const PENDING_QQ_COOKIE = 'network_study_pending_qq'
 export const PENDING_QQ_COOKIE_MAX_AGE = 10 * 60
@@ -125,6 +126,7 @@ const ensureQqIdentityStorage = async () => {
     $$
   `)
   qqIdentityStorageReady = true
+  await backfillKnownUserUnionIds()
 }
 
 const fetchQqJson = async <T>(url: URL): Promise<T> => {
@@ -160,6 +162,89 @@ const normalizeQqIdentityPart = (value?: string | null) => {
 
 const insensitiveEquals = (value: string) =>
   ({ equals: value, mode: 'insensitive' as const })
+
+const sameIdentityPart = (left?: string | null, right?: string | null) =>
+  Boolean(left && right && left.toLocaleLowerCase() === right.toLocaleLowerCase())
+
+const uniqueUnionIds = (values: Array<string | null | undefined>) => {
+  const unions = new Map<string, string>()
+  values.forEach((value) => {
+    const normalized = normalizeQqIdentityPart(value)
+    if (normalized)
+    { unions.set(normalized.toLocaleLowerCase(), normalized) }
+  })
+  return unions
+}
+
+const getKnownSingleUnionIdForUser = async (appUserId: string, preferredUnionId?: string) => {
+  const identities = await db.qqIdentity.findMany({
+    where: { appUserId },
+    select: { unionId: true },
+  })
+  const unions = uniqueUnionIds([preferredUnionId, ...identities.map(identity => identity.unionId)])
+  return unions.size === 1 ? [...unions.values()][0] : undefined
+}
+
+const syncQqIdentityUnionForUser = async (appUserId: string, preferredUnionId?: string) => {
+  const identities = await db.qqIdentity.findMany({
+    where: { appUserId },
+    select: { id: true, appId: true, unionId: true },
+  })
+  const unions = uniqueUnionIds([preferredUnionId, ...identities.map(identity => identity.unionId)])
+  if (unions.size === 0)
+  { return undefined }
+  if (unions.size > 1) {
+    console.warn('[qq-auth] skip union backfill because one learning account has multiple QQ union IDs', {
+      appUserId,
+      appIds: identities.map(identity => identity.appId),
+    })
+    return normalizeQqIdentityPart(preferredUnionId)
+  }
+
+  const unionId = [...unions.values()][0]
+  const result = await db.qqIdentity.updateMany({
+    where: {
+      appUserId,
+      unionId: null,
+    },
+    data: { unionId },
+  })
+  if (result.count > 0) {
+    console.info('[qq-auth] backfilled QQ union ID for existing identities', {
+      appUserId,
+      count: result.count,
+      appIds: identities.map(identity => identity.appId),
+    })
+  }
+  return unionId
+}
+
+const backfillKnownUserUnionIds = async () => {
+  if (qqIdentityUnionBackfillReady)
+  { return }
+  try {
+    const identities = await db.qqIdentity.findMany({
+      select: { appUserId: true, unionId: true },
+    })
+    const byUser = new Map<string, Array<string | null>>()
+    identities.forEach((identity) => {
+      const list = byUser.get(identity.appUserId) || []
+      list.push(identity.unionId)
+      byUser.set(identity.appUserId, list)
+    })
+    await Promise.all([...byUser.entries()].map(async ([appUserId, unionIds]) => {
+      const unions = uniqueUnionIds(unionIds)
+      if (unions.size !== 1)
+      { return }
+      await syncQqIdentityUnionForUser(appUserId, [...unions.values()][0])
+    }))
+    qqIdentityUnionBackfillReady = true
+  }
+  catch (error) {
+    qqIdentityUnionBackfillReady = false
+    throw error
+  }
+}
 
 const findQqIdentityByAppOpenId = async (
   appId: string,
@@ -302,13 +387,14 @@ export const resolveQqUser = async ({
       { throw new Error('QQ_ACCOUNT_DELETED') }
       if (
         normalizedUnionId
-        && exactIdentity.unionId?.toLocaleLowerCase() !== normalizedUnionId.toLocaleLowerCase()
+        && !sameIdentityPart(exactIdentity.unionId, normalizedUnionId)
       ) {
         await db.qqIdentity.update({
           where: { id: exactIdentity.id },
           data: { openId: normalizedOpenId, unionId: normalizedUnionId },
         })
       }
+      await syncQqIdentityUnionForUser(exactIdentity.appUserId, normalizedUnionId || exactIdentity.unionId || undefined)
       const user = await db.appUser.update({
         where: { id: exactIdentity.appUserId },
         data: {
@@ -338,6 +424,7 @@ export const resolveQqUser = async ({
         openId: normalizedOpenId,
         unionId: normalizedUnionId,
       })
+      await syncQqIdentityUnionForUser(unionIdentity.appUserId, normalizedUnionId)
       const user = await db.appUser.update({
         where: { id: unionIdentity.appUserId },
         data: { lastLoginAt: new Date() },
@@ -364,6 +451,7 @@ export const resolveQqUser = async ({
         openId: normalizedOpenId,
         unionId: normalizedUnionId,
       })
+      await syncQqIdentityUnionForUser(sameOpenIdIdentity.appUserId, normalizedUnionId || sameOpenIdIdentity.unionId || undefined)
       const user = await db.appUser.update({
         where: { id: sameOpenIdIdentity.appUserId },
         data: { lastLoginAt: new Date() },
@@ -397,11 +485,12 @@ export const bindQqIdentityToUser = async ({
   return withDatabaseRetry(async () => {
     await ensureQqIdentityStorage()
     await assertAppUserActive(appUserId)
+    const unionIdForBinding = normalizedUnionId || await getKnownSingleUnionIdForUser(appUserId)
     const [exactIdentity, unionIdentity] = await Promise.all([
       findQqIdentityByAppOpenId(appId, normalizedOpenId),
-      normalizedUnionId
+      unionIdForBinding
         ? db.qqIdentity.findFirst({
-          where: { unionId: insensitiveEquals(normalizedUnionId) },
+          where: { unionId: insensitiveEquals(unionIdForBinding) },
           orderBy: { updatedAt: 'desc' },
         })
         : Promise.resolve(null),
@@ -414,8 +503,9 @@ export const bindQqIdentityToUser = async ({
       appUserId,
       appId,
       openId: normalizedOpenId,
-      unionId: normalizedUnionId,
+      unionId: unionIdForBinding,
     })
+    await syncQqIdentityUnionForUser(appUserId, unionIdForBinding || saved.unionId || undefined)
     return { bound: true, identity: saved }
   })
 }
@@ -453,7 +543,7 @@ export const getQqIdentitySummary = async (appUserId: string): Promise<QqIdentit
     const unionTail = primary.unionId?.slice(-10)
     return {
       bound: true,
-      displayId: primary.unionId ? `QQ …${unionTail || primary.unionId}` : `openid…${openIdTail}`,
+      displayId: `QQ …${unionTail || openIdTail}`,
       openIdTail,
       unionId: primary.unionId || undefined,
       appIds: Array.from(new Set(identities.map(identity => identity.appId))),
