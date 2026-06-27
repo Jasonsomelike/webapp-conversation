@@ -19,8 +19,8 @@ import { ResizableSplitHandle, useResizableSplit } from '@/app/components/base/r
 const inferPageFromImageUrl = (value?: string | null) =>
   Number(String(value || '').match(/\/page_(\d+)\./i)?.[1] || 0) || undefined
 
-const isSplitOrCoursewareDocument = (value?: string | null) =>
-  /(?:_part\d+_p\d+-\d+|课件|讲义|ppt|slides?|lecture)/i.test(value || '')
+const inferOriginalPdfPageFromQuote = (value?: string | null) =>
+  Number(String(value || '').match(/原\s*PDF\s*第\s*(\d{1,5})\s*页/i)?.[1] || 0) || undefined
 
 export default function SourcesView({ initialReferences }: { initialReferences: KnowledgeReference[] }) {
   const [query, setQuery] = useState('')
@@ -46,10 +46,7 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
   const selectedPreviewPage = selected
     ? inferPageFromImageUrl(selected.pageImageUrl) || selected.pageNumber || selected.originalPageNumber || 1
     : 1
-  const originalPageNumber = selected?.originalPageNumber
-  const showOriginalPageMapping = Boolean(originalPageNumber)
-    && originalPageNumber !== selectedPreviewPage
-    && !isSplitOrCoursewareDocument(selected?.documentName)
+  const originalPageNumber = inferOriginalPdfPageFromQuote(selected?.quote)
   const documentPreviewUrl = selected
     ? `/sources/preview/${selected.id}?page=${selectedPreviewPage}&filename=${encodeURIComponent(selected.documentName)}&returnTo=${encodeURIComponent('/sources')}`
     : ''
@@ -90,7 +87,7 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
       ...filtered.map(item => [
         item.documentName,
         String(item.pageNumber || ''),
-        String(item.originalPageNumber || ''),
+        String(inferOriginalPdfPageFromQuote(item.quote) || ''),
         String(item.score || ''),
         item.quote || '',
       ]),
@@ -188,8 +185,8 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
         <div className="flex flex-wrap gap-2 text-[10px]">
           <span className="rounded-full bg-[var(--studio-accent)]/35 px-3 py-1.5 font-semibold text-[var(--studio-accent-strong)]">{selected.topic}</span>
           {selectedPreviewPage && <span className="rounded-full bg-black/[0.04] px-3 py-1.5">PDF 第 {selectedPreviewPage} 页</span>}
-          {showOriginalPageMapping && (
-            <span className="rounded-full bg-orange-50 px-3 py-1.5 text-orange-700">原书映射第 {selected.originalPageNumber} 页</span>
+          {originalPageNumber && (
+            <span className="rounded-full bg-orange-50 px-3 py-1.5 text-orange-700">原书映射第 {originalPageNumber} 页</span>
           )}
         </div>
         <h2 className={`mt-4 break-words font-semibold ${mobile ? 'text-base leading-6' : 'text-lg leading-7'}`}>{selected.documentName}</h2>
