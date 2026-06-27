@@ -3,11 +3,11 @@ import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/session'
+import { passwordPattern, passwordPolicyHint } from '@/lib/password-policy'
 
-const passwordPattern = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,72}$/
 const schema = z.object({
   currentPassword: z.string().min(1, '请输入当前密码').max(72),
-  newPassword: z.string().regex(passwordPattern, '新密码至少 8 位，并同时包含字母和数字'),
+  newPassword: z.string().regex(passwordPattern, `新密码${passwordPolicyHint}`),
 })
 
 export async function PUT(request: Request) {

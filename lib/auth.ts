@@ -6,9 +6,9 @@ import { z } from 'zod'
 import { securityQuestions } from '@/lib/account-policy'
 import { db, isDatabaseConfigured } from '@/lib/db'
 import { ensureAccountLifecycleStorage, isAppUserDeleted } from '@/lib/account-lifecycle'
+import { passwordPattern, passwordPolicyHint } from '@/lib/password-policy'
 
 const usernamePattern = /^[a-zA-Z][a-zA-Z0-9_-]{2,31}$/
-const passwordPattern = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,72}$/
 
 export const credentialsSchema = z.object({
   username: z.string().trim().regex(usernamePattern, '账号需以字母开头，可包含字母、数字、下划线或连字符，长度 3–32 位'),
@@ -17,13 +17,13 @@ export const credentialsSchema = z.object({
 
 export const registerSchema = credentialsSchema.extend({
   displayName: z.string().trim().min(1, '请输入显示名称').max(64, '显示名称不能超过 64 个字符'),
-  password: z.string().regex(passwordPattern, '密码至少 8 位，并同时包含字母和数字'),
+  password: z.string().regex(passwordPattern, `密码${passwordPolicyHint}`),
   securityQuestion: z.string().refine(value => (securityQuestions as readonly string[]).includes(value), '请选择有效的安全问题'),
   securityAnswer: z.string().trim().min(1, '请输入安全问题答案').max(128),
 })
 
 export const resetPasswordSchema = credentialsSchema.extend({
-  password: z.string().regex(passwordPattern, '密码至少 8 位，并同时包含字母和数字'),
+  password: z.string().regex(passwordPattern, `密码${passwordPolicyHint}`),
   securityAnswer: z.string().trim().min(1, '请输入安全问题答案').max(128),
 })
 

@@ -26,6 +26,7 @@ import Toast from '@/app/components/base/toast'
 import Link from 'next/link'
 import { isNetworkStudyApp, type NativeQqLoginResult, type NativeQqResultEnvelope } from '@/lib/native-app'
 import { resetChatRuntime } from '@/app/components/chat/runtime-store'
+import { passwordPolicyHint } from '@/lib/password-policy'
 
 const stages = ['入门', '系统学习', '复习', '刷题', '备考']
 const styles = ['图示讲解', '公式推导', '例题驱动', '简洁回答']
@@ -626,7 +627,7 @@ export default function ProfileView({
                 {passwordOpen && (
                   <form onSubmit={changePassword} className="space-y-3 border-t border-black/[0.06] bg-black/[0.018] p-5">
                     <input name="currentPassword" type="password" required placeholder="当前密码" className="h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm outline-none" />
-                    <input name="newPassword" type="password" required placeholder="新密码：至少 8 位字母和数字" className="h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm outline-none" />
+                    <input name="newPassword" type="password" required placeholder={`新密码：${passwordPolicyHint}`} className="h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm outline-none" />
                     <input name="confirmPassword" type="password" required placeholder="再次输入新密码" className="h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm outline-none" />
                     <button disabled={passwordSaving} className="h-11 w-full rounded-xl bg-[var(--studio-deep)] text-xs font-semibold text-white disabled:opacity-60">
                       {passwordSaving ? '保存中…' : '确认修改密码'}

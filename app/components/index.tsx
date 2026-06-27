@@ -136,6 +136,8 @@ interface ConversationShareTarget {
 }
 
 const pendingGenerationKey = 'network-study-pending-generation'
+const resumeFollowDistancePx = 4
+const userScrollIntentDurationMs = 6000
 
 const readPendingGenerationState = (): PendingGenerationState | null => {
   if (typeof window === 'undefined')
@@ -334,6 +336,7 @@ const Main: FC<IMainProps> = () => {
   const handleConversationIdChange = (id: string) => {
     nativeChatEnteredScrollKeyRef.current = ''
     userPausedFollowRef.current = false
+    hardPausedFollowRef.current = false
     followOutputRef.current = true
     autoFollowGraceUntilRef.current = Date.now() + 800
     pendingScrollToBottomRef.current = id !== '-1'
@@ -372,6 +375,7 @@ const Main: FC<IMainProps> = () => {
   const chatListDomRef = useRef<HTMLDivElement>(null)
   const followOutputRef = useRef(true)
   const userPausedFollowRef = useRef(false)
+  const hardPausedFollowRef = useRef(false)
   const lastScrollTopRef = useRef(0)
   const touchYRef = useRef<number | null>(null)
   const userScrollIntentUntilRef = useRef(0)
@@ -385,6 +389,7 @@ const Main: FC<IMainProps> = () => {
     if (!scrollParent)
     { return }
     userPausedFollowRef.current = false
+    hardPausedFollowRef.current = false
     followOutputRef.current = true
     userScrollIntentUntilRef.current = 0
     autoFollowGraceUntilRef.current = Date.now() + 1200
@@ -421,6 +426,7 @@ const Main: FC<IMainProps> = () => {
       pendingScrollToBottomRef.current = false
       followOutputRef.current = false
       userPausedFollowRef.current = false
+      hardPausedFollowRef.current = false
       setShowJumpToBottom(false)
       setShowMobileConversationList(true)
       window.NetworkStudyApp?.setConversationMode?.(false)
@@ -440,6 +446,7 @@ const Main: FC<IMainProps> = () => {
       nativeChatEnteredScrollKeyRef.current = currentKey
       pendingScrollToBottomRef.current = false
       userPausedFollowRef.current = false
+      hardPausedFollowRef.current = false
       followOutputRef.current = true
       setShowJumpToBottom(false)
       scrollToChatBottom('auto')
@@ -455,6 +462,7 @@ const Main: FC<IMainProps> = () => {
 
     const pauseFollowing = () => {
       userPausedFollowRef.current = true
+      hardPausedFollowRef.current = true
       followOutputRef.current = false
       autoFollowGraceUntilRef.current = 0
       setShowJumpToBottom(true)
@@ -465,7 +473,7 @@ const Main: FC<IMainProps> = () => {
     }
 
     const markUserScrollIntent = () => {
-      userScrollIntentUntilRef.current = Date.now() + 3500
+      userScrollIntentUntilRef.current = Date.now() + userScrollIntentDurationMs
     }
 
     const isMainChatScrollTarget = (target: EventTarget | null) =>
@@ -477,13 +485,14 @@ const Main: FC<IMainProps> = () => {
       const currentTop = scrollParent.scrollTop
       const distanceToBottom = scrollParent.scrollHeight - currentTop - scrollParent.clientHeight
       const movedUp = currentTop < lastScrollTopRef.current - 1
-      const nearBottom = distanceToBottom < 56
+      const nearBottom = distanceToBottom <= resumeFollowDistancePx
       const userIntentActive = Date.now() < userScrollIntentUntilRef.current
       lastDistanceToBottomRef.current = distanceToBottom
       if ((movedUp || userIntentActive) && !nearBottom)
       { pauseFollowing() }
       else if (nearBottom) {
         userPausedFollowRef.current = false
+        hardPausedFollowRef.current = false
         followOutputRef.current = true
         setShowJumpToBottom(false)
       }
@@ -508,6 +517,8 @@ const Main: FC<IMainProps> = () => {
       markUserScrollIntent()
       const currentY = event.touches[0]?.clientY
       if (currentY !== undefined && touchYRef.current !== null && currentY > touchYRef.current + 3)
+      { pauseFollowing() }
+      else if (hardPausedFollowRef.current && lastDistanceToBottomRef.current > resumeFollowDistancePx)
       { pauseFollowing() }
       touchYRef.current = currentY ?? null
     }
@@ -543,20 +554,23 @@ const Main: FC<IMainProps> = () => {
   }, [currConversationId])
 
   useEffect(() => {
-    if (!followOutputRef.current || userPausedFollowRef.current)
+    if (!followOutputRef.current || userPausedFollowRef.current || hardPausedFollowRef.current)
     { return }
     const now = Date.now()
     const hasRecentUserScrollIntent = now < userScrollIntentUntilRef.current
-    const canFollow = lastDistanceToBottomRef.current < 180 || now < autoFollowGraceUntilRef.current
+    const canFollow = lastDistanceToBottomRef.current <= resumeFollowDistancePx || now < autoFollowGraceUntilRef.current
     if (hasRecentUserScrollIntent || !canFollow)
     { return }
     autoScrollTimerRef.current = globalThis.setTimeout(() => {
       autoScrollTimerRef.current = null
-      if (!followOutputRef.current || userPausedFollowRef.current)
+      if (!followOutputRef.current || userPausedFollowRef.current || hardPausedFollowRef.current)
       { return }
       const scrollParent = findScrollParent(chatListDomRef.current)
       if (scrollParent) {
         if (Date.now() < userScrollIntentUntilRef.current)
+        { return }
+        const distanceToBottom = scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight
+        if (distanceToBottom > resumeFollowDistancePx && Date.now() >= autoFollowGraceUntilRef.current)
         { return }
         scrollParent.scrollTop = scrollParent.scrollHeight
         lastScrollTopRef.current = scrollParent.scrollTop
@@ -647,6 +661,7 @@ const Main: FC<IMainProps> = () => {
         pendingScrollToBottomRef.current = false
         followOutputRef.current = false
         userPausedFollowRef.current = true
+        hardPausedFollowRef.current = true
         setShowMobileConversationList(false)
         setCurrConversationId(state.conversationId, APP_ID, false)
       }
@@ -658,8 +673,9 @@ const Main: FC<IMainProps> = () => {
     pendingScrollToBottomRef.current = false
     followOutputRef.current = false
     userPausedFollowRef.current = true
+    hardPausedFollowRef.current = true
     autoFollowGraceUntilRef.current = 0
-    userScrollIntentUntilRef.current = Date.now() + 4000
+    userScrollIntentUntilRef.current = Date.now() + userScrollIntentDurationMs
     setShowMobileConversationList(false)
     if (state.messageId) {
       targetConversationIdRef.current = currConversationId
@@ -763,6 +779,7 @@ const Main: FC<IMainProps> = () => {
           setTargetMessageId(requestedMessageId)
           followOutputRef.current = !requestedMessageId
           userPausedFollowRef.current = Boolean(requestedMessageId)
+          hardPausedFollowRef.current = Boolean(requestedMessageId)
           pendingScrollToBottomRef.current = false
           setShowMobileConversationList(false)
         }
@@ -899,6 +916,7 @@ const Main: FC<IMainProps> = () => {
       setConversationIdChangeBecauseOfNew(nextId === '-1')
       setChatNotStarted()
       userPausedFollowRef.current = false
+      hardPausedFollowRef.current = false
       followOutputRef.current = true
       setChatList(nextId === '-1' ? generateNewChatListWithOpenStatement() : [])
       setCurrConversationId(nextId, APP_ID)
@@ -1270,6 +1288,7 @@ const Main: FC<IMainProps> = () => {
       isAnswer: true,
     }
     userPausedFollowRef.current = false
+    hardPausedFollowRef.current = false
     followOutputRef.current = true
     userScrollIntentUntilRef.current = 0
     autoFollowGraceUntilRef.current = Date.now() + 1200
