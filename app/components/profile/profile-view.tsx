@@ -414,19 +414,6 @@ export default function ProfileView({
         <div className="relative overflow-hidden rounded-[24px] bg-[var(--studio-deep)] p-5 text-white shadow-[0_18px_48px_rgba(23,52,43,.16)] sm:p-6">
           <div className="absolute -right-12 -top-20 h-56 w-56 rounded-full bg-[var(--studio-accent)]/12 blur-2xl" />
           <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <button
-              type="button"
-              onClick={() => {
-                if (editingLearner)
-                { cancelLearner() }
-                else
-                { setEditingLearner(true) }
-              }}
-              className="absolute right-0 top-0 flex h-9 items-center justify-center gap-1.5 rounded-xl bg-white/10 px-3 text-[10px] font-semibold transition hover:bg-white/15"
-            >
-              {editingLearner ? <XMarkIcon className="h-3.5 w-3.5" /> : <PencilSquareIcon className="h-3.5 w-3.5" />}
-              {editingLearner ? '取消' : '编辑'}
-            </button>
             <div className="flex min-w-0 items-center gap-4">
               <label className="group relative block h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-[22px] bg-[var(--studio-accent)] text-[var(--studio-deep)] shadow-lg">
                 {avatarUrl
@@ -443,8 +430,23 @@ export default function ProfileView({
                   className="sr-only"
                 />
               </label>
-              <div className="min-w-0">
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--studio-accent)]">Learner center</div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--studio-accent)]">Learner center</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (editingLearner)
+                      { cancelLearner() }
+                      else
+                      { setEditingLearner(true) }
+                    }}
+                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-white/10 bg-white/[0.08] px-3 text-[10px] font-semibold text-white/80 transition hover:bg-white/15 hover:text-white"
+                  >
+                    {editingLearner ? <XMarkIcon className="h-3.5 w-3.5" /> : <PencilSquareIcon className="h-3.5 w-3.5" />}
+                    {editingLearner ? '取消编辑' : '编辑'}
+                  </button>
+                </div>
                 {editingLearner
                   ? (
                     <input
@@ -459,7 +461,7 @@ export default function ProfileView({
                 <div className="mt-1 text-xs text-white/45">@{session.username} · {stage} · {style}</div>
               </div>
             </div>
-            <div className="grid gap-3 pt-8 sm:grid-cols-[1fr_auto] lg:min-w-[520px] lg:pt-0">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto] lg:min-w-[520px] lg:pt-0">
               <div className="grid grid-cols-3 divide-x divide-white/10 rounded-2xl bg-white/[0.06] py-3 text-center">
                 {[
                   [String(stats.conversations), '会话'],
@@ -490,7 +492,7 @@ export default function ProfileView({
               </div>
             </div>
             {editingLearner && (
-              <div className="relative mt-4 flex justify-end gap-3 border-t border-white/10 pt-4 lg:absolute lg:bottom-0 lg:right-0 lg:mt-0 lg:border-0 lg:pt-0">
+              <div className="relative flex justify-end gap-3 border-t border-white/10 pt-4 lg:absolute lg:bottom-0 lg:right-0 lg:border-0 lg:pt-0">
                 <button
                   type="button"
                   onClick={cancelLearner}

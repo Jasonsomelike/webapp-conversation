@@ -1,4 +1,3 @@
-import { after } from 'next/server'
 import { NextResponse } from 'next/server'
 import { describeKnowledgeCatalogError, listKnowledgeDocuments, requestKnowledgeDocumentRefresh, refreshKnowledgeDocuments } from '@/lib/dify-dataset'
 import { getSession } from '@/lib/session'
@@ -15,7 +14,7 @@ export async function GET(request: Request) {
   try {
     const wantsRefresh = params.get('refresh') === '1'
     if (wantsRefresh && params.get('mode') === 'async')
-    { after(() => requestKnowledgeDocumentRefresh()) }
+    { void requestKnowledgeDocumentRefresh() }
     const data = await (wantsRefresh && params.get('mode') !== 'async'
       ? refreshKnowledgeDocuments
       : listKnowledgeDocuments)({

@@ -108,7 +108,7 @@ const fetchKnowledgeDocuments = async ({
   const response = await fetchDify(
     `/datasets/${encodeURIComponent(datasetId)}/documents?${params}`,
     { method: 'GET' },
-    { apiKey, connectTimeoutMs: 15_000, retries: 2 },
+    { apiKey, connectTimeoutMs: 30_000, retries: 2 },
   )
   if (!response.ok)
   { throw new Error(`DIFY_DATASET_REQUEST_FAILED:${response.status}`) }
@@ -124,7 +124,7 @@ const fetchCompleteKnowledgeCatalog = async () => {
       const controller = new AbortController()
       const timeout = setTimeout(
         () => controller.abort(new Error('LIBRARY_CATALOG_SERVICE_TIMEOUT')),
-        25_000,
+        45_000,
       )
       try {
         const response = await fetch(`${serviceUrl}/library/documents/catalog`, {

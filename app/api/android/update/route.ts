@@ -5,12 +5,13 @@ export const dynamic = 'force-dynamic'
 
 const owner = 'Jasonsomelike'
 const repo = 'network-study-android'
-const hostedApkBaseUrl = 'https://www.jasonsome.cn/api/android/update/apk'
+const hostedApkBaseUrl = 'https://www.jasonsome.cn/downloads'
 const hostedApkSizes: Record<string, number> = {
   'network-study-android-v1.11.0.apk': 3752815,
   'network-study-android-v1.12.0.apk': 3752815,
   'network-study-android-v1.13.0.apk': 3753111,
   'network-study-android-v1.14.0.apk': 3753235,
+  'network-study-android-v1.14.3.apk': 3756591,
 }
 
 const versionFromTag = (tag: string) =>
@@ -47,10 +48,10 @@ export async function GET() {
       || apkAssets[0]
     const tagName = release.tag_name || ''
     const versionName = versionFromTag(tagName)
-    const hostedApkName = apk?.name || (versionName
+    const hostedApkName = versionName
       ? `network-study-android-v${versionName}.apk`
-      : 'network-study-android-latest.apk')
-    const hostedApkUrl = `${hostedApkBaseUrl}?name=${encodeURIComponent(hostedApkName)}`
+      : apk?.name || 'network-study-android-latest.apk'
+    const hostedApkUrl = `${hostedApkBaseUrl}/${encodeURIComponent(hostedApkName)}`
 
     return NextResponse.json({
       latest: {

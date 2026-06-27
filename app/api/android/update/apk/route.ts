@@ -46,6 +46,13 @@ const findLatestApk = async (requestedName?: string | null) => {
 export async function GET(request: Request) {
   try {
     const requestedName = new URL(request.url).searchParams.get('name')
+    const safeRequestedName = sanitizeFilename(requestedName)
+    if (/^network-study-android-v[\w.-]+\.apk$/i.test(safeRequestedName)) {
+      return NextResponse.redirect(
+        new URL(`/downloads/${encodeURIComponent(safeRequestedName)}`, request.url),
+        { status: 302 },
+      )
+    }
     const apk = await findLatestApk(requestedName)
     const upstream = await fetch(apk.url, {
       headers: {

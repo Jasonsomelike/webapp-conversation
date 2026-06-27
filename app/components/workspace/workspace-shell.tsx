@@ -78,6 +78,11 @@ const routeMeta: Record<string, { eyebrow: string, title: string, description: s
     title: 'App 设置',
     description: '管理文件下载位置与原生应用行为',
   },
+  '/downloads': {
+    eyebrow: 'Android 专属',
+    title: '下载中心',
+    description: '查看 App 下载任务、进度与保存位置',
+  },
   '/admin': {
     eyebrow: '系统管理',
     title: '用户管理后台',

@@ -19,6 +19,9 @@ import { ResizableSplitHandle, useResizableSplit } from '@/app/components/base/r
 const inferPageFromImageUrl = (value?: string | null) =>
   Number(String(value || '').match(/\/page_(\d+)\./i)?.[1] || 0) || undefined
 
+const isSplitOrCoursewareDocument = (value?: string | null) =>
+  /(?:_part\d+_p\d+-\d+|课件|讲义|ppt|slides?|lecture)/i.test(value || '')
+
 export default function SourcesView({ initialReferences }: { initialReferences: KnowledgeReference[] }) {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState(initialReferences[0]?.id)
@@ -43,6 +46,10 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
   const selectedPreviewPage = selected
     ? inferPageFromImageUrl(selected.pageImageUrl) || selected.pageNumber || selected.originalPageNumber || 1
     : 1
+  const originalPageNumber = selected?.originalPageNumber
+  const showOriginalPageMapping = Boolean(originalPageNumber)
+    && originalPageNumber !== selectedPreviewPage
+    && !isSplitOrCoursewareDocument(selected?.documentName)
   const documentPreviewUrl = selected
     ? `/sources/preview/${selected.id}?page=${selectedPreviewPage}&filename=${encodeURIComponent(selected.documentName)}&returnTo=${encodeURIComponent('/sources')}`
     : ''
@@ -180,8 +187,8 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
       <>
         <div className="flex flex-wrap gap-2 text-[10px]">
           <span className="rounded-full bg-[var(--studio-accent)]/35 px-3 py-1.5 font-semibold text-[var(--studio-accent-strong)]">{selected.topic}</span>
-          {selected.pageNumber && <span className="rounded-full bg-black/[0.04] px-3 py-1.5">PDF 第 {selected.pageNumber} 页</span>}
-          {selected.originalPageNumber && selected.originalPageNumber !== selectedPreviewPage && (
+          {selectedPreviewPage && <span className="rounded-full bg-black/[0.04] px-3 py-1.5">PDF 第 {selectedPreviewPage} 页</span>}
+          {showOriginalPageMapping && (
             <span className="rounded-full bg-orange-50 px-3 py-1.5 text-orange-700">原书映射第 {selected.originalPageNumber} 页</span>
           )}
         </div>
@@ -276,7 +283,7 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
                     >
                       <div className="line-clamp-2 text-xs font-semibold leading-5">{item.documentName}</div>
                       <div className="mt-2 flex items-center justify-between text-[10px] text-black/40">
-                        <span>{item.pageNumber ? `第 ${item.pageNumber} 页` : '未标注页码'}</span>
+                        <span>{inferPageFromImageUrl(item.pageImageUrl) || item.pageNumber ? `第 ${inferPageFromImageUrl(item.pageImageUrl) || item.pageNumber} 页` : '未标注页码'}</span>
                         <span>{item.score ? `${Math.round(item.score * 100)}%` : '—'}</span>
                       </div>
                       <p className="mt-2 line-clamp-2 break-words text-[11px] leading-5 text-black/45 [overflow-wrap:anywhere]">{item.quote}</p>

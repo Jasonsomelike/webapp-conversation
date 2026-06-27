@@ -57,6 +57,10 @@ export default function DocumentLibrary({
     if (showLoading)
     { setRefreshing(true) }
     try {
+      if (showLoading) {
+        setError('')
+        setRefreshPending(false)
+      }
       const params = new URLSearchParams({
         page: String(initialResult.page),
         limit: '20',
@@ -66,7 +70,6 @@ export default function DocumentLibrary({
       if (status)
       { params.set('status', status) }
       params.set('refresh', '1')
-      params.set('mode', 'async')
       const response = await fetch(`/api/library/documents?${params}`, {
         credentials: 'include',
         cache: 'no-store',
@@ -79,7 +82,7 @@ export default function DocumentLibrary({
       const nextResult = await response.json() as DifyDocumentList
       setResult(nextResult)
       setRefreshPending(Boolean(nextResult.refresh_pending))
-      if (nextResult.stale && nextResult.refresh_error_message)
+      if (nextResult.stale && nextResult.refresh_error_message && !nextResult.data.length)
       { setError(nextResult.refresh_error_message) }
       else
       { setError('') }
