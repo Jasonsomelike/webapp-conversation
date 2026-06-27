@@ -58,6 +58,10 @@ export default function DocumentLibrary({
   const [error, setError] = useState(initialError)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshPending, setRefreshPending] = useState(Boolean(initialResult.refresh_pending))
+  const [refreshNotice, setRefreshNotice] = useState<{
+    tone: 'info' | 'success' | 'warning' | 'error'
+    message: string
+  } | null>(null)
 
   useEffect(() => {
     setResult(initialResult)
@@ -67,7 +71,14 @@ export default function DocumentLibrary({
 
   const refreshDocuments = useCallback(async (showLoading = false) => {
     if (showLoading)
-    { setRefreshing(true) }
+    {
+      setRefreshing(true)
+      setRefreshNotice({
+        tone: 'info',
+        message: '正在从服务端同步知识库目录，请稍等…',
+      })
+    }
+    const startedAt = Date.now()
     try {
       if (showLoading) {
         setError('')
@@ -82,9 +93,14 @@ export default function DocumentLibrary({
       if (status)
       { params.set('status', status) }
       params.set('refresh', '1')
+      params.set('_', String(Date.now()))
       const response = await fetch(`/api/library/documents?${params}`, {
         credentials: 'include',
         cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        },
       })
       if (!response.ok)
       {
@@ -94,14 +110,34 @@ export default function DocumentLibrary({
       const nextResult = await response.json() as DifyDocumentList
       setResult(nextResult)
       setRefreshPending(Boolean(nextResult.refresh_pending))
-      if (nextResult.stale && nextResult.refresh_error_message && !nextResult.data.length)
-      { setError(nextResult.refresh_error_message) }
-      else
-      { setError('') }
+      const elapsedSeconds = Math.max(0.1, (Date.now() - startedAt) / 1000).toFixed(1)
+      if (nextResult.stale && nextResult.refresh_error_message) {
+        if (!nextResult.data.length)
+        { setError(nextResult.refresh_error_message) }
+        else
+        { setError('') }
+        setRefreshNotice({
+          tone: 'warning',
+          message: `${nextResult.refresh_error_message}（本次请求 ${elapsedSeconds}s，当前仍展示 ${nextResult.total} 份缓存文档）`,
+        })
+      }
+      else {
+        setError('')
+        setRefreshNotice({
+          tone: 'success',
+          message: `刷新成功：已同步 ${nextResult.total} 份文档${nextResult.refreshed_at ? `，最近更新 ${formatDateTime(nextResult.refreshed_at)}` : ''}（${elapsedSeconds}s）`,
+        })
+      }
     }
     catch (caught) {
-      if (showLoading)
-      { setError(caught instanceof Error ? caught.message : '知识库同步请求已失败，请稍后重试。') }
+      if (showLoading) {
+        const message = caught instanceof Error ? caught.message : '知识库同步请求已失败，请稍后重试。'
+        setError(message)
+        setRefreshNotice({
+          tone: 'error',
+          message,
+        })
+      }
     }
     finally {
       if (showLoading)
@@ -160,10 +196,12 @@ export default function DocumentLibrary({
             type="button"
             onClick={() => void refreshDocuments(true)}
             disabled={refreshing}
+            data-testid="library-refresh-button"
+            aria-busy={refreshing}
             className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-black/10 bg-white px-4 text-xs font-semibold disabled:opacity-50"
           >
             <ArrowPathIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            刷新
+            {refreshing ? '刷新中…' : '刷新'}
           </button>
         </form>
 
@@ -173,6 +211,22 @@ export default function DocumentLibrary({
           {result.refreshed_at && ` · 最近更新 ${formatDateTime(result.refreshed_at)}`}
           {refreshPending && ' · 已发起后台刷新'}
         </div>
+
+        {(refreshing || refreshNotice) && (
+          <div
+            className={`border-b px-5 py-2.5 text-xs ${
+              refreshNotice?.tone === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                : refreshNotice?.tone === 'warning'
+                  ? 'border-amber-200 bg-amber-50 text-amber-800'
+                  : refreshNotice?.tone === 'error'
+                    ? 'border-red-200 bg-red-50 text-red-700'
+                    : 'border-blue-100 bg-blue-50 text-blue-700'
+            }`}
+          >
+            {refreshing ? '正在从服务端同步知识库目录，请稍等…' : refreshNotice?.message}
+          </div>
+        )}
 
         {result.stale && result.data.length > 0 && (
           <div className="border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-xs text-amber-800">
