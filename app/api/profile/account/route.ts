@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server'
 import { clearSessionCookie, getSession } from '@/lib/session'
 import { softDeleteAppUser } from '@/lib/account-lifecycle'
+import { z } from 'zod'
 
-export async function DELETE() {
+const deleteSchema = z.object({
+  username: z.string().trim().min(1).max(32),
+})
+
+export async function DELETE(request: Request) {
   const session = await getSession()
   if (!session)
   { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
@@ -10,6 +15,11 @@ export async function DELETE() {
   { return NextResponse.json({ error: '游客模式无需注销账号，直接退出即可。' }, { status: 400 }) }
 
   try {
+    const body = await request.json().catch(() => ({}))
+    const confirmation = deleteSchema.safeParse(body)
+    if (!confirmation.success || confirmation.data.username !== session.username)
+    { return NextResponse.json({ error: '请先输入完整账号名确认注销' }, { status: 400 }) }
+
     await softDeleteAppUser({
       appUserId: session.id,
       actorUserId: session.id,

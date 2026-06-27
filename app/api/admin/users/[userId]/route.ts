@@ -2,9 +2,13 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { isAdminSession } from '@/lib/admin'
 import { getSession } from '@/lib/session'
+import { db, withDatabaseRetry } from '@/lib/db'
 import { softDeleteAppUser } from '@/lib/account-lifecycle'
 
 const userIdSchema = z.string().uuid()
+const deleteSchema = z.object({
+  username: z.string().trim().min(1).max(32),
+})
 
 const requireAdmin = async () => {
   const session = await getSession()
@@ -12,7 +16,7 @@ const requireAdmin = async () => {
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ userId: string }> },
 ) {
   const session = await requireAdmin()
@@ -25,6 +29,20 @@ export async function DELETE(
   { return NextResponse.json({ error: '用户 ID 无效' }, { status: 400 }) }
 
   try {
+    const body = await request.json().catch(() => ({}))
+    const confirmation = deleteSchema.safeParse(body)
+    if (!confirmation.success)
+    { return NextResponse.json({ error: '请先输入完整账户名确认注销' }, { status: 400 }) }
+
+    const user = await withDatabaseRetry(() => db.appUser.findUnique({
+      where: { id: parsed.data },
+      select: { username: true },
+    }))
+    if (!user)
+    { return NextResponse.json({ error: '用户不存在或已注销' }, { status: 404 }) }
+    if (confirmation.data.username !== user.username)
+    { return NextResponse.json({ error: '账户名确认不匹配' }, { status: 400 }) }
+
     await softDeleteAppUser({
       appUserId: parsed.data,
       actorUserId: session.id,

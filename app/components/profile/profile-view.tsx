@@ -70,6 +70,8 @@ export default function ProfileView({
   const [saving, setSaving] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const [deletingAccount, setDeletingAccount] = useState(false)
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false)
+  const [deleteAccountText, setDeleteAccountText] = useState('')
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl)
   const [avatarSaving, setAvatarSaving] = useState(false)
   const [qqIdentity, setQqIdentity] = useState<QqIdentitySummary>(initialQqIdentity)
@@ -231,17 +233,22 @@ export default function ProfileView({
   }
 
   const deleteAccount = async () => {
-    // eslint-disable-next-line no-alert
-    const typed = globalThis.prompt(`注销后账号将无法再次登录，QQ 绑定会解除，但历史学习数据会被保留用于审计与数据完整性。\n\n如确认，请输入账号名：${session.username}`)
-    if (typed !== session.username)
-    { return }
+    if (deleteAccountText !== session.username) {
+      notify({ type: 'error', message: '请先输入完整账号名再注销' })
+      return
+    }
     setDeletingAccount(true)
     try {
       resetChatRuntime()
-      const response = await fetch('/api/profile/account', { method: 'DELETE' })
+      const response = await fetch('/api/profile/account', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: session.username }),
+      })
       const result = await response.json().catch(() => ({}))
       if (!response.ok)
       { throw new Error(result.error || '注销账号失败') }
+      setDeleteAccountOpen(false)
       globalThis.location.replace('/login')
     }
     catch (error) {
@@ -681,7 +688,10 @@ export default function ProfileView({
               ? (
                 <button
                   type="button"
-                  onClick={() => void deleteAccount()}
+                  onClick={() => {
+                    setDeleteAccountText('')
+                    setDeleteAccountOpen(true)
+                  }}
                   disabled={deletingAccount}
                   className="flex w-full items-center gap-3 border-t border-black/[0.06] px-5 py-4 text-left text-red-700 transition hover:bg-red-50 disabled:opacity-50"
                 >
@@ -774,6 +784,84 @@ export default function ProfileView({
                     ))}
                   </div>
                 )}
+            </div>
+          </div>
+        )}
+        {deleteAccountOpen && (
+          <div
+            role="presentation"
+            className="fixed inset-0 z-[90] flex items-end justify-center bg-black/45 px-3 pb-[calc(14px+env(safe-area-inset-bottom))] pt-[calc(14px+env(safe-area-inset-top))] backdrop-blur-[2px] sm:items-center"
+            onClick={() => !deletingAccount && setDeleteAccountOpen(false)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-account-title"
+              className="w-full max-w-[520px] rounded-[28px] border border-red-200 bg-[var(--studio-surface)] p-5 shadow-[0_30px_90px_rgba(0,0,0,.28)]"
+              onClick={event => event.stopPropagation()}
+            >
+              <div className="flex items-start gap-3">
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-600">
+                  <TrashIcon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 id="delete-account-title" className="text-base font-semibold text-red-700">确认注销账号</h3>
+                  <p className="mt-2 text-xs leading-6 text-black/55">
+                    注销后，账号、QQ 绑定、头像、会话、消息、引用、画像、图谱、分析报告、上传解析与分享记录会从数据库同步删除，且不可恢复。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={deletingAccount}
+                  onClick={() => setDeleteAccountOpen(false)}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-black/[0.04] text-black/45 transition hover:bg-black/[0.08] disabled:opacity-50"
+                  aria-label="关闭"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="mt-5 rounded-2xl border border-red-100 bg-red-50/50 p-4">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label htmlFor="delete-account-confirm" className="text-xs font-semibold text-red-800">
+                    请输入账号名 @{session.username}
+                  </label>
+                  <button
+                    type="button"
+                    disabled={deletingAccount}
+                    onClick={() => setDeleteAccountText(session.username)}
+                    className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[10px] font-semibold text-red-600 shadow-sm transition hover:bg-red-100 disabled:opacity-50"
+                  >
+                    一键输入账户名
+                  </button>
+                </div>
+                <input
+                  id="delete-account-confirm"
+                  value={deleteAccountText}
+                  onChange={event => setDeleteAccountText(event.target.value)}
+                  disabled={deletingAccount}
+                  autoComplete="off"
+                  className="h-11 w-full rounded-xl border border-red-100 bg-white px-3 text-sm outline-none focus:border-red-300"
+                  placeholder={session.username}
+                />
+              </div>
+              <div className="mt-5 flex justify-end gap-3">
+                <button
+                  type="button"
+                  disabled={deletingAccount}
+                  onClick={() => setDeleteAccountOpen(false)}
+                  className="h-11 rounded-xl border border-black/10 px-5 text-xs font-semibold disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  disabled={deletingAccount || deleteAccountText !== session.username}
+                  onClick={() => void deleteAccount()}
+                  className="h-11 rounded-xl bg-red-600 px-5 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(220,38,38,.18)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {deletingAccount ? '正在注销…' : '确认注销并清除数据'}
+                </button>
+              </div>
             </div>
           </div>
         )}
