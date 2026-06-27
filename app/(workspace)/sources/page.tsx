@@ -7,5 +7,21 @@ export default async function SourcesPage() {
   const session = await getSession()
   if (!session)
   { redirect('/login') }
-  return <SourcesView initialReferences={await getUserReferences(session.id)} />
+
+  try {
+    const references = await getUserReferences(session.id)
+    return <SourcesView initialReferences={references} />
+  }
+  catch (error) {
+    console.error('[sources-page] failed to load user references', {
+      appUserId: session.id,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return (
+      <SourcesView
+        initialReferences={[]}
+        loadError="数据连接短暂波动，当前先展示空状态；请稍后刷新，不会影响账号数据。"
+      />
+    )
+  }
 }

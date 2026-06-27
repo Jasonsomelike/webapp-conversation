@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ArrowDownTrayIcon,
+  ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
   BookOpenIcon,
   DocumentMagnifyingGlassIcon,
+  ExclamationTriangleIcon,
   MagnifyingGlassIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
@@ -22,11 +24,23 @@ const inferPageFromImageUrl = (value?: string | null) =>
 const inferOriginalPdfPageFromQuote = (value?: string | null) =>
   Number(String(value || '').match(/原\s*PDF\s*第\s*(\d{1,5})\s*页/i)?.[1] || 0) || undefined
 
-export default function SourcesView({ initialReferences }: { initialReferences: KnowledgeReference[] }) {
+interface SourcesViewProps {
+  initialReferences: KnowledgeReference[]
+  loadError?: string
+}
+
+export default function SourcesView({ initialReferences, loadError = '' }: SourcesViewProps) {
+  const safeReferences = useMemo(
+    () => initialReferences.filter((item): item is KnowledgeReference =>
+      Boolean(item && typeof item === 'object' && item.id && item.documentName),
+    ),
+    [initialReferences],
+  )
   const [query, setQuery] = useState('')
-  const [selectedId, setSelectedId] = useState(initialReferences[0]?.id)
+  const [selectedId, setSelectedId] = useState(safeReferences[0]?.id)
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
   const [previewImageUrl, setPreviewImageUrl] = useState('')
+  const [showLoadError, setShowLoadError] = useState(Boolean(loadError))
   const sourcesSplit = useResizableSplit({
     storageKey: 'network-study-sources-list-width',
     cssVariable: '--sources-list-width',
@@ -38,11 +52,11 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
   })
 
   const [imageError, setImageError] = useState(false)
-  const filtered = useMemo(() => initialReferences.filter(item =>
+  const filtered = useMemo(() => safeReferences.filter(item =>
     `${item.documentName} ${item.topic} ${item.quote}`.toLowerCase().includes(query.toLowerCase()),
-  ), [query, initialReferences])
-  const selected = initialReferences.find(item => item.id === selectedId) || filtered[0]
-  const documentCount = new Set(initialReferences.map(item => item.documentName)).size
+  ), [query, safeReferences])
+  const selected = safeReferences.find(item => item.id === selectedId) || filtered[0]
+  const documentCount = new Set(safeReferences.map(item => item.documentName)).size
   const selectedPreviewPage = selected
     ? inferPageFromImageUrl(selected.pageImageUrl) || selected.pageNumber || selected.originalPageNumber || 1
     : 1
@@ -61,6 +75,14 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
     setImageError(false)
   }, [selected?.id])
   useEffect(() => {
+    setShowLoadError(Boolean(loadError))
+  }, [loadError])
+  useEffect(() => {
+    if (selectedId && safeReferences.some(item => item.id === selectedId))
+    { return }
+    setSelectedId(safeReferences[0]?.id)
+  }, [safeReferences, selectedId])
+  useEffect(() => {
     if (!mobileDetailOpen)
     { return }
     window.NetworkStudyApp?.hideShell()
@@ -77,8 +99,8 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
       window.NetworkStudyApp?.setShellState('/sources', '我的文档引用', '可追溯学习')
     }
   }, [mobileDetailOpen])
-  const averageScore = initialReferences.length
-    ? Math.round(initialReferences.reduce((sum, item) => sum + (item.score || 0), 0) / initialReferences.length * 100)
+  const averageScore = safeReferences.length
+    ? Math.round(safeReferences.reduce((sum, item) => sum + (item.score || 0), 0) / safeReferences.length * 100)
     : 0
 
   const exportReferences = () => {
@@ -204,9 +226,38 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
 
   return (
     <div className="mx-auto max-w-[1450px] p-4 sm:p-6">
+      {showLoadError && loadError && (
+        <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-xs font-semibold">引用数据暂时未完全加载</div>
+              <div className="mt-1 text-[11px] leading-5">{loadError}</div>
+            </div>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-white px-3 text-[11px] font-semibold text-amber-800 shadow-sm"
+            >
+              <ArrowPathIcon className="h-3.5 w-3.5" />重试
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowLoadError(false)}
+              className="grid h-9 w-9 place-items-center rounded-xl bg-white text-amber-700 shadow-sm"
+              aria-label="关闭提示"
+            >
+              <XMarkIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
         {[
-          ['引用记录', initialReferences.length, '条'],
+          ['引用记录', safeReferences.length, '条'],
           ['命中文档', documentCount, '份'],
           ['平均相关度', averageScore, '%'],
         ].map(([label, value, unit]) => (
@@ -242,7 +293,7 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
           </button>
         </div>
 
-        {!initialReferences.length
+        {!safeReferences.length
           ? (
             <div className="grid min-h-[500px] place-items-center p-10 text-center">
               <div>

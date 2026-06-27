@@ -237,6 +237,10 @@ const filterCatalog = ({
   refreshedAt: Date
   refreshError?: string | null
 }): DifyDocumentList => {
+  const suppressCachedFallbackError = Boolean(
+    documents.length > 0
+    && refreshError?.includes('DIFY_DATASET_NOT_CONFIGURED'),
+  )
   const safePage = Math.max(1, page)
   const safeLimit = Math.min(100, Math.max(1, limit))
   const normalizedKeyword = keyword.trim().toLowerCase()
@@ -253,9 +257,9 @@ const filterCatalog = ({
     total: filtered.length,
     page: safePage,
     refreshed_at: refreshedAt.toISOString(),
-    stale: Boolean(refreshError),
-    refresh_error: refreshError || undefined,
-    refresh_error_message: describeKnowledgeCatalogError(refreshError),
+    stale: Boolean(refreshError) && !suppressCachedFallbackError,
+    refresh_error: suppressCachedFallbackError ? undefined : refreshError || undefined,
+    refresh_error_message: suppressCachedFallbackError ? undefined : describeKnowledgeCatalogError(refreshError),
   }
 }
 
