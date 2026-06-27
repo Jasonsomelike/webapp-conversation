@@ -18,10 +18,46 @@ import { useImageFiles } from '@/app/components/base/image-uploader/hooks'
 import ChatImageUploader from '@/app/components/base/image-uploader/chat-image-uploader'
 import FileUploaderInAttachmentWrapper from '@/app/components/base/file-uploader-in-attachment'
 import type { FileEntity, FileUpload } from '@/app/components/base/file-uploader-in-attachment/types'
-import { fileIsUploaded, getProcessedFiles } from '@/app/components/base/file-uploader-in-attachment/utils'
+import { fileIsUploaded, getFileAppearanceType, getProcessedFiles } from '@/app/components/base/file-uploader-in-attachment/utils'
+import FileTypeIcon from '@/app/components/base/file-uploader-in-attachment/file-type-icon'
 import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
 
 type SendResult = boolean | void | Promise<boolean | void>
+
+const ComposerFileCard: FC<{
+  file: FileEntity
+  onRemove: (fileId: string) => void
+}> = ({ file, onRemove }) => {
+  const uploading = file.progress >= 0 && !fileIsUploaded(file)
+  const failed = file.progress === -1
+  return (
+    <div className="group relative flex h-[74px] w-[220px] shrink-0 items-center gap-3 rounded-2xl border border-black/10 bg-white px-3 shadow-sm">
+      <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-blue-500/10">
+        <FileTypeIcon type={getFileAppearanceType(file.name, file.type)} size="lg" className="text-blue-500" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-semibold text-[var(--studio-ink)]" title={file.name}>{file.name}</div>
+        <div className="mt-0.5 text-xs text-black/45">
+          {failed ? '上传失败，请移除后重传' : uploading ? `上传中 ${file.progress}%` : '文件'}
+        </div>
+      </div>
+      {uploading && (
+        <div className="absolute inset-x-3 bottom-2 h-1 overflow-hidden rounded-full bg-black/10">
+          <div className="h-full rounded-full bg-[var(--studio-deep)] transition-all" style={{ width: `${Math.max(8, Math.min(100, file.progress))}%` }} />
+        </div>
+      )}
+      {failed && <div className="absolute inset-0 rounded-2xl border border-red-200 bg-red-50/55 pointer-events-none" />}
+      <button
+        type="button"
+        aria-label="移除文件"
+        onClick={() => onRemove(file.id)}
+        className="absolute -right-1.5 -top-1.5 grid h-6 w-6 place-items-center rounded-full bg-black text-white shadow-sm transition hover:scale-105"
+      >
+        ×
+      </button>
+    </div>
+  )
+}
 
 export interface IChatProps {
   chatList: ChatItem[]
@@ -344,15 +380,25 @@ const Chat: FC<IChatProps> = ({
         !isHideSendInput && (
           <div className='z-10 mx-auto w-full max-w-[720px] shrink-0 bg-gradient-to-t from-[var(--studio-chat-surface)] via-[var(--studio-chat-surface)] to-transparent px-4 pb-[calc(10px+env(safe-area-inset-bottom))] pt-2 sm:px-5 sm:pb-4 sm:pt-3'>
             <div className='chat-composer max-h-[230px] overflow-y-auto rounded-[22px] border border-[#17342b]/15 bg-white px-2.5 py-2 shadow-[0_14px_36px_rgba(35,55,47,.13)]'>
-              {visionConfig?.enabled && files.length > 0 && (
-                <div className='mb-2 pl-1'>
-                  <ImageList
-                    list={files}
-                    onRemove={onRemove}
-                    onReUpload={onReUpload}
-                    onImageLinkLoadSuccess={onImageLinkLoadSuccess}
-                    onImageLinkLoadError={onImageLinkLoadError}
-                  />
+              {(files.length > 0 || attachmentFiles.length > 0) && (
+                <div className="mb-2 flex max-w-full items-center gap-2 overflow-x-auto px-1 pb-1">
+                  {visionConfig?.enabled && files.length > 0 && (
+                    <ImageList
+                      list={files}
+                      composer
+                      onRemove={onRemove}
+                      onReUpload={onReUpload}
+                      onImageLinkLoadSuccess={onImageLinkLoadSuccess}
+                      onImageLinkLoadError={onImageLinkLoadError}
+                    />
+                  )}
+                  {attachmentFiles.map(file => (
+                    <ComposerFileCard
+                      key={file.id}
+                      file={file}
+                      onRemove={fileId => setAttachmentFiles(current => current.filter(item => item.id !== fileId))}
+                    />
+                  ))}
                 </div>
               )}
               <div className="flex min-h-10 items-end gap-1">
@@ -377,6 +423,7 @@ const Chat: FC<IChatProps> = ({
                       value={attachmentFiles}
                       onChange={setAttachmentFiles}
                       compact
+                      hidePreview
                     />
                   </div>
                 )}

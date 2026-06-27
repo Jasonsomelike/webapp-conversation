@@ -3,6 +3,7 @@ import 'server-only'
 import type { Prisma } from '@prisma/client'
 import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
 import { fetchDify } from '@/lib/dify-server'
+import { cleanReferenceDocumentName } from '@/lib/reference-extractor'
 
 export interface DifyKnowledgeDocument {
   id: string
@@ -403,6 +404,52 @@ export const listKnowledgeDocuments = async ({
     refreshedAt: catalog.refreshedAt,
     refreshError: catalog.refreshError,
   })
+}
+
+const documentHitKey = (value: unknown) =>
+  cleanReferenceDocumentName(value)
+    .toLocaleLowerCase('zh-CN')
+    .replace(/\s+/g, '')
+
+export const attachUserKnowledgeDocumentHitCounts = async (
+  result: DifyDocumentList,
+  appUserId: string,
+): Promise<DifyDocumentList> => {
+  if (!isDatabaseConfigured() || !result.data.length)
+  { return result }
+
+  try {
+    const rows = await withDatabaseRetry(() => db.messageReference.groupBy({
+      by: ['documentName'],
+      where: {
+        appUserId,
+        documentName: { not: null },
+      },
+      _count: { _all: true },
+    }))
+    const hitCounts = new Map<string, number>()
+    rows.forEach((row) => {
+      const key = documentHitKey(row.documentName)
+      if (!key)
+      { return }
+      hitCounts.set(key, (hitCounts.get(key) || 0) + row._count._all)
+    })
+
+    return {
+      ...result,
+      data: result.data.map(document => ({
+        ...document,
+        hit_count: hitCounts.get(documentHitKey(document.name)) || 0,
+      })),
+    }
+  }
+  catch (error) {
+    console.warn('[library-documents] failed to attach user hit counts', {
+      appUserId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return result
+  }
 }
 
 export const refreshKnowledgeDocuments = async ({

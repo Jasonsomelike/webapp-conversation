@@ -21,11 +21,13 @@ interface Option {
 interface FileUploaderInAttachmentProps {
   fileConfig: FileUpload
   compact?: boolean
+  hidePreview?: boolean
 }
 
 const FileUploaderInAttachment = ({
   fileConfig,
   compact = false,
+  hidePreview = false,
 }: FileUploaderInAttachmentProps) => {
   const { t } = useTranslation()
   const files = useStore(s => s.files)
@@ -52,7 +54,7 @@ const FileUploaderInAttachment = ({
           title={nativeApp && option.value === TransferMethod.local_file ? '使用 Android 文件选择器添加附件' : option.label}
           aria-label={option.label}
           className={cn(
-            'relative grid h-10 w-10 cursor-pointer place-items-center rounded-2xl border transition active:scale-95',
+            'relative grid h-8 w-8 cursor-pointer place-items-center rounded-lg border transition active:scale-95',
             nativeApp
               ? 'border-black/10 bg-black/[0.035] text-[var(--studio-deep)] shadow-sm hover:bg-black/[0.055]'
               : 'border-transparent text-[var(--studio-muted)] hover:bg-black/[0.05]',
@@ -99,22 +101,24 @@ const FileUploaderInAttachment = ({
 
   return (
     <div className={compact ? 'flex max-w-[min(68vw,460px)] flex-col-reverse items-start gap-1' : ''}>
-      <div className={compact ? 'flex items-center' : 'flex items-center space-x-1'}>
+      <div className={compact ? 'flex h-8 items-center' : 'flex items-center space-x-1'}>
         {options.map(renderOption)}
       </div>
-      <div className={compact ? 'flex max-w-full flex-wrap gap-2' : 'mt-1 space-y-1'}>
-        {files.map(file => (
-          <FileItem
-            key={file.id}
-            file={file}
-            showDeleteAction
-            showDownloadAction={false}
-            onRemove={() => handleRemoveFile(file.id)}
-            onReUpload={() => handleReUploadFile(file.id)}
-            compact={compact}
-          />
-        ))}
-      </div>
+      {!hidePreview && (
+        <div className={compact ? 'flex max-w-full flex-wrap gap-2' : 'mt-1 space-y-1'}>
+          {files.map(file => (
+            <FileItem
+              key={file.id}
+              file={file}
+              showDeleteAction
+              showDownloadAction={false}
+              onRemove={() => handleRemoveFile(file.id)}
+              onReUpload={() => handleReUploadFile(file.id)}
+              compact={compact}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -124,6 +128,7 @@ interface FileUploaderInAttachmentWrapperProps {
   onChange: (files: FileEntity[]) => void
   fileConfig: FileUpload
   compact?: boolean
+  hidePreview?: boolean
 }
 
 const FileUploaderInAttachmentWrapper = ({
@@ -131,10 +136,11 @@ const FileUploaderInAttachmentWrapper = ({
   onChange,
   fileConfig,
   compact,
+  hidePreview,
 }: FileUploaderInAttachmentWrapperProps) => {
   return (
     <FileContextProvider value={value} onChange={onChange}>
-      <FileUploaderInAttachment fileConfig={fileConfig} compact={compact} />
+      <FileUploaderInAttachment fileConfig={fileConfig} compact={compact} hidePreview={hidePreview} />
     </FileContextProvider>
   )
 }

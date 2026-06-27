@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { describeKnowledgeCatalogError, listKnowledgeDocuments, requestKnowledgeDocumentRefresh, refreshKnowledgeDocuments } from '@/lib/dify-dataset'
+import { attachUserKnowledgeDocumentHitCounts, describeKnowledgeCatalogError, listKnowledgeDocuments, requestKnowledgeDocumentRefresh, refreshKnowledgeDocuments } from '@/lib/dify-dataset'
 import { getSession } from '@/lib/session'
 
 export const runtime = 'nodejs'
@@ -23,8 +23,9 @@ export async function GET(request: Request) {
       keyword: params.get('keyword') || '',
       status: params.get('status') || '',
     })
+    const enrichedData = await attachUserKnowledgeDocumentHitCounts(data, session.id)
     return NextResponse.json({
-      ...data,
+      ...enrichedData,
       refresh_pending: wantsRefresh && params.get('mode') === 'async',
     }, {
       headers: {

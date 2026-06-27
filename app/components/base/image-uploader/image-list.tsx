@@ -14,6 +14,7 @@ import { isNetworkStudyApp } from '@/lib/native-app'
 interface ImageListProps {
   list: ImageFile[]
   readonly?: boolean
+  composer?: boolean
   onRemove?: (imageFileId: string) => void
   onReUpload?: (imageFileId: string) => void
   onImageLinkLoadSuccess?: (imageFileId: string) => void
@@ -23,6 +24,7 @@ interface ImageListProps {
 const ImageList: FC<ImageListProps> = ({
   list,
   readonly,
+  composer,
   onRemove,
   onReUpload,
   onImageLinkLoadSuccess,
@@ -47,7 +49,7 @@ const ImageList: FC<ImageListProps> = ({
   }
 
   return (
-    <div className='flex flex-wrap gap-2'>
+    <div className={composer ? 'flex shrink-0 flex-nowrap gap-2' : 'flex flex-wrap gap-2'}>
       {
         list.map(item => (
           <div
@@ -97,7 +99,9 @@ const ImageList: FC<ImageListProps> = ({
               )
             }
             <img
-              className='h-28 w-28 cursor-pointer rounded-2xl border-[0.5px] border-black/5 object-cover sm:h-32 sm:w-32'
+              className={composer
+                ? 'h-[74px] w-[74px] cursor-pointer rounded-2xl border-[0.5px] border-black/5 object-cover'
+                : 'h-28 w-28 cursor-pointer rounded-2xl border-[0.5px] border-black/5 object-cover sm:h-32 sm:w-32'}
               alt=''
               onLoad={() => handleImageLinkLoadSuccess(item)}
               onError={() => handleImageLinkLoadError(item)}
