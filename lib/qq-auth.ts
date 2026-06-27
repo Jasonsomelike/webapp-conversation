@@ -210,6 +210,10 @@ export const extractQqNumber = (...sources: unknown[]) => {
     )
     if (direct)
     { return direct }
+    const openIdentity = String(record.openId || record.openid || '').trim()
+    const qqOpenIdMatch = openIdentity.match(/^QQ(\d{5,12})$/i)
+    if (qqOpenIdMatch?.[1])
+    { return qqOpenIdMatch[1] }
   }
   return undefined
 }
