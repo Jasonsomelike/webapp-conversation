@@ -14,6 +14,7 @@ import PageCard from '@/app/components/workspace/page-card'
 import type { KnowledgeReference } from '@/lib/learning-types'
 import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
 import ImagePreview from '@/app/components/base/image-uploader/image-preview'
+import { ResizableSplitHandle, useResizableSplit } from '@/app/components/base/resizable-split'
 
 const inferPageFromImageUrl = (value?: string | null) =>
   Number(String(value || '').match(/\/page_(\d+)\./i)?.[1] || 0) || undefined
@@ -23,6 +24,15 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
   const [selectedId, setSelectedId] = useState(initialReferences[0]?.id)
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
   const [previewImageUrl, setPreviewImageUrl] = useState('')
+  const sourcesSplit = useResizableSplit({
+    storageKey: 'network-study-sources-list-width',
+    cssVariable: '--sources-list-width',
+    defaultSize: 380,
+    minSize: 300,
+    maxSize: 620,
+    minTrailingSize: 620,
+    label: '调整引用列表宽度',
+  })
 
   const [imageError, setImageError] = useState(false)
   const filtered = useMemo(() => initialReferences.filter(item =>
@@ -242,7 +252,11 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
             </div>
           )
           : (
-            <div className="grid min-h-[580px] min-w-0 lg:grid-cols-[380px_1fr]">
+            <div
+              ref={sourcesSplit.containerRef}
+              style={sourcesSplit.containerStyle}
+              className="grid min-h-[580px] min-w-0 lg:grid-cols-[var(--sources-list-width)_8px_minmax(0,1fr)]"
+            >
               <aside className="min-w-0 border-b border-black/[0.07] bg-black/[0.018] p-3 lg:border-b-0 lg:border-r">
                 <div className="mb-2 px-2 py-2 text-[10px] font-bold uppercase tracking-[0.18em] text-black/40">当前账号引用 · {filtered.length}</div>
                 <div className="space-y-2 lg:max-h-[535px] lg:overflow-y-auto">
@@ -270,6 +284,11 @@ export default function SourcesView({ initialReferences }: { initialReferences: 
                   ))}
                 </div>
               </aside>
+
+              <ResizableSplitHandle
+                separatorProps={sourcesSplit.separatorProps}
+                className="border-r border-black/[0.06] bg-black/[0.018] hover:bg-[var(--studio-accent)]/20"
+              />
 
               <section className="hidden min-w-0 p-6 sm:p-8 lg:block">
                 {renderSelectedDetails()}

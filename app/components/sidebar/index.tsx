@@ -28,6 +28,7 @@ export interface ISidebarProps {
   onDeleteConversation: (id: string) => Promise<void>
   onShareConversation?: (item: ConversationItem) => Promise<void> | void
   list: ConversationItem[]
+  className?: string
 }
 
 const Sidebar: FC<ISidebarProps> = ({
@@ -37,6 +38,7 @@ const Sidebar: FC<ISidebarProps> = ({
   onDeleteConversation,
   onShareConversation,
   list,
+  className,
 }) => {
   const { t } = useTranslation()
   const [menuId, setMenuId] = useState('')
@@ -69,7 +71,10 @@ const Sidebar: FC<ISidebarProps> = ({
 
   return (
     <div
-      className="chat-conversation-sidebar flex h-full shrink-0 flex-col overflow-y-auto border-r border-[#183129]/[0.07] bg-[#f7f7f2] pc:w-[236px] tablet:w-[210px] mobile:w-[260px]"
+      className={classNames(
+        'chat-conversation-sidebar flex h-full shrink-0 flex-col overflow-y-auto border-r border-[#183129]/[0.07] bg-[#f7f7f2]',
+        className || 'pc:w-[236px] tablet:w-[210px] mobile:w-[260px]',
+      )}
     >
       {list.length < MAX_CONVERSATION_LENTH && (
         <div className="flex flex-shrink-0 p-4 !pb-0">

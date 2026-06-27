@@ -26,6 +26,7 @@ import type { Annotation as AnnotationType } from '@/types/log'
 import { addFileInfos, sortAgentSorts } from '@/utils/tools'
 import ConversationShareDialog from '@/app/components/chat/conversation-share-dialog'
 import { normalizeTextFields, toMessageText } from '@/lib/safe-text'
+import { ResizableSplitHandle, useResizableSplit } from '@/app/components/base/resizable-split'
 
 export interface IMainProps {
   params: any
@@ -182,6 +183,15 @@ const Main: FC<IMainProps> = () => {
   const [shareOpen, setShareOpen] = useState(false)
   const [shareTarget, setShareTarget] = useState<ConversationShareTarget | null>(null)
   const [showJumpToBottom, setShowJumpToBottom] = useState(false)
+  const chatSplit = useResizableSplit({
+    storageKey: 'network-study-chat-sidebar-width',
+    cssVariable: '--chat-sidebar-width',
+    defaultSize: 260,
+    minSize: 210,
+    maxSize: 430,
+    minTrailingSize: 560,
+    label: '调整对话列表宽度',
+  })
 
   useEffect(() => {
     const detail = isMobile && !showMobileConversationList
@@ -1605,7 +1615,7 @@ const Main: FC<IMainProps> = () => {
     notify({ type: 'success', message: t('common.api.success') })
   }
 
-  const renderSidebar = () => {
+  const renderSidebar = (className?: string) => {
     if (!APP_ID || !APP_INFO || !promptConfig) { return null }
     return (
       <Sidebar
@@ -1615,6 +1625,7 @@ const Main: FC<IMainProps> = () => {
         onShareConversation={handleShareConversation}
         currentId={currConversationId}
         copyRight={APP_INFO.copyright || APP_INFO.title}
+        className={className}
       />
     )
   }
@@ -1625,9 +1636,15 @@ const Main: FC<IMainProps> = () => {
 
   return (
     <div data-chat-shell className="flex h-full min-h-0 bg-[var(--studio-surface)]">
-      <div className="flex h-full min-h-0 w-full overflow-hidden">
+      <div ref={chatSplit.containerRef} style={chatSplit.containerStyle} className="flex h-full min-h-0 w-full overflow-hidden">
         {/* sidebar */}
-        {!isMobile && renderSidebar()}
+        {!isMobile && renderSidebar('w-[236px] lg:w-[var(--chat-sidebar-width)]')}
+        {!isMobile && (
+          <ResizableSplitHandle
+            separatorProps={chatSplit.separatorProps}
+            className="border-r border-[#183129]/[0.06] bg-[#f7f7f2] hover:bg-[#edf2ed]"
+          />
+        )}
         {/* main */}
         {isMobile && showMobileConversationList
           ? (
