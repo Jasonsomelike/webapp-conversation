@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ArrowPathIcon,
   ChatBubbleLeftRightIcon,
@@ -36,9 +37,8 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
   const [deletingId, setDeletingId] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<AdminUserRow>()
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
-  const [hiddenCleanupName, setHiddenCleanupName] = useState('')
-  const [cleaningHidden, setCleaningHidden] = useState(false)
   const [conversationUser, setConversationUser] = useState<AdminUserRow>()
+  const [portalReady, setPortalReady] = useState(false)
   const { notify } = Toast
   const filtered = useMemo(() => users.filter(user =>
     `${user.username} ${user.displayName} ${user.difyUserId}`.toLowerCase().includes(query.trim().toLowerCase()),
@@ -46,6 +46,33 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
 
   const patchLocal = (id: string, patch: Partial<AdminUserRow>) =>
     setUsers(current => current.map(user => user.id === id ? { ...user, ...patch } : user))
+
+  useEffect(() => {
+    setPortalReady(true)
+  }, [])
+
+  useEffect(() => {
+    if (!deleteTarget)
+    { return }
+
+    const html = document.documentElement
+    const body = document.body
+    const previousHtmlOverflow = html.style.overflow
+    const previousBodyOverflow = body.style.overflow
+    const previousBodyPosition = body.style.position
+    const previousBodyWidth = body.style.width
+    html.style.overflow = 'hidden'
+    body.style.overflow = 'hidden'
+    body.style.position = 'relative'
+    body.style.width = '100%'
+
+    return () => {
+      html.style.overflow = previousHtmlOverflow
+      body.style.overflow = previousBodyOverflow
+      body.style.position = previousBodyPosition
+      body.style.width = previousBodyWidth
+    }
+  }, [deleteTarget])
 
   const save = async (user: AdminUserRow, unlock = false) => {
     setSavingId(user.id)
@@ -103,36 +130,6 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
     }
   }
 
-  const cleanupUsers = async (body: { mode: 'hidden-test-users' } | { mode: 'username', username: string }) => {
-    if (body.mode === 'username' && !body.username.trim()) {
-      notify({ type: 'error', message: '请输入要清理的账户名' })
-      return
-    }
-
-    setCleaningHidden(true)
-    try {
-      const response = await fetch('/api/admin/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok)
-      { throw new Error(result.error || '清理用户失败') }
-      const names = new Set<string>((result.users || []).map((name: string) => name.toLowerCase()))
-      setUsers(current => current.filter(item => !names.has(item.username.toLowerCase())))
-      if (body.mode === 'username')
-      { setHiddenCleanupName('') }
-      notify({ type: 'success', message: `已清理 ${result.deleted || 0} 个账号` })
-    }
-    catch (error) {
-      notify({ type: 'error', message: error instanceof Error ? error.message : '清理用户失败' })
-    }
-    finally {
-      setCleaningHidden(false)
-    }
-  }
-
   return (
     <div className="mx-auto max-w-[1450px] p-4 pb-10 sm:p-6 sm:pb-12">
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
@@ -147,44 +144,6 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
           </PageCard>
         ))}
       </div>
-
-      <PageCard className="mb-5 p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="text-sm font-semibold">隐藏账号清理</div>
-            <p className="mt-1 text-xs leading-5 text-black/45">
-              后台列表会隐藏 test/demo/guest/deleted 等账号；可一键清理这些测试残留，或输入列表外账户名单独注销。
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <button
-              type="button"
-              disabled={cleaningHidden}
-              onClick={() => void cleanupUsers({ mode: 'hidden-test-users' })}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 text-xs font-semibold text-red-600 disabled:opacity-50"
-            >
-              {cleaningHidden ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <TrashIcon className="h-4 w-4" />}
-              清理隐藏测试账号
-            </button>
-            <div className="flex min-w-0 gap-2">
-              <input
-                value={hiddenCleanupName}
-                onChange={event => setHiddenCleanupName(event.target.value)}
-                placeholder="输入列表外账户名，如 test"
-                className="h-10 min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3 text-xs outline-none sm:w-56"
-              />
-              <button
-                type="button"
-                disabled={cleaningHidden || !hiddenCleanupName.trim()}
-                onClick={() => void cleanupUsers({ mode: 'username', username: hiddenCleanupName.trim() })}
-                className="h-10 rounded-xl bg-[var(--studio-deep)] px-3 text-xs font-semibold text-white disabled:opacity-50"
-              >
-                按账户名注销
-              </button>
-            </div>
-          </div>
-        </div>
-      </PageCard>
 
       <PageCard className="overflow-hidden">
         <div className="flex items-center gap-3 border-b border-black/[0.07] p-4">
@@ -260,18 +219,22 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
           onClose={() => setConversationUser(undefined)}
         />
       )}
-      {deleteTarget && (
+      {portalReady && deleteTarget && createPortal(
         <div
           role="presentation"
-          className="fixed inset-0 z-[90] flex items-end justify-center bg-black/45 px-3 pb-[calc(14px+env(safe-area-inset-bottom))] pt-[calc(14px+env(safe-area-inset-top))] backdrop-blur-[2px] sm:items-center"
+          className="fixed inset-0 z-[9999] grid place-items-center overflow-hidden bg-black/50 px-3 py-[calc(16px+env(safe-area-inset-top))] backdrop-blur-[3px]"
           onClick={() => deletingId ? undefined : setDeleteTarget(undefined)}
+          onWheel={event => event.preventDefault()}
+          onTouchMove={event => event.preventDefault()}
         >
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="admin-delete-user-title"
-            className="w-full max-w-[520px] rounded-[28px] border border-red-200 bg-[var(--studio-surface)] p-5 shadow-[0_30px_90px_rgba(0,0,0,.28)]"
+            className="max-h-[min(86dvh,680px)] w-full max-w-[520px] overflow-y-auto overscroll-contain rounded-[28px] border border-red-200 bg-[var(--studio-surface)] p-5 shadow-[0_30px_90px_rgba(0,0,0,.34)]"
             onClick={event => event.stopPropagation()}
+            onWheel={event => event.stopPropagation()}
+            onTouchMove={event => event.stopPropagation()}
           >
             <div className="flex items-start gap-3">
               <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-600">
@@ -336,7 +299,8 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
