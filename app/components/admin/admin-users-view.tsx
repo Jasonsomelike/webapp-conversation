@@ -36,6 +36,8 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
   const [deletingId, setDeletingId] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<AdminUserRow>()
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [hiddenCleanupName, setHiddenCleanupName] = useState('')
+  const [cleaningHidden, setCleaningHidden] = useState(false)
   const [conversationUser, setConversationUser] = useState<AdminUserRow>()
   const { notify } = Toast
   const filtered = useMemo(() => users.filter(user =>
@@ -101,6 +103,36 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
     }
   }
 
+  const cleanupUsers = async (body: { mode: 'hidden-test-users' } | { mode: 'username', username: string }) => {
+    if (body.mode === 'username' && !body.username.trim()) {
+      notify({ type: 'error', message: '请输入要清理的账户名' })
+      return
+    }
+
+    setCleaningHidden(true)
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok)
+      { throw new Error(result.error || '清理用户失败') }
+      const names = new Set<string>((result.users || []).map((name: string) => name.toLowerCase()))
+      setUsers(current => current.filter(item => !names.has(item.username.toLowerCase())))
+      if (body.mode === 'username')
+      { setHiddenCleanupName('') }
+      notify({ type: 'success', message: `已清理 ${result.deleted || 0} 个账号` })
+    }
+    catch (error) {
+      notify({ type: 'error', message: error instanceof Error ? error.message : '清理用户失败' })
+    }
+    finally {
+      setCleaningHidden(false)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1450px] p-4 pb-10 sm:p-6 sm:pb-12">
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
@@ -115,6 +147,44 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
           </PageCard>
         ))}
       </div>
+
+      <PageCard className="mb-5 p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="text-sm font-semibold">隐藏账号清理</div>
+            <p className="mt-1 text-xs leading-5 text-black/45">
+              后台列表会隐藏 test/demo/guest/deleted 等账号；可一键清理这些测试残留，或输入列表外账户名单独注销。
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              disabled={cleaningHidden}
+              onClick={() => void cleanupUsers({ mode: 'hidden-test-users' })}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 text-xs font-semibold text-red-600 disabled:opacity-50"
+            >
+              {cleaningHidden ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <TrashIcon className="h-4 w-4" />}
+              清理隐藏测试账号
+            </button>
+            <div className="flex min-w-0 gap-2">
+              <input
+                value={hiddenCleanupName}
+                onChange={event => setHiddenCleanupName(event.target.value)}
+                placeholder="输入列表外账户名，如 test"
+                className="h-10 min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3 text-xs outline-none sm:w-56"
+              />
+              <button
+                type="button"
+                disabled={cleaningHidden || !hiddenCleanupName.trim()}
+                onClick={() => void cleanupUsers({ mode: 'username', username: hiddenCleanupName.trim() })}
+                className="h-10 rounded-xl bg-[var(--studio-deep)] px-3 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                按账户名注销
+              </button>
+            </div>
+          </div>
+        </div>
+      </PageCard>
 
       <PageCard className="overflow-hidden">
         <div className="flex items-center gap-3 border-b border-black/[0.07] p-4">

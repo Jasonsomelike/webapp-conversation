@@ -86,7 +86,7 @@ export default function ProfileView({
   const dirty = stage !== savedProfile.stage || style !== savedProfile.style || target !== savedProfile.target || displayName !== savedProfile.displayName
   const qqBound = qqIdentity.bound
   const qqDisplay = qqIdentity.displayId
-    ? `QQ 号：${qqIdentity.displayId}`
+    ? `QQ 标识：${qqIdentity.displayId}`
     : qqIdentity.openIdTail
       ? `QQ 标识尾号：${qqIdentity.openIdTail}`
       : '可以使用 QQ 快速登录当前账号'

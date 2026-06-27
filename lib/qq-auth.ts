@@ -185,13 +185,13 @@ const normalizeQqNumber = (value?: unknown) => {
   return normalized.length >= 5 && normalized.length <= 12 ? normalized : undefined
 }
 
-const maskQqNumber = (value?: string | null) => {
-  const normalized = normalizeQqNumber(value)
+const maskOpenId = (value?: string | null) => {
+  const normalized = normalizeQqIdentityPart(value)
   if (!normalized)
   { return undefined }
-  return normalized.length <= 5
-    ? `${normalized.slice(0, 1)}***${normalized.slice(-1)}`
-    : `${normalized.slice(0, 2)}***${normalized.slice(-3)}`
+  if (normalized.length <= 10)
+  { return `…${normalized.slice(-6)}` }
+  return `${normalized.slice(0, 4)}…${normalized.slice(-6)}`
 }
 
 export const extractQqNumber = (...sources: unknown[]) => {
@@ -218,23 +218,8 @@ export const extractQqNumber = (...sources: unknown[]) => {
   return undefined
 }
 
-const buildCanonicalId = ({
-  qqNumber,
-  unionId,
-  openId,
-}: {
-  qqNumber?: string
-  unionId?: string
-  openId: string
-}) => {
-  const normalizedQqNumber = normalizeQqNumber(qqNumber)
-  if (normalizedQqNumber)
-  { return `qq:${normalizedQqNumber}` }
-  const normalizedUnionId = normalizeQqIdentityPart(unionId)
-  if (normalizedUnionId)
-  { return `union:${normalizedUnionId}` }
-  return `openid:${openId}`
-}
+const buildCanonicalId = ({ openId }: { openId: string }) =>
+  `openid:${openId}`
 
 const insensitiveEquals = (value: string) =>
   ({ equals: value, mode: 'insensitive' as const })
@@ -371,7 +356,7 @@ const saveQqIdentityForUser = async ({
   qqNumber?: string
   canonicalId?: string
 }) => {
-  const displayId = maskQqNumber(qqNumber)
+  const displayId = maskOpenId(openId)
   const existing = await findQqIdentityByAppOpenId(appId, openId)
   if (existing) {
     return db.qqIdentity.update({
@@ -382,7 +367,7 @@ const saveQqIdentityForUser = async ({
         ...(unionId ? { unionId } : {}),
         ...(canonicalId ? { canonicalId } : {}),
         ...(qqNumber ? { qqNumber } : {}),
-        ...(displayId ? { displayId } : {}),
+        displayId,
       },
     })
   }
@@ -464,11 +449,7 @@ export const resolveQqUser = async ({
   const normalizedQqNumber = normalizeQqNumber(qqNumber)
   if (!normalizedOpenId)
   { throw new Error('QQ_TOKEN_INVALID') }
-  const canonicalId = buildCanonicalId({
-    qqNumber: normalizedQqNumber,
-    unionId: normalizedUnionId,
-    openId: normalizedOpenId,
-  })
+  const canonicalId = buildCanonicalId({ openId: normalizedOpenId })
 
   return withDatabaseRetry(async () => {
     await ensureQqIdentityStorage()
@@ -492,7 +473,8 @@ export const resolveQqUser = async ({
             openId: normalizedOpenId,
             unionId: normalizedUnionId,
             canonicalId,
-            ...(normalizedQqNumber ? { qqNumber: normalizedQqNumber, displayId: maskQqNumber(normalizedQqNumber) } : {}),
+            ...(normalizedQqNumber ? { qqNumber: normalizedQqNumber } : {}),
+            displayId: maskOpenId(normalizedOpenId),
           },
         })
       }
@@ -501,7 +483,8 @@ export const resolveQqUser = async ({
           where: { id: exactIdentity.id },
           data: {
             canonicalId,
-            ...(normalizedQqNumber ? { qqNumber: normalizedQqNumber, displayId: maskQqNumber(normalizedQqNumber) } : {}),
+            ...(normalizedQqNumber ? { qqNumber: normalizedQqNumber } : {}),
+            displayId: maskOpenId(normalizedOpenId),
           },
         })
       }
@@ -524,33 +507,6 @@ export const resolveQqUser = async ({
             ? { displayName: nickname.trim().slice(0, 64) }
             : {}),
         },
-      })
-      return user
-    }
-
-    const unionIdentity = normalizedUnionId
-      ? await db.qqIdentity.findFirst({
-        where: { unionId: insensitiveEquals(normalizedUnionId) },
-        include: { user: true },
-        orderBy: { updatedAt: 'desc' },
-      })
-      : null
-
-    if (unionIdentity) {
-      if (await isAppUserDeleted(unionIdentity.appUserId))
-      { throw new Error('QQ_ACCOUNT_DELETED') }
-      await saveQqIdentityForUser({
-        appUserId: unionIdentity.appUserId,
-        appId,
-        openId: normalizedOpenId,
-        unionId: normalizedUnionId,
-        qqNumber: normalizedQqNumber,
-        canonicalId,
-      })
-      await syncQqIdentityUnionForUser(unionIdentity.appUserId, normalizedUnionId)
-      const user = await db.appUser.update({
-        where: { id: unionIdentity.appUserId },
-        data: { lastLoginAt: new Date() },
       })
       return user
     }
@@ -614,25 +570,15 @@ export const bindQqIdentityToUser = async ({
     await ensureQqIdentityStorage()
     await assertAppUserActive(appUserId)
     const unionIdForBinding = normalizedUnionId || await getKnownSingleUnionIdForUser(appUserId)
-    const canonicalId = buildCanonicalId({
-      qqNumber: normalizedQqNumber,
-      unionId: unionIdForBinding,
-      openId: normalizedOpenId,
-    })
-    const [exactIdentity, unionIdentity, canonicalIdentity] = await Promise.all([
+    const canonicalId = buildCanonicalId({ openId: normalizedOpenId })
+    const [exactIdentity, canonicalIdentity] = await Promise.all([
       findQqIdentityByAppOpenId(appId, normalizedOpenId),
-      unionIdForBinding
-        ? db.qqIdentity.findFirst({
-          where: { unionId: insensitiveEquals(unionIdForBinding) },
-          orderBy: { updatedAt: 'desc' },
-        })
-        : Promise.resolve(null),
       db.qqIdentity.findFirst({
         where: { canonicalId: insensitiveEquals(canonicalId) },
         orderBy: { updatedAt: 'desc' },
       }),
     ])
-    const conflict = [exactIdentity, unionIdentity, canonicalIdentity].find(identity => identity && identity.appUserId !== appUserId)
+    const conflict = [exactIdentity, canonicalIdentity].find(identity => identity && identity.appUserId !== appUserId)
     if (conflict)
     { throw new Error('QQ_ALREADY_BOUND') }
 
@@ -679,11 +625,9 @@ export const getQqIdentitySummary = async (appUserId: string): Promise<QqIdentit
     if (!primary)
     { return { bound: false, appIds: [] } }
     const openIdTail = primary.openId.slice(-8)
-    const unionTail = primary.unionId?.slice(-10)
     const displayId = primary.displayId
-      || maskQqNumber(primary.qqNumber)
-      || (primary.canonicalId?.startsWith('qq:') ? maskQqNumber(primary.canonicalId.slice(3)) : undefined)
-      || `QQ …${unionTail || openIdTail}`
+      || maskOpenId(primary.openId)
+      || `QQ …${openIdTail}`
     return {
       bound: true,
       displayId,

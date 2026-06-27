@@ -44,10 +44,9 @@ export async function POST(request: Request) {
     }
     try {
       const identityFromMe = await getQqIdentity(parsed.data.accessToken, appId)
-      if (identityFromMe.openid !== parsed.data.openId)
-      { throw new Error('QQ_OPENID_MISMATCH') }
       identity = {
-        ...identity,
+        client_id: appId,
+        openid: identityFromMe.openid,
         unionid: identityFromMe.unionid || identity.unionid,
       }
     }

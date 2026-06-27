@@ -27,10 +27,8 @@ export async function POST(request: Request) {
     }
     try {
       const identityFromMe = await getQqIdentity(parsed.data.accessToken, appId)
-      if (identityFromMe.openid !== parsed.data.openId)
-      { return NextResponse.json({ error: 'QQ 登录身份校验失败' }, { status: 401 }) }
       identity = {
-        ...identity,
+        openid: identityFromMe.openid,
         unionid: identityFromMe.unionid || identity.unionid,
       }
     }

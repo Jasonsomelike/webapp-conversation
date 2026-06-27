@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 
 const owner = 'Jasonsomelike'
 const repo = 'network-study-android'
-const hostedApkBaseUrl = 'https://www.jasonsome.cn/downloads'
+const hostedApkBaseUrl = 'https://www.jasonsome.cn/api/android/update/apk'
 const hostedApkSizes: Record<string, number> = {
   'network-study-android-v1.11.0.apk': 3752815,
   'network-study-android-v1.12.0.apk': 3752815,
@@ -50,7 +50,7 @@ export async function GET() {
     const hostedApkName = apk?.name || (versionName
       ? `network-study-android-v${versionName}.apk`
       : 'network-study-android-latest.apk')
-    const hostedApkUrl = `${hostedApkBaseUrl}/${encodeURIComponent(hostedApkName)}`
+    const hostedApkUrl = `${hostedApkBaseUrl}?name=${encodeURIComponent(hostedApkName)}`
 
     return NextResponse.json({
       latest: {
