@@ -190,6 +190,7 @@ export default function DocumentLibrary({
 
   const completed = result.data.filter(item => ['completed', 'available'].includes(item.indexing_status || item.display_status || '')).length
   const totalWords = result.data.reduce((sum, item) => sum + (item.word_count || 0), 0)
+  const refreshInProgress = refreshPending || refreshNotice?.tone === 'info'
   const summaryCards = [
     { label: '知识库文档', value: result.total, unit: '份', icon: CircleStackIcon },
     { label: '本页索引完成', value: completed, unit: '份', icon: CheckCircleIcon },
@@ -249,10 +250,10 @@ export default function DocumentLibrary({
         </form>
 
         <div className="flex items-center justify-end border-b border-black/[0.05] px-5 py-2 text-[10px] text-black/40">
-          <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${refreshPending ? 'animate-pulse bg-blue-500' : result.stale ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+          <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${refreshInProgress ? 'animate-pulse bg-blue-500' : result.stale ? 'bg-amber-500' : 'bg-emerald-500'}`} />
           服务端每 30 分钟同步
           {result.refreshed_at && ` · 最近更新 ${formatDateTime(result.refreshed_at)}`}
-          {refreshPending && ' · 已发起后台刷新'}
+          {refreshInProgress && ' · 已发起后台刷新'}
         </div>
 
         {(refreshing || refreshNotice) && (
@@ -271,7 +272,7 @@ export default function DocumentLibrary({
           </div>
         )}
 
-        {result.stale && result.data.length > 0 && (
+        {result.stale && result.data.length > 0 && !refreshInProgress && (
           <div className="border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-xs text-amber-800">
             {result.refresh_error_message || '本次同步暂时失败，当前展示最近一次成功更新的数据。'}
           </div>
