@@ -470,8 +470,19 @@ export const upload = (fetchOptions: any): Promise<any> => {
     xhr.withCredentials = options.withCredentials ?? true
     xhr.onreadystatechange = function () {
       if (xhr.readyState === 4) {
-        if (xhr.status === 200) { resolve({ id: xhr.response }) }
-        else { reject(xhr) }
+        if (/^2\d{2}$/.test(String(xhr.status))) {
+          const rawResponse = String(xhr.responseText || xhr.response || '').trim()
+          try {
+            const parsed = JSON.parse(rawResponse)
+            resolve({ id: parsed?.id || rawResponse, data: parsed })
+          }
+          catch {
+            resolve({ id: rawResponse })
+          }
+        }
+        else {
+          reject(xhr)
+        }
       }
     }
     xhr.upload.onprogress = options.onprogress

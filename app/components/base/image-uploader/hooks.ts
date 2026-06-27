@@ -75,7 +75,7 @@ export const useImageFiles = () => {
           setFiles(newFiles)
         },
         onSuccessCallback: (res) => {
-          const newFiles = [...files.slice(0, index), { ...currentImageFile, fileId: res.id, progress: 100 }, ...files.slice(index + 1)]
+          const newFiles = [...files.slice(0, index), { ...currentImageFile, fileId: res.id, url: res.url || currentImageFile.url, progress: 100 }, ...files.slice(index + 1)]
           filesRef.current = newFiles
           setFiles(newFiles)
         },
@@ -119,7 +119,7 @@ export const useImageFiles = () => {
       imageUpload({
         file: image,
         onProgressCallback: progress => handleUpload({ ...imageFile, progress }),
-        onSuccessCallback: result => handleUpload({ ...imageFile, fileId: result.id, progress: 100 }),
+        onSuccessCallback: result => handleUpload({ ...imageFile, fileId: result.id, url: result.url || imageFile.url, progress: 100 }),
         onErrorCallback: () => {
           notify({ type: 'error', message: t('common.imageUploader.uploadFromComputerUploadError') })
           handleUpload({ ...imageFile, progress: -1 })

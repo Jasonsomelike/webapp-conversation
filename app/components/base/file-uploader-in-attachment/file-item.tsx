@@ -46,7 +46,7 @@ const FileInAttachmentItem = ({
   const ext = getFileExtension(name, type, isRemote)
   const isImageFile = supportFileType === SupportUploadFileTypes.image
   const [imagePreviewUrl, setImagePreviewUrl] = useState('')
-  if (compact) {
+  if (compact || !showDownloadAction) {
     return (
       <>
         <div className={cn(
@@ -71,7 +71,6 @@ const FileInAttachmentItem = ({
                 <div className='mt-2 line-clamp-2 max-w-full break-all px-1 text-[11px] font-semibold leading-4 text-text-secondary' title={name}>
                   {name}
                 </div>
-                {ext && <div className='mt-1 rounded-full bg-white px-2 py-0.5 text-[9px] font-bold uppercase text-text-tertiary shadow-sm'>{ext}</div>}
               </>
             )}
           {progress >= 0 && !fileIsUploaded(file) && (

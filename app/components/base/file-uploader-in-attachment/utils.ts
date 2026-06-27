@@ -4,11 +4,13 @@ import type { FileEntity, FileResponse } from './types'
 import { FILE_EXTS } from './constants'
 import { upload } from '@/service/base'
 import { TransferMethod } from '@/types/app'
+import type { UploadedFileResult } from '@/app/components/base/upload-result'
+import { getStableUploadUrl } from '@/app/components/base/upload-result'
 
 interface FileUploadParams {
   file: File
   onProgressCallback: (progress: number) => void
-  onSuccessCallback: (res: { id: string }) => void
+  onSuccessCallback: (res: UploadedFileResult) => void
   onErrorCallback: () => void
 }
 type FileUpload = (v: FileUploadParams, isPublic?: boolean, url?: string) => void
@@ -22,7 +24,7 @@ export const fileUpload: FileUpload = ({
   formData.append('file', file)
   const onProgress = (e: ProgressEvent) => {
     if (e.lengthComputable) {
-      const percent = Math.floor(e.loaded / e.total * 100)
+      const percent = Math.min(99, Math.floor(e.loaded / e.total * 100))
       onProgressCallback(percent)
     }
   }
@@ -32,7 +34,7 @@ export const fileUpload: FileUpload = ({
     data: formData,
     onprogress: onProgress,
   })
-    .then((res: { id: string }) => {
+    .then((res: UploadedFileResult) => {
       onSuccessCallback(res)
     })
     .catch(() => {
@@ -97,17 +99,22 @@ export const getSupportFileType = (fileName: string, fileMimetype: string, isCus
 }
 
 export const getProcessedFiles = (files: FileEntity[]) => {
-  return files.filter(file => file.progress !== -1 && fileIsUploaded(file)).map(fileItem => ({
-    id: fileItem.uploadedId || fileItem.id,
-    name: fileItem.name,
-    filename: fileItem.name,
-    mime_type: fileItem.type,
-    size: fileItem.size,
-    type: fileItem.supportFileType,
-    transfer_method: fileItem.transferMethod,
-    url: fileItem.url || '',
-    upload_file_id: fileItem.uploadedId || '',
-  }))
+  return files.filter(file => file.progress !== -1 && fileIsUploaded(file)).map((fileItem) => {
+    const stableUrl = fileItem.sourceUrl || fileItem.previewUrl || fileItem.displayUrl || fileItem.url || ''
+    return {
+      id: fileItem.uploadedId || fileItem.id,
+      name: fileItem.name,
+      filename: fileItem.name,
+      mime_type: fileItem.type,
+      size: fileItem.size,
+      type: fileItem.supportFileType,
+      transfer_method: fileItem.transferMethod,
+      url: stableUrl,
+      preview_url: stableUrl,
+      display_url: stableUrl,
+      upload_file_id: fileItem.uploadedId || '',
+    }
+  })
 }
 
 export const getProcessedFilesFromResponse = (files: FileResponse[]) => {
@@ -164,6 +171,19 @@ export const fileIsUploaded = (file: FileEntity) => {
   if (file.uploadedId) { return true }
 
   if (file.transferMethod === TransferMethod.remote_url && file.progress === 100) { return true }
+}
+
+export const mergeUploadedFileResult = <T extends FileEntity>(file: T, res: UploadedFileResult): T => {
+  const stableUrl = getStableUploadUrl(res)
+  return {
+    ...file,
+    uploadedId: res.id,
+    url: stableUrl || file.url,
+    previewUrl: stableUrl || file.previewUrl,
+    displayUrl: stableUrl || file.displayUrl,
+    sourceUrl: stableUrl || file.sourceUrl,
+    progress: 100,
+  }
 }
 
 export const downloadFile = (url: string, filename: string) => {

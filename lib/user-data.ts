@@ -67,6 +67,25 @@ const toPersistedText = (value: unknown, fallback = '') => {
   return String(value)
 }
 
+const isDataUrl = (value: unknown) => typeof value === 'string' && /^data:/i.test(value)
+
+const normalizePersistedFile = (file: Record<string, unknown>, belongsTo: 'user' | 'assistant') => {
+  const stableUrl = [file.url, file.preview_url, file.display_url]
+    .find(value => typeof value === 'string' && value && !isDataUrl(value)) as string | undefined
+  const {
+    base64Url: _base64Url,
+    base64_url: _base64UrlSnake,
+    ...rest
+  } = file
+  return {
+    ...rest,
+    url: stableUrl || '',
+    preview_url: stableUrl || '',
+    display_url: stableUrl || '',
+    belongs_to: belongsTo,
+  }
+}
+
 export const persistChatExchange = async ({
   appUserId,
   query,
@@ -85,8 +104,8 @@ export const persistChatExchange = async ({
   const resources = references || metadata?.retriever_resources || []
   const safeQuery = toPersistedText(query, '')
   const safeAnswer = toPersistedText(answer, '')
-  const normalizedUserFiles = (userFiles || []).map(file => ({ ...file, belongs_to: 'user' }))
-  const normalizedAssistantFiles = (assistantFiles || []).map(file => ({ ...file, belongs_to: 'assistant' }))
+  const normalizedUserFiles = (userFiles || []).map(file => normalizePersistedFile(file, 'user'))
+  const normalizedAssistantFiles = (assistantFiles || []).map(file => normalizePersistedFile(file, 'assistant'))
   const userRawPayload = normalizedUserFiles.length
     ? toJson({ userFiles: normalizedUserFiles })
     : undefined

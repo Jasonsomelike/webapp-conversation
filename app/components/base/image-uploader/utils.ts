@@ -1,11 +1,13 @@
 'use client'
 
 import { upload } from '@/service/base'
+import type { UploadedFileResult } from '@/app/components/base/upload-result'
+import { normalizeUploadedFileResult } from '@/app/components/base/upload-result'
 
 interface ImageUploadParams {
   file: File
   onProgressCallback: (progress: number) => void
-  onSuccessCallback: (res: { id: string }) => void
+  onSuccessCallback: (res: UploadedFileResult) => void
   onErrorCallback: () => void
 }
 type ImageUpload = (v: ImageUploadParams) => void
@@ -65,37 +67,57 @@ export const imageUpload: ImageUpload = async ({
   catch {
     uploadFile = file
   }
+  const ticketController = new AbortController()
+  const ticketTimer = globalThis.setTimeout(() => ticketController.abort(), 3000)
   const ticket = await fetch('/api/file-upload-ticket', {
     method: 'POST',
     credentials: 'include',
+    signal: ticketController.signal,
   }).then(async (response) => {
     if (!response.ok)
     { throw new Error(await response.text().catch(() => 'UPLOAD_TICKET_FAILED')) }
     return response.json() as Promise<{ url: string, user: string, requestId: string }>
-  }).catch(() => null)
-  const formData = new FormData()
-  formData.append('file', uploadFile)
-  if (ticket?.user)
-  { formData.append('user', ticket.user) }
+  }).catch(() => null).finally(() => {
+    globalThis.clearTimeout(ticketTimer)
+  })
+  const createFormData = (user?: string) => {
+    const formData = new FormData()
+    formData.append('file', uploadFile)
+    if (user)
+    { formData.append('user', user) }
+    return formData
+  }
   const onProgress = (e: ProgressEvent) => {
     if (e.lengthComputable) {
-      const percent = Math.floor(e.loaded / e.total * 100)
+      const percent = Math.min(99, Math.floor(e.loaded / e.total * 100))
       onProgressCallback(percent)
     }
   }
 
-  upload({
+  const uploadOnce = (directTicket?: { url: string, user: string, requestId: string } | null) => upload({
     xhr: new XMLHttpRequest(),
-    ...(ticket?.url
-      ? { url: ticket.url, withCredentials: false, headers: { 'X-Request-Id': ticket.requestId } }
+    ...(directTicket?.url
+      ? { url: directTicket.url, withCredentials: false, headers: { 'X-Request-Id': directTicket.requestId } }
       : {}),
-    data: formData,
+    data: createFormData(directTicket?.user),
     onprogress: onProgress,
-  })
-    .then((res: { id: string }) => {
-      onSuccessCallback(res)
-    })
-    .catch(() => {
-      onErrorCallback()
-    })
+  }) as Promise<UploadedFileResult>
+
+  try {
+    const res = await uploadOnce(ticket)
+    onSuccessCallback(normalizeUploadedFileResult(res))
+  }
+  catch {
+    if (ticket?.url) {
+      try {
+        const fallbackRes = await uploadOnce(null)
+        onSuccessCallback(normalizeUploadedFileResult(fallbackRes))
+        return
+      }
+      catch {
+        // Fall through to the unified upload error below.
+      }
+    }
+    onErrorCallback()
+  }
 }

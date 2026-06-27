@@ -70,11 +70,14 @@ def add_file_cors_headers(response: Response) -> Response:
 
 
 def error_response(message: str, status: int, request_id: str) -> Response:
+    headers = {"X-Request-Id": request_id}
+    if request.path.startswith(("/files/upload", "/chat-messages")):
+        headers.update(cors_headers())
     return Response(
         f"{message}. requestId={request_id}\n",
         status=status,
         content_type="text/plain; charset=utf-8",
-        headers={"X-Request-Id": request_id},
+        headers=headers,
     )
 
 

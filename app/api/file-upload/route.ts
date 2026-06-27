@@ -30,6 +30,29 @@ const uploadViaLibraryFileService = async (file: File, user: string) => {
   return { response, requestId }
 }
 
+const uploadDirectlyToDify = async (formData: FormData) => {
+  let lastError: unknown
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetchDify('/files/upload', {
+        method: 'POST',
+        body: formData,
+      }, { connectTimeoutMs: 30_000, retries: 1 })
+      if (response.ok || ![408, 425, 429, 500, 502, 503, 504].includes(response.status))
+      { return response }
+      lastError = new Error(`DIFY_UPLOAD_RETRYABLE_STATUS:${response.status}`)
+      await response.body?.cancel()
+    }
+    catch (error) {
+      lastError = error
+    }
+
+    if (attempt < 2)
+    { await new Promise(resolve => setTimeout(resolve, 400 * (attempt + 1))) }
+  }
+  throw lastError instanceof Error ? lastError : new Error('DIFY_UPLOAD_FAILED')
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = getSessionFromRequest(request)
@@ -75,10 +98,7 @@ export async function POST(request: NextRequest) {
     if (!user)
     { return new Response('Unauthorized', { status: 401 }) }
     formData.append('user', user)
-    let upstream = await fetchDify('/files/upload', {
-      method: 'POST',
-      body: formData,
-    }, { connectTimeoutMs: 30_000, retries: 0 }).catch(async (error) => {
+    let upstream = await uploadDirectlyToDify(formData).catch(async (error) => {
       console.warn('[file-upload] direct Dify upload failed, trying library file service', {
         error: error instanceof Error ? error.message : String(error),
       })
@@ -109,7 +129,7 @@ export async function POST(request: NextRequest) {
     const result = await upstream.json() as { id?: string }
     if (!result.id)
     { return new Response('Upload response did not contain a file ID', { status: 502 }) }
-    return new Response(result.id)
+    return Response.json(result)
   }
   catch (error) {
     return new Response(error instanceof Error ? error.message : 'Upload failed', { status: 500 })

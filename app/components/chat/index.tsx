@@ -18,7 +18,7 @@ import { useImageFiles } from '@/app/components/base/image-uploader/hooks'
 import ChatImageUploader from '@/app/components/base/image-uploader/chat-image-uploader'
 import FileUploaderInAttachmentWrapper from '@/app/components/base/file-uploader-in-attachment'
 import type { FileEntity, FileUpload } from '@/app/components/base/file-uploader-in-attachment/types'
-import { getProcessedFiles } from '@/app/components/base/file-uploader-in-attachment/utils'
+import { fileIsUploaded, getProcessedFiles } from '@/app/components/base/file-uploader-in-attachment/utils'
 import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
 
 type SendResult = boolean | void | Promise<boolean | void>
@@ -215,7 +215,7 @@ const Chat: FC<IChatProps> = ({
     if (directUrl)
     { return directUrl }
     if (file.upload_file_id)
-    { return toDifyAssetProxyUrl(`https://dify.jasonsome.cn:22380/files/${file.upload_file_id}/file-preview`) }
+    { return toDifyAssetProxyUrl(`https://dify.jasonsome.cn:22380/files/${file.upload_file_id}/preview`) }
     return ''
   }
 
@@ -223,16 +223,27 @@ const Chat: FC<IChatProps> = ({
     if (isSending || isResponding)
     { return }
     const message = typeof overrideMessage === 'string' ? overrideMessage : refreshDraftFromDom()
-    const hasUploadedFiles = files.some(file => file.progress === 100)
-      || attachmentFiles.some(file => file.progress === 100)
+    const readyImageFiles = files.filter(file =>
+      file.progress === 100
+      && (file.type === TransferMethod.remote_url ? Boolean(file.url) : Boolean(file.fileId)),
+    )
+    const readyAttachmentFiles = attachmentFiles.filter(file => file.progress !== -1 && fileIsUploaded(file))
+    const hasUploadedFiles = readyImageFiles.length > 0 || readyAttachmentFiles.length > 0
     if (!valid(message, hasUploadedFiles) || (!options?.skipExternalCheck && checkCanSend && !checkCanSend())) { return }
-    const hasPendingImageUploads = files.some(file => file.progress !== -1 && file.progress < 100)
-    const hasPendingAttachmentUploads = attachmentFiles.some(file => file.progress !== -1 && file.progress < 100)
+    const hasPendingImageUploads = files.some(file =>
+      file.progress !== -1
+      && (
+        file.progress < 100
+        || (file.type === TransferMethod.local_file && !file.fileId)
+        || (file.type === TransferMethod.remote_url && !file.url)
+      ),
+    )
+    const hasPendingAttachmentUploads = attachmentFiles.some(file => file.progress !== -1 && !fileIsUploaded(file))
     if (hasPendingImageUploads || hasPendingAttachmentUploads) {
       logError(t('app.errorMessage.waitForFileUpload'))
       return
     }
-    const imageFiles: VisionFile[] = files.filter(file => file.progress !== -1).map(fileItem => ({
+    const imageFiles: VisionFile[] = readyImageFiles.map(fileItem => ({
       id: fileItem.fileId || fileItem._id,
       name: fileItem.file?.name || '图片',
       filename: fileItem.file?.name || '图片',
@@ -240,13 +251,13 @@ const Chat: FC<IChatProps> = ({
       size: fileItem.file?.size,
       type: 'image',
       transfer_method: fileItem.type,
-      url: fileItem.type === TransferMethod.local_file ? (fileItem.base64Url || fileItem.url) : fileItem.url,
-      preview_url: fileItem.base64Url || fileItem.url,
-      display_url: fileItem.base64Url || fileItem.url,
+      url: fileItem.url || '',
+      preview_url: fileItem.url || '',
+      display_url: fileItem.url || '',
       base64Url: fileItem.base64Url,
       upload_file_id: fileItem.fileId,
     }))
-    const docAndOtherFiles: VisionFile[] = getProcessedFiles(attachmentFiles)
+    const docAndOtherFiles: VisionFile[] = getProcessedFiles(readyAttachmentFiles)
     const combinedFiles: VisionFile[] = [...imageFiles, ...docAndOtherFiles]
     if (!combinedFiles.length && !message.trim()) {
       logError(t('app.errorMessage.valueOfVarRequired'))
@@ -288,7 +299,7 @@ const Chat: FC<IChatProps> = ({
   }
   const canSendText = draftState.hasContent
   const hasReadyFiles = files.some(file => file.progress === 100)
-    || attachmentFiles.some(file => file.progress === 100)
+    || attachmentFiles.some(file => file.progress !== -1 && fileIsUploaded(file))
   const canSend = canSendText || hasReadyFiles
 
   return (

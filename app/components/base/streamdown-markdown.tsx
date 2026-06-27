@@ -65,7 +65,7 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   const pageNumber = sourceInfo?.pageNumber || Number(sourceUrl.match(/\/page-images\/[^/]+\/page_(\d+)\./i)?.[1] || 0) || undefined
   const sourceFilename = sourceInfo?.documentName || String(alt).match(/([^\n|]+?\.(?:pdf|docx?|pptx?))/i)?.[1]?.replace(/^[\s\-–—*#>|![\]()"'“”‘’]+/, '').trim()
   const isKnowledgeSource = Boolean(pageNumber || sourceUrl.includes('/page-images/'))
-  const isGeneratedImage = sourceUrl.includes('/files/tools/')
+  const isGeneratedImage = sourceUrl.includes('/files/tools/') || sourceUrl.includes('/api/generated-files/')
   const sourceLabel = isKnowledgeSource
     ? `来源：${sourceFilename || '课程知识库原页'}${pageNumber ? ` · 第 ${pageNumber} 页` : ''}`
     : isGeneratedImage
@@ -74,10 +74,14 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
         ? `图片说明：${alt}`
         : '来源：回答附图'
   const originalLabel = isKnowledgeSource ? '查看来源' : '查看原图'
+  const showOriginalLink = !isGeneratedImage
   const sourceHref = isKnowledgeSource
     ? sourceInfo?.previewUrl || `/api/sources/image-info?redirect=1&url=${encodeURIComponent(absoluteSourceUrl)}`
     : imageUrl
+  const disableNativeGeneratedPreview = isGeneratedImage && isNetworkStudyApp()
   const openPreview = () => {
+    if (disableNativeGeneratedPreview)
+    { return }
     if (isNetworkStudyApp())
     { setPreview(true) }
     else
@@ -169,10 +173,12 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
       <span className='markdown-media-error'>
         <span>{sourceLabel} · 图片加载失败</span>
         <button type='button' onClick={() => setFailed(false)}>重试</button>
-        <a href={sourceHrefWithReturn()} onClick={(event) => {
-          rememberReturnPosition(event.currentTarget)
-          event.currentTarget.href = sourceHrefWithReturn(event.currentTarget)
-        }}>{originalLabel}</a>
+        {showOriginalLink && (
+          <a href={sourceHrefWithReturn()} onClick={(event) => {
+            rememberReturnPosition(event.currentTarget)
+            event.currentTarget.href = sourceHrefWithReturn(event.currentTarget)
+          }}>{originalLabel}</a>
+        )}
       </span>
     )
   }
@@ -182,34 +188,40 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
       <figure className='markdown-source-figure my-4 max-w-full overflow-hidden rounded-xl border border-black/10 bg-black/[0.025] shadow-sm'>
         <span
           role='button'
-          tabIndex={0}
-          className='markdown-media group relative block max-w-full overflow-hidden text-left'
+          tabIndex={disableNativeGeneratedPreview ? -1 : 0}
+          className={`markdown-media group relative block max-w-full overflow-hidden text-left ${disableNativeGeneratedPreview ? 'cursor-default' : ''}`}
           onClick={openPreview}
           onKeyDown={(event) => {
+            if (disableNativeGeneratedPreview)
+            { return }
             if (event.key === 'Enter' || event.key === ' ')
             { openPreview() }
           }}
         >
           <img src={imageUrl} alt={alt} loading='lazy' onError={() => setFailed(true)} />
-          <span className='pointer-events-none absolute inset-x-0 bottom-0 translate-y-full bg-black/65 px-3 py-2 text-[11px] text-white transition-transform group-hover:translate-y-0'>
-            点击放大查看
-          </span>
+          {!disableNativeGeneratedPreview && (
+            <span className='pointer-events-none absolute inset-x-0 bottom-0 translate-y-full bg-black/65 px-3 py-2 text-[11px] text-white transition-transform group-hover:translate-y-0'>
+              点击放大查看
+            </span>
+          )}
         </span>
         <figcaption className='flex flex-wrap items-center justify-between gap-2 border-t border-black/10 px-3 py-2 text-[11px] text-[var(--studio-muted)]'>
           <span>{sourceLabel}</span>
-          <a
-            href={sourceHrefWithReturn()}
-            target={isKnowledgeSource ? undefined : '_blank'}
-            rel='noreferrer'
-            onClick={(event) => {
-              event.stopPropagation()
-              rememberReturnPosition(event.currentTarget)
-              event.currentTarget.href = sourceHrefWithReturn(event.currentTarget)
-            }}
-            className='font-semibold text-[var(--studio-accent-strong)]'
-          >
-            {originalLabel}
-          </a>
+          {showOriginalLink && (
+            <a
+              href={sourceHrefWithReturn()}
+              target={isKnowledgeSource ? undefined : '_blank'}
+              rel='noreferrer'
+              onClick={(event) => {
+                event.stopPropagation()
+                rememberReturnPosition(event.currentTarget)
+                event.currentTarget.href = sourceHrefWithReturn(event.currentTarget)
+              }}
+              className='font-semibold text-[var(--studio-accent-strong)]'
+            >
+              {originalLabel}
+            </a>
+          )}
         </figcaption>
       </figure>
       {preview && <ImagePreview url={imageUrl} onCancel={() => setPreview(false)} />}

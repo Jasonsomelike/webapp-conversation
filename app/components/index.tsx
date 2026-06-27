@@ -56,6 +56,44 @@ const toMessageText = (value: unknown) => {
 const normalizeExchangeMessageId = (id: string) =>
   id.replace(/^question-/, '').replace(/^answer-placeholder-/, '').trim()
 
+const isDataUrl = (value?: string) => Boolean(value && /^data:/i.test(value))
+
+const sanitizeUserFileForPersist = (file: VisionFile): VisionFile => {
+  const stableUrl = [file.url, file.preview_url, file.display_url]
+    .find(value => value && !isDataUrl(value)) || ''
+  return {
+    id: file.id,
+    name: file.name,
+    filename: file.filename,
+    mime_type: file.mime_type,
+    size: file.size,
+    type: file.type,
+    transfer_method: file.transfer_method,
+    url: stableUrl,
+    preview_url: stableUrl,
+    display_url: stableUrl,
+    upload_file_id: file.upload_file_id,
+    belongs_to: 'user',
+  }
+}
+
+const sanitizeFileForDify = (file: VisionFile) => {
+  const payload: Record<string, string> = {
+    type: file.type,
+    transfer_method: file.transfer_method,
+    upload_file_id: file.upload_file_id,
+  }
+  if (file.transfer_method === TransferMethod.remote_url) {
+    const remoteUrl = [file.url, file.preview_url, file.display_url]
+      .find(value => value && !isDataUrl(value)) || ''
+    payload.url = remoteUrl
+  }
+  else {
+    payload.url = ''
+  }
+  return payload
+}
+
 interface SourceReturnState {
   href?: string
   y?: number
@@ -1182,10 +1220,11 @@ const Main: FC<IMainProps> = () => {
       conversationId: currConversationId && currConversationId !== '-1' ? currConversationId : undefined,
       query: messageText,
     })
-    const userVisibleFiles = (files || []).map(file => ({
+    const questionVisibleFiles = (files || []).map(file => ({
       ...file,
       belongs_to: 'user',
     }))
+    const userVisibleFiles = (files || []).map(sanitizeUserFileForPersist)
     const supplementalContext = await loadSupplementalContext(files || [])
     const data: Record<string, any> = {
       inputs: toServerInputs,
@@ -1197,15 +1236,7 @@ const Main: FC<IMainProps> = () => {
     }
 
     if (files && files?.length > 0) {
-      data.files = files.map((item) => {
-        if (item.transfer_method === TransferMethod.local_file) {
-          return {
-            ...item,
-            url: '',
-          }
-        }
-        return item
-      })
+      data.files = files.map(sanitizeFileForDify)
     }
 
     // question
@@ -1215,7 +1246,7 @@ const Main: FC<IMainProps> = () => {
       id: questionId,
       content: messageText,
       isAnswer: false,
-      message_files: userVisibleFiles,
+      message_files: questionVisibleFiles,
     }
 
     const placeholderAnswerId = `answer-placeholder-${Date.now()}`

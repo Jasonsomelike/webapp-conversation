@@ -47,6 +47,8 @@ const asRecord = (value: unknown): Record<string, any> | undefined =>
 const asRecordArray = (value: unknown): Record<string, unknown>[] =>
   Array.isArray(value) ? value.filter(item => asRecord(item)) as Record<string, unknown>[] : []
 
+const isDataUrl = (value: unknown) => typeof value === 'string' && /^data:/i.test(value)
+
 const normalizePersistedUserFiles = (body: Record<string, any>) => {
   const source = asRecordArray(body.userFiles || body.user_files)
   return source
@@ -56,10 +58,22 @@ const normalizePersistedUserFiles = (body: Record<string, any>) => {
       const url = String(file.url || file.preview_url || file.display_url || file.base64Url || file.base64_url || '')
       return Boolean(type || uploadFileId || url || file.name || file.filename)
     })
-    .map(file => ({
-      ...file,
-      belongs_to: 'user',
-    }))
+    .map((file) => {
+      const stableUrl = [file.url, file.preview_url, file.display_url]
+        .find(value => typeof value === 'string' && value && !isDataUrl(value)) as string | undefined
+      const {
+        base64Url: _base64Url,
+        base64_url: _base64UrlSnake,
+        ...rest
+      } = file
+      return {
+        ...rest,
+        url: stableUrl || '',
+        preview_url: stableUrl || '',
+        display_url: stableUrl || '',
+        belongs_to: 'user',
+      }
+    })
 }
 
 export async function POST(request: NextRequest) {
