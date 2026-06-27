@@ -320,7 +320,8 @@ const refreshCatalogInBackground = () => {
 
 export const requestKnowledgeDocumentRefresh = async () => {
   await ensureKnowledgeDocumentCatalogTable()
-  return refreshCatalogInBackground()
+  void refreshCatalogInBackground()
+  return { refresh_pending: true }
 }
 
 export const describeKnowledgeCatalogError = (value?: string | null) => {

@@ -93,6 +93,7 @@ export default function DocumentLibrary({
       if (status)
       { params.set('status', status) }
       params.set('refresh', '1')
+      params.set('mode', 'async')
       params.set('_', String(Date.now()))
       const response = await fetch(`/api/library/documents?${params}`, {
         credentials: 'include',
@@ -111,7 +112,49 @@ export default function DocumentLibrary({
       setResult(nextResult)
       setRefreshPending(Boolean(nextResult.refresh_pending))
       const elapsedSeconds = Math.max(0.1, (Date.now() - startedAt) / 1000).toFixed(1)
-      if (nextResult.stale && nextResult.refresh_error_message) {
+      if (nextResult.refresh_pending) {
+        setError('')
+        setRefreshNotice({
+          tone: 'info',
+          message: `已发起服务端后台同步，当前先展示 ${nextResult.total} 份缓存文档；稍后会自动更新（本次请求 ${elapsedSeconds}s）。`,
+        })
+        window.setTimeout(() => {
+          void (async () => {
+            const pollParams = new URLSearchParams({
+              page: String(initialResult.page),
+              limit: '20',
+              _: String(Date.now()),
+            })
+            if (keyword)
+            { pollParams.set('keyword', keyword) }
+            if (status)
+            { pollParams.set('status', status) }
+            const pollResponse = await fetch(`/api/library/documents?${pollParams}`, {
+              credentials: 'include',
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+              },
+            })
+            if (!pollResponse.ok)
+            { return }
+            const polledResult = await pollResponse.json() as DifyDocumentList
+            setResult(polledResult)
+            setRefreshPending(Boolean(polledResult.refresh_pending))
+            if (!polledResult.stale) {
+              setError('')
+              setRefreshNotice({
+                tone: 'success',
+                message: `后台刷新已完成：已同步 ${polledResult.total} 份文档${polledResult.refreshed_at ? `，最近更新 ${formatDateTime(polledResult.refreshed_at)}` : ''}`,
+              })
+            }
+          })().catch(() => {
+            // Keep the visible cached catalog; the server-side scheduled refresh will retry.
+          })
+        }, 6000)
+      }
+      else if (nextResult.stale && nextResult.refresh_error_message) {
         if (!nextResult.data.length)
         { setError(nextResult.refresh_error_message) }
         else

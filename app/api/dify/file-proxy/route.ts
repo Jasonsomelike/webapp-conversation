@@ -7,6 +7,7 @@ const allowedHosts = new Set(['dify.jasonsome.cn', 'www.jasonsome.cn', 'jasonsom
 const allowedPaths = ['/files/', '/page-images/']
 const pageImagePathPattern = /^\/page-images\/[a-z0-9_-]{6,64}\/page_\d+\.(?:jpe?g|png|webp)$/i
 const uploadedFilePreviewPattern = /^\/(?:v1\/)?files\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/(?:file-preview|preview)$/i
+const THIRTY_DAYS_SECONDS = 30 * 24 * 60 * 60
 
 export const runtime = 'nodejs'
 
@@ -110,7 +111,7 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': upstream.headers.get('Content-Type') || 'application/octet-stream',
         'Content-Disposition': upstream.headers.get('Content-Disposition') || contentDisposition(filename, shouldDownload),
-        'Cache-Control': 'private, max-age=600, stale-while-revalidate=1800',
+        'Cache-Control': `private, max-age=${THIRTY_DAYS_SECONDS}, stale-while-revalidate=${THIRTY_DAYS_SECONDS}`,
         'X-Content-Type-Options': 'nosniff',
         'X-Request-Id': requestId,
         'Accept-Ranges': upstream.headers.get('Accept-Ranges') || 'bytes',
@@ -147,7 +148,7 @@ export async function GET(request: NextRequest) {
     headers: {
       'Content-Type': upstream.headers.get('Content-Type') || 'application/octet-stream',
       'Content-Disposition': contentDisposition(filename, shouldDownload),
-      'Cache-Control': 'private, max-age=600, stale-while-revalidate=1800',
+      'Cache-Control': `private, max-age=${THIRTY_DAYS_SECONDS}, stale-while-revalidate=${THIRTY_DAYS_SECONDS}`,
       'X-Content-Type-Options': 'nosniff',
       'X-Request-Id': requestId,
       'Accept-Ranges': upstream.headers.get('Accept-Ranges') || 'bytes',

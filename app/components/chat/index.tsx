@@ -247,11 +247,11 @@ const Chat: FC<IChatProps> = ({
   }, [fileConfig])
 
   const resolveImageUrl = (file: Partial<VisionFile>) => {
-    const directUrl = file.url || file.preview_url || file.display_url || file.base64Url || file.base64_url || ''
-    if (directUrl)
-    { return directUrl }
     if (file.upload_file_id)
     { return toDifyAssetProxyUrl(`https://dify.jasonsome.cn:22380/files/${file.upload_file_id}/preview`) }
+    const directUrl = file.url || file.preview_url || file.display_url || file.base64Url || file.base64_url || ''
+    if (directUrl)
+    { return toDifyAssetProxyUrl(directUrl) }
     return ''
   }
 

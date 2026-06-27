@@ -14,7 +14,13 @@ export async function GET(request: Request) {
   try {
     const wantsRefresh = params.get('refresh') === '1'
     if (wantsRefresh && params.get('mode') === 'async')
-    { void requestKnowledgeDocumentRefresh() }
+    {
+      void requestKnowledgeDocumentRefresh().catch(error =>
+        console.error('[library-documents] async refresh kickoff failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      )
+    }
     const data = await (wantsRefresh && params.get('mode') !== 'async'
       ? refreshKnowledgeDocuments
       : listKnowledgeDocuments)({

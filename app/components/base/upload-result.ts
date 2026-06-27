@@ -29,8 +29,14 @@ export const getStableUploadUrl = (res?: UploadedFileResult | null) => {
   return String(candidates.find(value => typeof value === 'string' && value && !isDataUrl(value)) || '')
 }
 
+export const getDurableUploadedFilePreviewUrl = (fileId?: string) =>
+  fileId
+    ? `/api/dify/file-proxy?url=${encodeURIComponent(`https://dify.jasonsome.cn:22380/files/${fileId}/preview`)}`
+    : ''
+
 export const normalizeUploadedFileResult = (res: UploadedFileResult): UploadedFileResult => {
-  const stableUrl = getStableUploadUrl(res)
+  const durableUrl = getDurableUploadedFilePreviewUrl(res.id)
+  const stableUrl = durableUrl || getStableUploadUrl(res)
   return {
     ...res,
     url: stableUrl || res.url,
