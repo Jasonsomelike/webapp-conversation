@@ -6,9 +6,9 @@ export const maxDuration = 300
 export const dynamic = 'force-dynamic'
 
 const isVercelCronRequest = (request: Request) => {
-  const userAgent = request.headers.get('user-agent') || ''
-  const schedule = request.headers.get('x-vercel-cron-schedule') || ''
-  return userAgent.includes('vercel-cron') && schedule === '*/30 * * * *'
+  const userAgent = (request.headers.get('user-agent') || '').toLowerCase()
+  const schedule = request.headers.get('x-vercel-cron-schedule')?.trim()
+  return userAgent.includes('vercel-cron') && (!schedule || schedule === '*/30 * * * *')
 }
 
 export async function GET(request: Request) {
@@ -19,13 +19,17 @@ export async function GET(request: Request) {
 
   try {
     const result = await refreshKnowledgeDocuments({ page: 1, limit: 1, recordFailure: true })
+    const usingCachedFallback = result.refresh_error_kind === 'cached-fallback'
+    const ok = !result.stale || usingCachedFallback
     return NextResponse.json({
-      ok: !result.stale,
+      ok,
+      refreshed: !result.stale,
+      using_cached_fallback: usingCachedFallback,
       total: result.total,
       refreshed_at: result.refreshed_at,
       stale: result.stale || false,
       refresh_error: result.refresh_error,
-    }, { status: result.stale ? 503 : 200 })
+    }, { status: ok ? 200 : 503 })
   }
   catch (error) {
     const message = error instanceof Error ? error.message : 'LIBRARY_CATALOG_REFRESH_FAILED'

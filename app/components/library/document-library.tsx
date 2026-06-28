@@ -93,7 +93,6 @@ export default function DocumentLibrary({
       if (status)
       { params.set('status', status) }
       params.set('refresh', '1')
-      params.set('mode', 'async')
       params.set('_', String(Date.now()))
       const response = await fetch(`/api/library/documents?${params}`, {
         credentials: 'include',
@@ -116,7 +115,7 @@ export default function DocumentLibrary({
         setError('')
         setRefreshNotice({
           tone: 'info',
-          message: `已发起服务端后台同步，当前先展示 ${nextResult.total} 份缓存文档；稍后会自动更新（本次请求 ${elapsedSeconds}s）。`,
+          message: `已开始同步知识库目录，当前先展示 ${nextResult.total} 份缓存文档；稍后会自动更新（本次请求 ${elapsedSeconds}s）。`,
         })
         window.setTimeout(() => {
           void (async () => {
@@ -191,6 +190,17 @@ export default function DocumentLibrary({
   const completed = result.data.filter(item => ['completed', 'available'].includes(item.indexing_status || item.display_status || '')).length
   const totalWords = result.data.reduce((sum, item) => sum + (item.word_count || 0), 0)
   const refreshInProgress = refreshPending || refreshNotice?.tone === 'info'
+  const showCachedFallbackWarning = Boolean(
+    result.stale
+    && result.data.length > 0
+    && !refreshInProgress
+    && result.refresh_error_visible !== false,
+  )
+  const isUsingCachedFallback = Boolean(
+    result.stale
+    && result.data.length > 0
+    && result.refresh_error_visible === false,
+  )
   const summaryCards = [
     { label: '知识库文档', value: result.total, unit: '份', icon: CircleStackIcon },
     { label: '本页索引完成', value: completed, unit: '份', icon: CheckCircleIcon },
@@ -250,10 +260,11 @@ export default function DocumentLibrary({
         </form>
 
         <div className="flex items-center justify-end border-b border-black/[0.05] px-5 py-2 text-[10px] text-black/40">
-          <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${refreshInProgress ? 'animate-pulse bg-blue-500' : result.stale ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+          <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${refreshInProgress ? 'animate-pulse bg-blue-500' : showCachedFallbackWarning ? 'bg-amber-500' : 'bg-emerald-500'}`} />
           服务端每 30 分钟同步
           {result.refreshed_at && ` · 最近更新 ${formatDateTime(result.refreshed_at)}`}
           {refreshInProgress && ' · 已发起后台刷新'}
+          {isUsingCachedFallback && ' · 后台同步会自动重试'}
         </div>
 
         {(refreshing || refreshNotice) && (
@@ -272,7 +283,7 @@ export default function DocumentLibrary({
           </div>
         )}
 
-        {result.stale && result.data.length > 0 && !refreshInProgress && (
+        {showCachedFallbackWarning && (
           <div className="border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-xs text-amber-800">
             {result.refresh_error_message || '本次同步暂时失败，当前展示最近一次成功更新的数据。'}
           </div>

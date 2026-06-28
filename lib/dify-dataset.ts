@@ -45,6 +45,8 @@ export interface DifyDocumentList {
   stale?: boolean
   refresh_error?: string
   refresh_error_message?: string
+  refresh_error_visible?: boolean
+  refresh_error_kind?: 'blocking' | 'cached-fallback' | 'suppressed'
   refresh_pending?: boolean
 }
 
@@ -237,10 +239,14 @@ const filterCatalog = ({
   refreshedAt: Date
   refreshError?: string | null
 }): DifyDocumentList => {
+  const hasRefreshError = Boolean(refreshError)
+  const hasCachedDocuments = documents.length > 0
   const suppressCachedFallbackError = Boolean(
-    documents.length > 0
+    hasCachedDocuments
     && refreshError?.includes('DIFY_DATASET_NOT_CONFIGURED'),
   )
+  const cachedFallbackError = hasCachedDocuments && hasRefreshError && !suppressCachedFallbackError
+  const visibleRefreshError = hasRefreshError && !suppressCachedFallbackError && !cachedFallbackError
   const safePage = Math.max(1, page)
   const safeLimit = Math.min(100, Math.max(1, limit))
   const normalizedKeyword = keyword.trim().toLowerCase()
@@ -257,9 +263,17 @@ const filterCatalog = ({
     total: filtered.length,
     page: safePage,
     refreshed_at: refreshedAt.toISOString(),
-    stale: Boolean(refreshError) && !suppressCachedFallbackError,
+    stale: hasRefreshError && !suppressCachedFallbackError,
     refresh_error: suppressCachedFallbackError ? undefined : refreshError || undefined,
     refresh_error_message: suppressCachedFallbackError ? undefined : describeKnowledgeCatalogError(refreshError),
+    refresh_error_visible: visibleRefreshError,
+    refresh_error_kind: suppressCachedFallbackError
+      ? 'suppressed'
+      : cachedFallbackError
+        ? 'cached-fallback'
+        : visibleRefreshError
+          ? 'blocking'
+          : undefined,
   }
 }
 
@@ -282,6 +296,8 @@ const emptyCatalogResult = ({
   stale: Boolean(refreshError),
   refresh_error: refreshError || undefined,
   refresh_error_message: describeKnowledgeCatalogError(refreshError),
+  refresh_error_visible: Boolean(refreshError),
+  refresh_error_kind: refreshError ? 'blocking' : undefined,
   refresh_pending: refreshPending,
 })
 
@@ -295,37 +311,6 @@ const readCatalogRow = async () => {
   if (!catalog)
   { throw new Error('LIBRARY_CATALOG_EMPTY') }
   return catalog
-}
-
-const CATALOG_REFRESH_INTERVAL_MS = 30 * 60 * 1000
-let backgroundRefreshPromise: Promise<unknown> | undefined
-
-const shouldRefreshCatalog = (refreshedAt?: Date | string | null) => {
-  if (!refreshedAt)
-  { return true }
-  const timestamp = new Date(refreshedAt).getTime()
-  return !Number.isFinite(timestamp) || Date.now() - timestamp >= CATALOG_REFRESH_INTERVAL_MS
-}
-
-const refreshCatalogInBackground = () => {
-  if (backgroundRefreshPromise)
-  { return backgroundRefreshPromise }
-  backgroundRefreshPromise = refreshKnowledgeDocuments({ page: 1, limit: 1, recordFailure: true })
-    .catch((error) => {
-      console.error('[library-catalog] background refresh failed', {
-        error: error instanceof Error ? error.message : String(error),
-      })
-    })
-    .finally(() => {
-      backgroundRefreshPromise = undefined
-    })
-  return backgroundRefreshPromise
-}
-
-export const requestKnowledgeDocumentRefresh = async () => {
-  await ensureKnowledgeDocumentCatalogTable()
-  void refreshCatalogInBackground()
-  return { refresh_pending: true }
 }
 
 export const describeKnowledgeCatalogError = (value?: string | null) => {
@@ -385,18 +370,10 @@ export const listKnowledgeDocuments = async ({
     catalog = await readCatalogRow()
   }
   catch (error) {
-    if (error instanceof Error && error.message === 'LIBRARY_CATALOG_EMPTY') {
-      refreshCatalogInBackground()
-      return emptyCatalogResult({
-        page,
-        limit,
-        refreshPending: true,
-      })
-    }
+    if (error instanceof Error && error.message === 'LIBRARY_CATALOG_EMPTY')
+    { return emptyCatalogResult({ page, limit }) }
     throw error
   }
-  if (shouldRefreshCatalog(catalog.refreshedAt))
-  { refreshCatalogInBackground() }
   const documents = Array.isArray(catalog.documents)
     ? catalog.documents as unknown as DifyKnowledgeDocument[]
     : []

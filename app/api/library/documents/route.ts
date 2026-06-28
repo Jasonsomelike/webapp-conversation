@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { attachUserKnowledgeDocumentHitCounts, describeKnowledgeCatalogError, listKnowledgeDocuments, requestKnowledgeDocumentRefresh, refreshKnowledgeDocuments } from '@/lib/dify-dataset'
+import { attachUserKnowledgeDocumentHitCounts, describeKnowledgeCatalogError, listKnowledgeDocuments, refreshKnowledgeDocuments } from '@/lib/dify-dataset'
 import { getSession } from '@/lib/session'
 
 export const runtime = 'nodejs'
@@ -13,15 +13,7 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams
   try {
     const wantsRefresh = params.get('refresh') === '1'
-    if (wantsRefresh && params.get('mode') === 'async')
-    {
-      void requestKnowledgeDocumentRefresh().catch(error =>
-        console.error('[library-documents] async refresh kickoff failed', {
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      )
-    }
-    const data = await (wantsRefresh && params.get('mode') !== 'async'
+    const data = await (wantsRefresh
       ? refreshKnowledgeDocuments
       : listKnowledgeDocuments)({
       page: Number(params.get('page') || 1),
@@ -32,7 +24,7 @@ export async function GET(request: Request) {
     const enrichedData = await attachUserKnowledgeDocumentHitCounts(data, session.id)
     return NextResponse.json({
       ...enrichedData,
-      refresh_pending: wantsRefresh && params.get('mode') === 'async',
+      refresh_pending: false,
     }, {
       headers: {
         'Cache-Control': 'private, no-store, no-cache, must-revalidate',
