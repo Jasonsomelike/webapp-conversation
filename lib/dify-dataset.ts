@@ -166,7 +166,7 @@ const fetchCompleteKnowledgeCatalog = async () => {
       const controller = new AbortController()
       const timeout = setTimeout(
         () => controller.abort(new Error('LIBRARY_CATALOG_SERVICE_TIMEOUT')),
-        8_000,
+        45_000,
       )
       try {
         const response = await fetch(`${serviceUrl}/library/documents/catalog`, {
