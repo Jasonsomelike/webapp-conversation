@@ -24,7 +24,6 @@ export default async function TextbookKnowledgeGraphPage({
       parentNodeId={slice.parentNodeId}
       leafNodeIds={slice.leafNodeIds}
       colorByDepth
-      omittedNodeCount={slice.omittedNodeCount}
       staticNotice={`${textbookGraphSourceNotice} · 当前仅展示中心节点向外 ${textbookGraphDefaultDepth} 级关系`}
       emptyTitle="教材知识图谱暂无数据"
       emptyDescription="请检查 Neo4j JSON 转译数据是否已经随项目发布。"

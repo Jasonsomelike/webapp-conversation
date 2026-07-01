@@ -1,7 +1,6 @@
 import { createHmac, randomUUID } from 'node:crypto'
 import type { NextRequest } from 'next/server'
 import {
-  findKnowledgeDocumentByName,
   getKnowledgeDocumentDownloadUrl,
   getKnowledgeDocumentIndexedText,
   getKnowledgeDocumentPageImages,
@@ -245,12 +244,10 @@ export async function GET(
   const requestedPage = Number(request.nextUrl.searchParams.get('page') || 0)
   const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : undefined
   const errors: string[] = []
-  const matchedDocument = await findKnowledgeDocumentByName(filename, documentId).catch(() => null)
-  const resolvedDocumentId = matchedDocument?.id || documentId
 
   if (request.nextUrl.searchParams.get('proxy') !== '1') {
     const directRedirect = signedLibraryFileRedirect({
-      documentId: resolvedDocumentId,
+      documentId,
       disposition,
       filename,
       requestId,
@@ -262,7 +259,7 @@ export async function GET(
 
   try {
     const serviceResponse = await fetchLibraryFileService({
-      documentId: resolvedDocumentId,
+      documentId,
       disposition,
       filename,
       requestId,
@@ -279,7 +276,7 @@ export async function GET(
   }
 
   try {
-    const signedUrl = await getKnowledgeDocumentDownloadUrl(resolvedDocumentId)
+    const signedUrl = await getKnowledgeDocumentDownloadUrl(documentId)
     const upstream = await fetch(signedUrl, {
       cache: 'no-store',
       redirect: 'follow',
@@ -296,14 +293,14 @@ export async function GET(
 
   try {
     if (/\.pdf$/i.test(filename)) {
-      const pageImages = await getKnowledgeDocumentPageImages(resolvedDocumentId)
+      const pageImages = await getKnowledgeDocumentPageImages(documentId)
       if (pageImages.length) {
         const pdf = await buildKnowledgeDocumentPdf(filename, pageImages)
         return byteResponse(request, pdf, 'application/pdf', disposition, filename, 'page-images-pdf', requestId)
       }
     }
 
-    const indexedText = await getKnowledgeDocumentIndexedText(resolvedDocumentId)
+    const indexedText = await getKnowledgeDocumentIndexedText(documentId)
     const fallbackFilename = `${filename.replace(/\.[^.]+$/, '') || 'document'}-索引文本.txt`
     const body = [
       `文档：${filename}`,
@@ -327,8 +324,7 @@ export async function GET(
     errors.push(`fallback:${error instanceof Error ? error.message : String(error)}`)
     console.error('[library-document-file] failed', {
       requestId,
-      documentId: resolvedDocumentId,
-      originalDocumentId: documentId,
+      documentId,
       disposition,
       filename,
       upstreamUrl: process.env.LIBRARY_FILE_SERVICE_URL || 'not-configured',

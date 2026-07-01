@@ -1,5 +1,4 @@
 import type { KnowledgeGraphNodeType, UserKnowledgeGraph } from '@/lib/graph-data'
-import { getKnowledgeGraphAround } from '@/lib/graph-slice'
 
 interface RawTextbookNode { id: number, label: string }
 interface RawTextbookEdge { source: number, target: number, relation: string }
@@ -9,7 +8,6 @@ export interface TextbookKnowledgeGraphSlice {
   centerNodeId: string
   parentNodeId?: string
   leafNodeIds: string[]
-  omittedNodeCount: number
 }
 
 const textbookNodes = [
@@ -460,6 +458,8 @@ const buildTextbookKnowledgeGraph = (): UserKnowledgeGraph => {
 
 export const textbookKnowledgeGraph = buildTextbookKnowledgeGraph()
 
+const fullNodeMap = new Map(textbookKnowledgeGraph.nodes.map(node => [node.id, node]))
+
 const buildTextbookAdjacency = () => {
   const adjacency = new Map<string, Set<string>>()
   textbookKnowledgeGraph.nodes.forEach(node => adjacency.set(node.id, new Set()))
@@ -474,27 +474,122 @@ const textbookAdjacency = buildTextbookAdjacency()
 
 export const isTextbookLeafNode = (nodeId: string) => (textbookAdjacency.get(nodeId)?.size || 0) <= 1
 
+const findParentTowardRoot = (centerNodeId: string) => {
+  if (centerNodeId === textbookGraphRootNodeId)
+  { return undefined }
+
+  const queue = [textbookGraphRootNodeId]
+  const visited = new Set<string>([textbookGraphRootNodeId])
+  const previous = new Map<string, string>()
+
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index]
+    if (current === centerNodeId)
+    { break }
+    textbookAdjacency.get(current)?.forEach((nextId) => {
+      if (visited.has(nextId))
+      { return }
+      visited.add(nextId)
+      previous.set(nextId, current)
+      queue.push(nextId)
+    })
+  }
+
+  return previous.get(centerNodeId)
+}
+
+const distanceFromCenter = (nodeIds: string[], centerNodeId: string) => {
+  const included = new Set(nodeIds)
+  const distance = new Map<string, number>([[centerNodeId, 0]])
+  const queue = [centerNodeId]
+
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index]
+    const currentDistance = distance.get(current) ?? 0
+    textbookAdjacency.get(current)?.forEach((nextId) => {
+      if (!included.has(nextId) || distance.has(nextId))
+      { return }
+      distance.set(nextId, currentDistance + 1)
+      queue.push(nextId)
+    })
+  }
+
+  return distance
+}
+
+const layoutTextbookSubgraph = (graph: UserKnowledgeGraph, centerNodeId: string): UserKnowledgeGraph => {
+  const center = graph.nodes.find(node => node.id === centerNodeId) || graph.nodes[0]
+  if (!center)
+  { return graph }
+
+  const distances = distanceFromCenter(graph.nodes.map(node => node.id), center.id)
+  const firstRing = graph.nodes.filter(node => (distances.get(node.id) ?? 99) === 1)
+  const secondRing = graph.nodes.filter(node => (distances.get(node.id) ?? 99) > 1)
+
+  const nodes = graph.nodes.map((node) => {
+    if (node.id === center.id) {
+      return {
+        ...node,
+        type: 'topic' as KnowledgeGraphNodeType,
+        x: 50,
+        y: 50,
+        weight: Math.max(node.weight, 13),
+        description: `${node.label} 是当前教材图谱探索中心。页面只展示它向外两级的概念关系，点击其他节点可继续下钻。`,
+      }
+    }
+
+    const isFirstRing = (distances.get(node.id) ?? 99) === 1
+    const siblings = isFirstRing ? firstRing : secondRing
+    const index = Math.max(0, siblings.findIndex(item => item.id === node.id))
+    const total = Math.max(1, siblings.length)
+    const angle = -Math.PI / 2 + (Math.PI * 2 * index) / total
+    const radius = isFirstRing ? 23 : 38
+    return {
+      ...node,
+      x: Number(clamp(50 + Math.cos(angle) * radius, 8, 92).toFixed(2)),
+      y: Number(clamp(50 + Math.sin(angle) * radius * 0.72, 8, 92).toFixed(2)),
+      weight: isFirstRing ? Math.max(node.weight, 9.5) : Math.max(7, node.weight - 1),
+    }
+  })
+
+  return { nodes, edges: graph.edges }
+}
+
 export const getTextbookKnowledgeGraphAround = (
   requestedCenterNodeId = textbookGraphRootNodeId,
   depth = textbookGraphDefaultDepth,
 ): TextbookKnowledgeGraphSlice => {
-  const validCenterNodeId = textbookKnowledgeGraph.nodes.some(node => node.id === requestedCenterNodeId)
-    ? requestedCenterNodeId
-    : textbookGraphRootNodeId
-  return getKnowledgeGraphAround({
-    graph: {
-      nodes: textbookKnowledgeGraph.nodes.map(node => node.id === validCenterNodeId
-        ? {
-          ...node,
-          type: 'topic' as KnowledgeGraphNodeType,
-          description: `${node.label} 是当前教材图谱探索中心。页面只展示它向外两级的概念关系，点击其他节点可继续下钻。`,
-        }
-        : node),
-      edges: textbookKnowledgeGraph.edges,
-    },
-    requestedCenterNodeId: validCenterNodeId,
-    rootNodeId: textbookGraphRootNodeId,
-    depth,
-    hideParentWhenDrilled: true,
-  })
+  const centerNodeId = fullNodeMap.has(requestedCenterNodeId) ? requestedCenterNodeId : textbookGraphRootNodeId
+  const visited = new Set<string>([centerNodeId])
+  const queue: Array<{ id: string, distance: number }> = [{ id: centerNodeId, distance: 0 }]
+
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index]
+    if (current.distance >= depth)
+    { continue }
+    textbookAdjacency.get(current.id)?.forEach((nextId) => {
+      if (visited.has(nextId))
+      { return }
+      visited.add(nextId)
+      queue.push({ id: nextId, distance: current.distance + 1 })
+    })
+  }
+
+  const nodes = textbookKnowledgeGraph.nodes
+    .filter(node => visited.has(node.id))
+    .sort((left, right) => {
+      if (left.id === centerNodeId)
+      { return -1 }
+      if (right.id === centerNodeId)
+      { return 1 }
+      return (right.evidence || 0) - (left.evidence || 0)
+    })
+  const edges = textbookKnowledgeGraph.edges.filter(edge => visited.has(edge.source) && visited.has(edge.target))
+
+  return {
+    graph: layoutTextbookSubgraph({ nodes, edges }, centerNodeId),
+    centerNodeId,
+    parentNodeId: findParentTowardRoot(centerNodeId),
+    leafNodeIds: nodes.filter(node => isTextbookLeafNode(node.id)).map(node => node.id),
+  }
 }

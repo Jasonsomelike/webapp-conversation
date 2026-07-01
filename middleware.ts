@@ -10,11 +10,7 @@ export function middleware(request: NextRequest) {
   const hostname = request.nextUrl.hostname.toLowerCase()
   const alreadyCanonical = hostname === 'www.jasonsome.cn' && request.nextUrl.protocol === 'https:'
   if (alreadyCanonical || !legacyHosts.has(hostname))
-  {
-    const headers = new Headers(request.headers)
-    headers.set('x-pathname', request.nextUrl.pathname)
-    return NextResponse.next({ request: { headers } })
-  }
+  { return NextResponse.next() }
 
   const url = request.nextUrl.clone()
   url.protocol = 'https:'

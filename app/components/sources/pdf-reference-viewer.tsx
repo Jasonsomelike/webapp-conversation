@@ -24,12 +24,6 @@ const loadPdfJs = () => {
 const withProxyFallback = (url: string) => {
   try {
     const parsed = new URL(url, globalThis.location.origin)
-    // The normal same-origin file route returns a short-lived signed redirect
-    // to the library file service. Let the browser/PDF.js follow that redirect
-    // directly; forcing Vercel serverless to proxy large range streams is more
-    // fragile and can surface intermittent 502 "failed to fetch" previews.
-    if (parsed.pathname.startsWith('/api/library/documents/'))
-    { return undefined }
     if (parsed.origin !== globalThis.location.origin)
     { return undefined }
     if (!/\/api\/(?:library\/documents|sources)\/.+\/file$/.test(parsed.pathname))
@@ -50,7 +44,6 @@ interface PdfReferenceViewerProps {
   initialPage: number
   sourceUrl?: string
   downloadUrl?: string
-  pageImageUrl?: string
   backHref?: string
 }
 
@@ -60,7 +53,6 @@ export default function PdfReferenceViewer({
   initialPage,
   sourceUrl: explicitSourceUrl,
   downloadUrl: explicitDownloadUrl,
-  pageImageUrl,
   backHref = '/library',
 }: PdfReferenceViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -73,7 +65,6 @@ export default function PdfReferenceViewer({
   const [viewerWidth, setViewerWidth] = useState(0)
   const [retryKey, setRetryKey] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [imageLoading, setImageLoading] = useState(Boolean(pageImageUrl))
   const [error, setError] = useState('')
   // This authenticated same-origin route issues a short-lived signed redirect
   // to the file service. Keep source references on the same path style as the
@@ -81,7 +72,6 @@ export default function PdfReferenceViewer({
   // fragile and was the source of intermittent 502/failed-fetch previews.
   const sourceUrl = explicitSourceUrl || `/api/sources/${encodeURIComponent(referenceId || '')}/file?disposition=inline&filename=${encodeURIComponent(filename)}`
   const downloadUrl = explicitDownloadUrl || `/api/sources/${encodeURIComponent(referenceId || '')}/file?disposition=attachment&filename=${encodeURIComponent(filename)}`
-  const usePageImagePreview = Boolean(pageImageUrl)
 
   useEffect(() => {
     window.NetworkStudyApp?.hideShell()
@@ -96,12 +86,6 @@ export default function PdfReferenceViewer({
   }, [])
 
   useEffect(() => {
-    if (usePageImagePreview) {
-      setLoading(false)
-      setError('')
-      setPdf(undefined)
-      return
-    }
     let disposed = false
     let loadingTask: any
     ;(async () => {
@@ -150,7 +134,7 @@ export default function PdfReferenceViewer({
       renderTaskRef.current?.cancel()
       void loadingTask?.destroy()
     }
-  }, [retryKey, sourceUrl, usePageImagePreview])
+  }, [retryKey, sourceUrl])
 
   const renderPage = useCallback(async () => {
     const canvas = canvasRef.current
@@ -192,12 +176,12 @@ export default function PdfReferenceViewer({
     globalThis.history.replaceState({}, '', `${url.pathname}${url.search}`)
   }, [page])
 
-  const pageCount = Number(pdf?.numPages || (usePageImagePreview ? page : 0))
-  const updatePage = useCallback((value: number) => {
-    if (!pageCount || usePageImagePreview)
+  const pageCount = Number(pdf?.numPages || 0)
+  const updatePage = (value: number) => {
+    if (!pageCount)
     { return }
     setPage(Math.min(pageCount, Math.max(1, Math.round(value))))
-  }, [pageCount, usePageImagePreview])
+  }
   const changeScale = (delta: number) =>
     setScale(value => Math.min(2.4, Math.max(0.65, Number((value + delta).toFixed(2)))))
 
@@ -220,7 +204,7 @@ export default function PdfReferenceViewer({
     }
     globalThis.addEventListener('keydown', handleKeyDown)
     return () => globalThis.removeEventListener('keydown', handleKeyDown)
-  }, [page, pageCount, updatePage])
+  }, [page, pageCount])
 
   useEffect(() => {
     if (!pdf || !pageCount)
@@ -307,46 +291,15 @@ export default function PdfReferenceViewer({
             </div>
           </div>
         )}
-        {!loading && !error && pageImageUrl && (
-          <div
-            className="mx-auto flex w-fit max-w-full flex-col items-center gap-3"
-            style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}
-            onDoubleClick={() => setScale(value => value > 1.05 ? 1 : 1.65)}
-          >
-            {imageLoading && (
-              <div className="rounded-2xl bg-white/80 px-5 py-3 text-sm text-black/50 shadow-sm backdrop-blur">
-                正在加载第 {page} 页图片…
-              </div>
-            )}
-            <img
-              src={pageImageUrl}
-              alt={`${filename} 第 ${page} 页`}
-              className={`block max-h-none max-w-[min(100%,1100px)] rounded-xl bg-white object-contain shadow-[0_18px_55px_rgba(20,40,31,.16)] transition-opacity ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
-              onLoad={() => setImageLoading(false)}
-              onError={() => {
-                setImageLoading(false)
-                setError('来源页图片加载失败，可使用系统查看器打开 PDF。')
-              }}
-            />
-            <a
-              href={sourceUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-full border border-black/10 bg-white/85 px-4 py-2 text-xs font-semibold text-[#17342b] shadow-sm backdrop-blur"
-            >
-              使用系统查看器打开完整 PDF
-            </a>
-          </div>
-        )}
         <div
-          className={loading || error || pageImageUrl ? 'hidden' : 'mx-auto w-fit overflow-hidden rounded-xl bg-white shadow-[0_18px_55px_rgba(20,40,31,.16)]'}
+          className={loading || error ? 'hidden' : 'mx-auto w-fit overflow-hidden rounded-xl bg-white shadow-[0_18px_55px_rgba(20,40,31,.16)]'}
           onDoubleClick={() => setScale(value => value > 1.05 ? 1 : 1.65)}
         >
           <canvas ref={canvasRef} className="block max-w-none" />
         </div>
       </main>
 
-      {!loading && !error && !pageImageUrl && pageCount > 1 && (
+      {!loading && !error && pageCount > 1 && (
         <>
           <button
             type="button"
@@ -371,7 +324,7 @@ export default function PdfReferenceViewer({
 
       {!error && (
         <div className="shrink-0 border-t border-black/10 bg-white/95 px-3 pb-[calc(9px+env(safe-area-inset-bottom))] pt-2.5 backdrop-blur">
-          {!pageImageUrl && pageCount > 1 && (
+          {pageCount > 1 && (
             <input
               type="range"
               min={1}
@@ -383,7 +336,7 @@ export default function PdfReferenceViewer({
             />
           )}
           <div className="flex items-center justify-between gap-2">
-            {!pageImageUrl && <div className="flex overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm lg:hidden">
+            <div className="flex overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm lg:hidden">
               <button type="button" disabled={page <= 1} onClick={() => updatePage(page - 1)} className="grid h-11 w-11 place-items-center disabled:opacity-30" aria-label="上一页">
                 <ChevronLeftIcon className="h-5 w-5" />
               </button>
@@ -402,7 +355,7 @@ export default function PdfReferenceViewer({
               <button type="button" disabled={!pageCount || page >= pageCount} onClick={() => updatePage(page + 1)} className="grid h-11 w-11 place-items-center disabled:opacity-30" aria-label="下一页">
                 <ChevronRightIcon className="h-5 w-5" />
               </button>
-            </div>}
+            </div>
             <div className="flex overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
               <button type="button" onClick={() => changeScale(-0.15)} className="grid h-11 w-11 place-items-center border-r border-black/10" aria-label="缩小">
                 <MagnifyingGlassMinusIcon className="h-5 w-5" />

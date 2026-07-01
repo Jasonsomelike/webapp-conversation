@@ -79,41 +79,6 @@ const shouldRetryNativeRelay = (urlWithPrefix: string, statusOrCode?: number | s
   return !value || ['502', '503', '504', 'DIFY_CONNECT_TIMEOUT', 'DIFY_REQUEST_FAILED'].some(code => value.includes(code))
 }
 
-const isSameOriginUrl = (value: string) => {
-  try {
-    return new URL(value, globalThis.location.origin).origin === globalThis.location.origin
-  }
-  catch {
-    return value.startsWith('/')
-  }
-}
-
-const relayTicketUrlFor = (targetUrl: string) => {
-  const ticketUrl = new URL(targetUrl, globalThis.location.origin)
-  ticketUrl.searchParams.set('relayTicket', '1')
-  return ticketUrl.origin === globalThis.location.origin
-    ? `${ticketUrl.pathname}${ticketUrl.search}${ticketUrl.hash}`
-    : ticketUrl.toString()
-}
-
-const fetchBrowserRelayTicket = async (targetUrl: string, requestOptions: RequestInit) => {
-  const response = await globalThis.fetch(relayTicketUrlFor(targetUrl), {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: new Headers(requestOptions.headers),
-    body: requestOptions.body,
-    cache: 'no-store',
-  })
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '')
-    throw new Error(`CHAT_RELAY_TICKET_FAILED:${response.status}:${detail.slice(0, 200)}`)
-  }
-  const result = await response.json() as { url?: string }
-  if (!result.url)
-  { throw new Error('CHAT_RELAY_TICKET_URL_MISSING') }
-  return result.url
-}
-
 export interface WorkflowStartedResponse {
   task_id: string
   workflow_run_id: string
@@ -267,9 +232,6 @@ const handleStream = (
   let bufferObj: Record<string, any>
   let isFirstMessage = true
   let persistPromise: Promise<void> | undefined
-  let hasUsefulStreamEvent = false
-  let hasAnswerContent = false
-  let hasMessageEnd = false
   const safelyCall = (name: string, callback: (() => void) | undefined) => {
     if (!callback)
     { return }
@@ -298,115 +260,86 @@ const handleStream = (
           return
         }
         buffer += decoder.decode(result.value, { stream: true })
-        const events = buffer.split(/\r?\n\r?\n/)
-        buffer = events.pop() || ''
+        const lines = buffer.split('\n')
         try {
-          events.forEach((eventBlock) => {
-            const data = eventBlock
-              .split(/\r?\n/)
-              .filter(line => line.startsWith('data:'))
-              .map(line => line.slice(5).trimStart())
-              .join('\n')
-            if (!data || data === '[DONE]')
-            { return }
-
-            try {
-              bufferObj = JSON.parse(data) as Record<string, any>
-            }
-            catch {
-              buffer = eventBlock + (buffer ? `\n\n${buffer}` : '')
-              safelyCall('partial-data', () => onData('', isFirstMessage, {
-                conversationId: bufferObj?.conversation_id,
-                messageId: bufferObj?.message_id,
-              }))
-              return
-            }
-
-            const statusCode = Number(bufferObj.status)
-            const isExplicitStreamError = bufferObj.event === 'error'
-              || (Number.isFinite(statusCode) && statusCode >= 400)
-              || (!bufferObj.event && (!!bufferObj.code || !!bufferObj.message))
-            if (isExplicitStreamError) {
-              if (hasUsefulStreamEvent || hasAnswerContent || hasMessageEnd) {
-                console.warn('[chat-stream] ignored terminal stream error after useful events', {
-                  event: bufferObj.event,
-                  status: bufferObj.status,
-                  code: bufferObj.code,
-                  message: bufferObj.message,
-                })
+          lines.forEach((message) => {
+            if (message.startsWith('data: ')) { // check if it starts with data:
+              try {
+                bufferObj = JSON.parse(message.substring(6)) as Record<string, any>// remove data: and parse as json
+              }
+              catch {
+              // mute handle message cut off
+                safelyCall('partial-data', () => onData('', isFirstMessage, {
+                  conversationId: bufferObj?.conversation_id,
+                  messageId: bufferObj?.message_id,
+                }))
                 return
               }
-              safelyCall('error-data', () => onData('', false, {
-                conversationId: undefined,
-                messageId: '',
-                errorMessage: toMessageText(bufferObj?.message || bufferObj?.error, '请求返回异常，请稍后重试'),
-                errorCode: toMessageText(bufferObj?.code),
-              }))
-              hasError = true
-              finish('error-completed', true)
-              return
-            }
-            if (!bufferObj.event) {
-              console.warn('[chat-stream] ignored SSE data without event field', bufferObj)
-              return
-            }
-            hasUsefulStreamEvent = true
-            if (bufferObj.event === 'message' || bufferObj.event === 'agent_message') {
-            // can not use format here. Because message is splited.
-              const text = streamTextFrom(bufferObj.answer, bufferObj.event)
-              if (text)
-              { hasAnswerContent = true }
-              safelyCall('message', () => onData(text, isFirstMessage, {
-                conversationId: bufferObj.conversation_id,
-                taskId: bufferObj.task_id,
-                messageId: bufferObj.id,
-              }))
-              isFirstMessage = false
-            }
-            else if (bufferObj.event === 'agent_thought') {
-              safelyCall('agent-thought', () => onThought?.(normalizeThoughtPayload(bufferObj)))
-            }
-            else if (bufferObj.event === 'message_file') {
-              safelyCall('message-file', () => onFile?.({
-                ...bufferObj,
-                belongs_to: 'assistant',
-                url: bufferObj.url || bufferObj.file_url || '',
-                name: bufferObj.name || bufferObj.filename,
-              } as VisionFile))
-            } else if (bufferObj.event === 'relay_persist' && bufferObj.data) {
-              persistPromise = globalThis.fetch('/api/chat-persist', {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(bufferObj.data),
-              }).then(async (persistResponse) => {
-                if (!persistResponse.ok)
-                { throw new Error(`CHAT_PERSIST_FAILED:${persistResponse.status}`) }
-              }).catch(error => console.error('[chat-persist] browser callback failed', error))
-            }
-            else if (bufferObj.event === 'message_end') {
-              hasMessageEnd = true
-              safelyCall('message-end', () => onMessageEnd?.(bufferObj as MessageEnd))
-            }
-            else if (bufferObj.event === 'message_replace') {
-              safelyCall('message-replace', () => onMessageReplace?.({
-                ...bufferObj,
-                answer: streamTextFrom(bufferObj.answer, 'message_replace'),
-              } as MessageReplace))
-            }
-            else if (bufferObj.event === 'workflow_started') {
-              safelyCall('workflow-started', () => onWorkflowStarted?.(bufferObj as WorkflowStartedResponse))
-            }
-            else if (bufferObj.event === 'workflow_finished') {
-              safelyCall('workflow-finished', () => onWorkflowFinished?.(bufferObj as WorkflowFinishedResponse))
-            }
-            else if (bufferObj.event === 'node_started') {
-              safelyCall('node-started', () => onNodeStarted?.(bufferObj as NodeStartedResponse))
-            }
-            else if (bufferObj.event === 'node_finished') {
-              safelyCall('node-finished', () => onNodeFinished?.(bufferObj as NodeFinishedResponse))
+              if (bufferObj.status === 400 || !bufferObj.event) {
+                safelyCall('error-data', () => onData('', false, {
+                  conversationId: undefined,
+                  messageId: '',
+                  errorMessage: toMessageText(bufferObj?.message || bufferObj?.error, '请求返回异常，请稍后重试'),
+                  errorCode: toMessageText(bufferObj?.code),
+                }))
+                hasError = true
+                finish('error-completed', true)
+                return
+              }
+              if (bufferObj.event === 'message' || bufferObj.event === 'agent_message') {
+              // can not use format here. Because message is splited.
+                safelyCall('message', () => onData(streamTextFrom(bufferObj.answer, bufferObj.event), isFirstMessage, {
+                  conversationId: bufferObj.conversation_id,
+                  taskId: bufferObj.task_id,
+                  messageId: bufferObj.id,
+                }))
+                isFirstMessage = false
+              }
+              else if (bufferObj.event === 'agent_thought') {
+                safelyCall('agent-thought', () => onThought?.(normalizeThoughtPayload(bufferObj)))
+              }
+              else if (bufferObj.event === 'message_file') {
+                safelyCall('message-file', () => onFile?.({
+                  ...bufferObj,
+                  belongs_to: 'assistant',
+                  url: bufferObj.url || bufferObj.file_url || '',
+                  name: bufferObj.name || bufferObj.filename,
+                } as VisionFile))
+              } else if (bufferObj.event === 'relay_persist' && bufferObj.data) {
+                persistPromise = globalThis.fetch('/api/chat-persist', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(bufferObj.data),
+                }).then(async (persistResponse) => {
+                  if (!persistResponse.ok)
+                  { throw new Error(`CHAT_PERSIST_FAILED:${persistResponse.status}`) }
+                }).catch(error => console.error('[chat-persist] browser callback failed', error))
+              }
+              else if (bufferObj.event === 'message_end') {
+                safelyCall('message-end', () => onMessageEnd?.(bufferObj as MessageEnd))
+              }
+              else if (bufferObj.event === 'message_replace') {
+                safelyCall('message-replace', () => onMessageReplace?.({
+                  ...bufferObj,
+                  answer: streamTextFrom(bufferObj.answer, 'message_replace'),
+                } as MessageReplace))
+              }
+              else if (bufferObj.event === 'workflow_started') {
+                safelyCall('workflow-started', () => onWorkflowStarted?.(bufferObj as WorkflowStartedResponse))
+              }
+              else if (bufferObj.event === 'workflow_finished') {
+                safelyCall('workflow-finished', () => onWorkflowFinished?.(bufferObj as WorkflowFinishedResponse))
+              }
+              else if (bufferObj.event === 'node_started') {
+                safelyCall('node-started', () => onNodeStarted?.(bufferObj as NodeStartedResponse))
+              }
+              else if (bufferObj.event === 'node_finished') {
+                safelyCall('node-finished', () => onNodeFinished?.(bufferObj as NodeFinishedResponse))
+              }
             }
           })
+          buffer = lines[lines.length - 1]
         }
         catch (e) {
           safelyCall('stream-parse-error', () => onData('', false, {
@@ -593,25 +526,10 @@ export const ssePost = (
   options.signal = abortController.signal
   getAbortController?.(abortController)
 
-  const send = (targetUrl: string, retriedFromNativeRelay = false, skipBrowserRelay = false): Promise<boolean | false> => {
+  const send = (targetUrl: string, retriedFromNativeRelay = false): Promise<boolean | false> => {
     const requestOptions = {
       ...options,
       headers: new Headers(options.headers),
-    }
-    if (!isSameOriginUrl(targetUrl) && isChatMessagesEndpoint(url)) {
-      requestOptions.headers.set('Content-Type', 'text/plain;charset=UTF-8')
-    }
-    const tryBrowserRelay = !skipBrowserRelay
-      && !isNetworkStudyApp()
-      && isChatMessagesEndpoint(url)
-      && isSameOriginUrl(targetUrl)
-    if (tryBrowserRelay) {
-      return fetchBrowserRelayTicket(targetUrl, requestOptions)
-        .then(relayUrl => send(relayUrl, retriedFromNativeRelay, true))
-        .catch((error) => {
-          console.warn('[chat] browser relay ticket failed, falling back to same-origin chat API', error)
-          return send(targetUrl, retriedFromNativeRelay, true)
-        })
     }
     return globalThis.fetch(targetUrl, requestOptions)
       .then(async (res: Response) => {
@@ -633,7 +551,7 @@ export const ssePost = (
               requestId,
               message: baseMessage,
             })
-            return send(withoutNativeServerRelay(targetUrl), true, skipBrowserRelay)
+            return send(withoutNativeServerRelay(targetUrl), true)
           }
           Toast.notify({ type: 'error', message })
           onError?.(message, data.code)
@@ -652,7 +570,7 @@ export const ssePost = (
         const message = toFriendlyNetworkError(e)
         if (!retriedFromNativeRelay && shouldRetryNativeRelay(targetUrl)) {
           console.warn('[chat] native server relay network error, retrying browser relay', e)
-          return send(withoutNativeServerRelay(targetUrl), true, skipBrowserRelay)
+          return send(withoutNativeServerRelay(targetUrl), true)
         }
         Toast.notify({ type: 'error', message })
         onError?.(message)

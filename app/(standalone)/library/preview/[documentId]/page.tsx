@@ -1,7 +1,5 @@
 import { redirect } from 'next/navigation'
 import PdfReferenceViewer from '@/app/components/sources/pdf-reference-viewer'
-import { findKnowledgeDocumentByName, getKnowledgeDocumentPageImages } from '@/lib/dify-dataset'
-import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
 import { getSession } from '@/lib/session'
 
 export default async function LibraryPdfPreviewPage({
@@ -19,14 +17,8 @@ export default async function LibraryPdfPreviewPage({
   const query = await searchParams
   const filename = query.filename || '知识库文档.pdf'
   const page = Math.max(1, Number(query.page || 1) || 1)
-  const currentDocument = filename ? await findKnowledgeDocumentByName(filename, documentId).catch(() => null) : null
-  const resolvedDocumentId = currentDocument?.id || documentId
-  const encodedId = encodeURIComponent(resolvedDocumentId)
+  const encodedId = encodeURIComponent(documentId)
   const encodedFilename = encodeURIComponent(filename)
-  const pageImages = await getKnowledgeDocumentPageImages(resolvedDocumentId).catch(() => [])
-  const pageImageUrl = pageImages.find(image => image.page === page)?.url
-    || pageImages.find(image => image.page >= page)?.url
-    || ''
 
   return (
     <PdfReferenceViewer
@@ -34,7 +26,6 @@ export default async function LibraryPdfPreviewPage({
       initialPage={page}
       sourceUrl={`/api/library/documents/${encodedId}/file?disposition=inline&filename=${encodedFilename}`}
       downloadUrl={`/api/library/documents/${encodedId}/file?disposition=attachment&filename=${encodedFilename}`}
-      pageImageUrl={pageImageUrl ? toDifyAssetProxyUrl(pageImageUrl) : undefined}
       backHref={query.returnTo?.startsWith('/') ? query.returnTo : '/library'}
     />
   )
