@@ -3,6 +3,7 @@ import PdfReferenceViewer from '@/app/components/sources/pdf-reference-viewer'
 import { db, withDatabaseRetry } from '@/lib/db'
 import { findKnowledgeDocumentByName, getKnowledgeDocumentPageImages } from '@/lib/dify-dataset'
 import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
+import { signedLibraryDocumentFileUrl } from '@/lib/library-file-service'
 import { cleanReferenceDocumentName } from '@/lib/reference-extractor'
 import { getSession } from '@/lib/session'
 
@@ -38,11 +39,26 @@ export default async function SourcePdfPreviewPage({
     || pageImages.find(image => image.page >= page)?.url
     || ''
   const encodedFilename = encodeURIComponent(filename)
+  const directSourceUrl = resolvedDocumentId
+    ? signedLibraryDocumentFileUrl({
+      documentId: resolvedDocumentId,
+      disposition: 'inline',
+      filename,
+      page,
+    })
+    : ''
+  const directDownloadUrl = resolvedDocumentId
+    ? signedLibraryDocumentFileUrl({
+      documentId: resolvedDocumentId,
+      disposition: 'attachment',
+      filename,
+    })
+    : ''
   const sourceUrl = resolvedDocumentId
-    ? `/api/library/documents/${encodeURIComponent(resolvedDocumentId)}/file?disposition=inline&filename=${encodedFilename}`
+    ? directSourceUrl || `/api/library/documents/${encodeURIComponent(resolvedDocumentId)}/file?disposition=inline&page=${page}&filename=${encodedFilename}`
     : undefined
   const downloadUrl = resolvedDocumentId
-    ? `/api/library/documents/${encodeURIComponent(resolvedDocumentId)}/file?disposition=attachment&filename=${encodedFilename}`
+    ? directDownloadUrl || `/api/library/documents/${encodeURIComponent(resolvedDocumentId)}/file?disposition=attachment&filename=${encodedFilename}`
     : undefined
   return (
     <PdfReferenceViewer

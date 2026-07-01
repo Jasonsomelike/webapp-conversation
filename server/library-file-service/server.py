@@ -207,11 +207,12 @@ def storage_file_response(
     disposition: str,
     request_id: str,
     source: str,
+    x_accel_prefix: str = "/_protected-storage",
 ) -> Response:
     if USE_X_ACCEL:
         response = Response(status=200)
         response.headers["X-Accel-Redirect"] = (
-            f"/_protected-storage/{quote(storage_key, safe='/')}"
+            f"{x_accel_prefix}/{quote(storage_key, safe='/')}"
         )
         response.headers["Content-Type"] = mimetype or "application/octet-stream"
         response.headers["Content-Disposition"] = safe_content_disposition(
@@ -400,7 +401,7 @@ def page_image_file(batch: str, filename: str):
     request_id = request.args.get("requestId", "") or str(uuid.uuid4())
     asset_path = f"/page-images/{batch}/{filename}"
     if not re.fullmatch(r"[A-Za-z0-9_-]{6,64}", batch) or not re.fullmatch(
-        r"page_\d+\.(?:jpe?g|png|webp)", filename, re.I
+        r"[A-Za-z0-9_-]+\.(?:jpe?g|png|webp)", filename, re.I
     ):
         return error_response("Invalid page image path", 400, request_id)
     if not signed_page_image_request_is_valid(asset_path, request_id):
@@ -423,13 +424,15 @@ def page_image_file(batch: str, filename: str):
         return error_response("Page image not found", 404, request_id)
     mimetype = "image/png" if filename.lower().endswith(".png") else "image/webp" if filename.lower().endswith(".webp") else "image/jpeg"
     if source_root != STORAGE_ROOT / "page_images":
-        return direct_file_response(
+        return storage_file_response(
             file_path,
+            f"{batch}/{filename}",
             mimetype,
             filename,
             "inline",
             request_id,
             "dify-page-image-data-root",
+            "/_protected-page-images",
         )
     return storage_file_response(
         file_path,

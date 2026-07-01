@@ -62,9 +62,11 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   const absoluteSourceUrl = toAbsoluteDifyAssetUrl(sourceUrl)
   const imageUrl = toSharedAssetProxyUrl(sourceUrl, shareToken)
 
+  const isPdfPageImage = /\/page-images\/[^/]+\/page_(\d+)\.(?:jpe?g|png|webp)(?:[?#].*)?$/i.test(absoluteSourceUrl || sourceUrl)
+  const isInlineKnowledgeIllustration = Boolean((absoluteSourceUrl || sourceUrl).includes('/page-images/') && !isPdfPageImage)
   const pageNumber = sourceInfo?.pageNumber || Number(sourceUrl.match(/\/page-images\/[^/]+\/page_(\d+)\./i)?.[1] || 0) || undefined
   const sourceFilename = sourceInfo?.documentName || String(alt).match(/([^\n|]+?\.(?:pdf|docx?|pptx?))/i)?.[1]?.replace(/^[\s\-–—*#>|![\]()"'“”‘’]+/, '').trim()
-  const isKnowledgeSource = Boolean(pageNumber || sourceUrl.includes('/page-images/'))
+  const isKnowledgeSource = Boolean(isPdfPageImage && (pageNumber || sourceInfo?.previewUrl || sourceUrl.includes('/page-images/')))
   const isGeneratedImage = sourceUrl.includes('/files/tools/') || sourceUrl.includes('/api/generated-files/')
   const sourceLabel = isKnowledgeSource
     ? `来源：${sourceFilename || '课程知识库原页'}${pageNumber ? ` · 第 ${pageNumber} 页` : ''}`
@@ -141,7 +143,7 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   }
 
   useEffect(() => {
-    if (!absoluteSourceUrl.includes('/page-images/'))
+    if (!isPdfPageImage)
     { return }
     let cancelled = false
     const timers: ReturnType<typeof setTimeout>[] = []
@@ -163,7 +165,7 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
       cancelled = true
       timers.forEach(timer => clearTimeout(timer))
     }
-  }, [absoluteSourceUrl])
+  }, [absoluteSourceUrl, isPdfPageImage])
 
   if (!imageUrl)
   { return null }
@@ -173,7 +175,7 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
       <span className='markdown-media-error'>
         <span>{sourceLabel} · 图片加载失败</span>
         <button type='button' onClick={() => setFailed(false)}>重试</button>
-        {showOriginalLink && (
+        {showOriginalLink && !isInlineKnowledgeIllustration && (
           <a href={sourceHrefWithReturn()} onClick={(event) => {
             rememberReturnPosition(event.currentTarget)
             event.currentTarget.href = sourceHrefWithReturn(event.currentTarget)
@@ -205,24 +207,26 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
             </span>
           )}
         </span>
-        <figcaption className='flex flex-wrap items-center justify-between gap-2 border-t border-black/10 px-3 py-2 text-[11px] text-[var(--studio-muted)]'>
-          <span>{sourceLabel}</span>
-          {showOriginalLink && (
-            <a
-              href={sourceHrefWithReturn()}
-              target={isKnowledgeSource ? undefined : '_blank'}
-              rel='noreferrer'
-              onClick={(event) => {
-                event.stopPropagation()
-                rememberReturnPosition(event.currentTarget)
-                event.currentTarget.href = sourceHrefWithReturn(event.currentTarget)
-              }}
-              className='font-semibold text-[var(--studio-accent-strong)]'
-            >
-              {originalLabel}
-            </a>
-          )}
-        </figcaption>
+        {!isInlineKnowledgeIllustration && (
+          <figcaption className='flex flex-wrap items-center justify-between gap-2 border-t border-black/10 px-3 py-2 text-[11px] text-[var(--studio-muted)]'>
+            <span>{sourceLabel}</span>
+            {showOriginalLink && (
+              <a
+                href={sourceHrefWithReturn()}
+                target='_blank'
+                rel='noreferrer'
+                onClick={(event) => {
+                  event.stopPropagation()
+                  rememberReturnPosition(event.currentTarget)
+                  event.currentTarget.href = sourceHrefWithReturn(event.currentTarget)
+                }}
+                className='font-semibold text-[var(--studio-accent-strong)]'
+              >
+                {originalLabel}
+              </a>
+            )}
+          </figcaption>
+        )}
       </figure>
       {preview && <ImagePreview url={imageUrl} onCancel={() => setPreview(false)} />}
     </>

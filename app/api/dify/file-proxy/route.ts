@@ -5,7 +5,7 @@ import { getSessionFromRequest } from '@/lib/session'
 
 const allowedHosts = new Set(['dify.jasonsome.cn', 'www.jasonsome.cn', 'jasonsome.cn'])
 const allowedPaths = ['/files/', '/page-images/']
-const pageImagePathPattern = /^\/page-images\/[a-z0-9_-]{6,64}\/page_\d+\.(?:jpe?g|png|webp)$/i
+const pageImagePathPattern = /^\/page-images\/[a-z0-9_-]{6,64}\/[a-z0-9_-]+\.(?:jpe?g|png|webp)$/i
 const uploadedFilePreviewPattern = /^\/(?:v1\/)?files\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/(?:file-preview|preview)$/i
 const THIRTY_DAYS_SECONDS = 30 * 24 * 60 * 60
 

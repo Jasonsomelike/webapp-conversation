@@ -72,6 +72,20 @@ const withoutNativeServerRelay = (urlWithPrefix: string) => {
   }
 }
 
+const withServerRelay = (urlWithPrefix: string) => {
+  try {
+    const nextUrl = new URL(urlWithPrefix, globalThis.location.origin)
+    if (nextUrl.origin !== globalThis.location.origin)
+    { return urlWithPrefix }
+    nextUrl.searchParams.set('serverRelay', '1')
+    return nextUrl.pathname + nextUrl.search + nextUrl.hash
+  }
+  catch {
+    const separator = urlWithPrefix.includes('?') ? '&' : '?'
+    return `${urlWithPrefix}${separator}serverRelay=1`
+  }
+}
+
 const shouldRetryNativeRelay = (urlWithPrefix: string, statusOrCode?: number | string) => {
   if (!isNetworkStudyApp() || !urlWithPrefix.includes('serverRelay=1'))
   { return false }
@@ -593,7 +607,12 @@ export const ssePost = (
   options.signal = abortController.signal
   getAbortController?.(abortController)
 
-  const send = (targetUrl: string, retriedFromNativeRelay = false, skipBrowserRelay = false): Promise<boolean | false> => {
+  const send = (
+    targetUrl: string,
+    retriedFromNativeRelay = false,
+    skipBrowserRelay = false,
+    retriedFromBrowserRelay = false,
+  ): Promise<boolean | false> => {
     const requestOptions = {
       ...options,
       headers: new Headers(options.headers),
@@ -635,6 +654,20 @@ export const ssePost = (
             })
             return send(withoutNativeServerRelay(targetUrl), true, skipBrowserRelay)
           }
+          if (
+            !retriedFromBrowserRelay
+            && !isNetworkStudyApp()
+            && isChatMessagesEndpoint(url)
+            && !isSameOriginUrl(targetUrl)
+            && ['502', '503', '504'].includes(String(res.status))
+          ) {
+            console.warn('[chat] browser relay failed, retrying same-origin server relay', {
+              status: res.status,
+              requestId,
+              message: baseMessage,
+            })
+            return send(withServerRelay(urlWithPrefix), retriedFromNativeRelay, true, true)
+          }
           Toast.notify({ type: 'error', message })
           onError?.(message, data.code)
           return false
@@ -653,6 +686,15 @@ export const ssePost = (
         if (!retriedFromNativeRelay && shouldRetryNativeRelay(targetUrl)) {
           console.warn('[chat] native server relay network error, retrying browser relay', e)
           return send(withoutNativeServerRelay(targetUrl), true, skipBrowserRelay)
+        }
+        if (
+          !retriedFromBrowserRelay
+          && !isNetworkStudyApp()
+          && isChatMessagesEndpoint(url)
+          && !isSameOriginUrl(targetUrl)
+        ) {
+          console.warn('[chat] browser relay network error, retrying same-origin server relay', e)
+          return send(withServerRelay(urlWithPrefix), retriedFromNativeRelay, true, true)
         }
         Toast.notify({ type: 'error', message })
         onError?.(message)
