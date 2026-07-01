@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import PdfReferenceViewer from '@/app/components/sources/pdf-reference-viewer'
 import { db, withDatabaseRetry } from '@/lib/db'
-import { findKnowledgeDocumentByName, getKnowledgeDocumentPageImages } from '@/lib/dify-dataset'
+import { findKnowledgeDocumentByName } from '@/lib/dify-dataset'
 import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
 import { signedLibraryDocumentFileUrl } from '@/lib/library-file-service'
 import { cleanReferenceDocumentName } from '@/lib/reference-extractor'
@@ -31,13 +31,9 @@ export default async function SourcePdfPreviewPage({
   const filename = query.filename || cleanReferenceDocumentName(reference?.documentName || '') || '知识库来源.pdf'
   const resolvedDocument = await findKnowledgeDocumentByName(filename, hintedDocumentId).catch(() => null)
   const resolvedDocumentId = resolvedDocument?.id || hintedDocumentId
-  const pageImages = resolvedDocumentId
-    ? await getKnowledgeDocumentPageImages(resolvedDocumentId).catch(() => [])
-    : []
-  const pageImageUrl = reference?.pageImageUrl
-    || pageImages.find(image => image.page === page)?.url
-    || pageImages.find(image => image.page >= page)?.url
-    || ''
+  const pageImageUrl = reference?.pageImageUrl && /\/page_\d+\.(?:jpe?g|png|webp)(?:[?#].*)?$/i.test(reference.pageImageUrl)
+    ? reference.pageImageUrl
+    : ''
   const encodedFilename = encodeURIComponent(filename)
   const directSourceUrl = resolvedDocumentId
     ? signedLibraryDocumentFileUrl({
