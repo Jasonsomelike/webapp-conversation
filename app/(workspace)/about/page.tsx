@@ -6,6 +6,7 @@ import {
   ShieldCheckIcon,
   SparklesIcon,
 } from '@heroicons/react/24/outline'
+import Link from 'next/link'
 import AboutVersionBadge from '@/app/components/about/about-version-badge'
 import PageCard from '@/app/components/workspace/page-card'
 
@@ -20,6 +21,12 @@ export default function AboutPage() {
           <h2 className="mt-5 text-2xl font-semibold">知行网络学堂</h2>
           <p className="mt-2 text-sm text-white/55">计算机网络个性化 AI 学习空间</p>
           <AboutVersionBadge />
+          <Link
+            href="/guide"
+            className="mt-5 inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/15"
+          >
+            查看使用说明
+          </Link>
         </div>
         <div className="space-y-5 p-5 sm:p-7">
           <p className="text-sm leading-7 text-[var(--studio-muted)]">

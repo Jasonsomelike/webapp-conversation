@@ -10,6 +10,7 @@ import {
 } from '@heroicons/react/24/outline'
 import type { ChatItem } from '@/types/app'
 import Toast from '@/app/components/base/toast'
+import GsapPresence from '@/app/components/motion/gsap-presence'
 
 const plainText = (value: string) => value
   .replace(/<think>[\s\S]*?<\/think>/gi, '')
@@ -221,7 +222,7 @@ export default function ConversationShareDialog({
   return (
     <div className="fixed inset-0 z-[100] grid max-w-[100vw] place-items-end overflow-x-hidden bg-black/45 p-0 backdrop-blur-sm sm:place-items-center sm:p-4">
       <button className="absolute inset-0" aria-label="关闭分享" onClick={onClose} />
-      <div className="relative max-h-[calc(100dvh-env(safe-area-inset-bottom))] w-full min-w-0 overflow-y-auto overflow-x-hidden rounded-t-[28px] bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl sm:max-w-lg sm:rounded-[28px] sm:p-5">
+      <GsapPresence variant="sheet-up" className="relative max-h-[calc(100dvh-env(safe-area-inset-bottom))] w-full min-w-0 overflow-y-auto overflow-x-hidden rounded-t-[28px] bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl sm:max-w-lg sm:rounded-[28px] sm:p-5">
         <div className="flex min-w-0 items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold">分享本次对话</h2>
@@ -279,7 +280,7 @@ export default function ConversationShareDialog({
             <PhotoIcon className="h-5 w-5" />生成分享图
           </button>
         </div>
-      </div>
+      </GsapPresence>
     </div>
   )
 }

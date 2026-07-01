@@ -18,15 +18,17 @@ export default async function LibraryPage({
   const params = await searchParams
   const page = Math.max(1, Number(params.page || 1))
   let error = ''
-  let result: DifyDocumentList = { data: [], has_more: false, limit: 20, total: 0, page }
+  let result: DifyDocumentList = { data: [], has_more: false, limit: 10000, total: 0, page }
   try {
     result = await listKnowledgeDocuments({
-      page,
-      limit: 20,
+      page: 1,
+      limit: 10000,
       keyword: params.keyword || '',
       status: params.status || '',
+      all: true,
     })
     result = await attachUserKnowledgeDocumentHitCounts(result, session.id)
+    result = { ...result, page }
   }
   catch (caught) {
     error = caught instanceof Error && caught.message === 'LIBRARY_CATALOG_EMPTY'

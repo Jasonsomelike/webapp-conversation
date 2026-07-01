@@ -230,6 +230,7 @@ const filterCatalog = ({
   status = '',
   refreshedAt,
   refreshError,
+  all = false,
 }: {
   documents: DifyKnowledgeDocument[]
   page?: number
@@ -238,6 +239,7 @@ const filterCatalog = ({
   status?: string
   refreshedAt: Date
   refreshError?: string | null
+  all?: boolean
 }): DifyDocumentList => {
   const hasRefreshError = Boolean(refreshError)
   const hasCachedDocuments = documents.length > 0
@@ -248,17 +250,22 @@ const filterCatalog = ({
   const cachedFallbackError = hasCachedDocuments && hasRefreshError && !suppressCachedFallbackError
   const visibleRefreshError = hasRefreshError && !suppressCachedFallbackError && !cachedFallbackError
   const safePage = Math.max(1, page)
-  const safeLimit = Math.min(100, Math.max(1, limit))
+  const safeLimit = all
+    ? Math.min(10_000, Math.max(1, limit))
+    : Math.min(100, Math.max(1, limit))
   const normalizedKeyword = keyword.trim().toLowerCase()
   const filtered = documents.filter((document) => {
     const matchesKeyword = !normalizedKeyword || document.name.toLowerCase().includes(normalizedKeyword)
     const currentStatus = document.indexing_status || document.display_status || ''
     return matchesKeyword && (!status || currentStatus === status)
   })
-  const start = (safePage - 1) * safeLimit
+  const start = all ? 0 : (safePage - 1) * safeLimit
+  const pageData = all
+    ? filtered.slice(0, safeLimit)
+    : filtered.slice(start, start + safeLimit)
   return {
-    data: filtered.slice(start, start + safeLimit),
-    has_more: start + safeLimit < filtered.length,
+    data: pageData,
+    has_more: all ? pageData.length < filtered.length : start + safeLimit < filtered.length,
     limit: safeLimit,
     total: filtered.length,
     page: safePage,
@@ -282,15 +289,17 @@ const emptyCatalogResult = ({
   limit = 20,
   refreshError,
   refreshPending = false,
+  all = false,
 }: {
   page?: number
   limit?: number
   refreshError?: string | null
   refreshPending?: boolean
+  all?: boolean
 }): DifyDocumentList => ({
   data: [],
   has_more: false,
-  limit: Math.min(100, Math.max(1, limit)),
+  limit: all ? Math.min(10_000, Math.max(1, limit)) : Math.min(100, Math.max(1, limit)),
   total: 0,
   page: Math.max(1, page),
   stale: Boolean(refreshError),
@@ -359,11 +368,13 @@ export const listKnowledgeDocuments = async ({
   limit = 20,
   keyword = '',
   status = '',
+  all = false,
 }: {
   page?: number
   limit?: number
   keyword?: string
   status?: string
+  all?: boolean
 } = {}) => {
   let catalog
   try {
@@ -371,7 +382,7 @@ export const listKnowledgeDocuments = async ({
   }
   catch (error) {
     if (error instanceof Error && error.message === 'LIBRARY_CATALOG_EMPTY')
-    { return emptyCatalogResult({ page, limit }) }
+    { return emptyCatalogResult({ page, limit, all }) }
     throw error
   }
   const documents = Array.isArray(catalog.documents)
@@ -385,6 +396,7 @@ export const listKnowledgeDocuments = async ({
     status,
     refreshedAt: catalog.refreshedAt,
     refreshError: catalog.refreshError,
+    all,
   })
 }
 
@@ -440,12 +452,14 @@ export const refreshKnowledgeDocuments = async ({
   keyword = '',
   status = '',
   recordFailure = true,
+  all = false,
 }: {
   page?: number
   limit?: number
   keyword?: string
   status?: string
   recordFailure?: boolean
+  all?: boolean
 } = {}) => {
   if (!isDatabaseConfigured())
   { throw new Error('LIBRARY_CATALOG_DATABASE_NOT_CONFIGURED') }
@@ -454,7 +468,7 @@ export const refreshKnowledgeDocuments = async ({
   try {
     const documents = await fetchCompleteKnowledgeCatalog()
     const { refreshedAt } = await storeKnowledgeDocumentCatalog(documents)
-    return filterCatalog({ documents, page, limit, keyword, status, refreshedAt })
+    return filterCatalog({ documents, page, limit, keyword, status, refreshedAt, all })
   }
   catch (error) {
     const message = error instanceof Error ? error.message : 'DIFY_DATASET_REQUEST_FAILED'
@@ -483,6 +497,7 @@ export const refreshKnowledgeDocuments = async ({
       status,
       refreshedAt: catalog.refreshedAt,
       refreshError: recordFailure ? message : catalog.refreshError,
+      all,
     })
   }
 }
@@ -504,6 +519,68 @@ export const getKnowledgeDocumentDownloadUrl = async (documentId: string) => {
   if (!result.url)
   { throw new Error('DIFY_DOCUMENT_DOWNLOAD_URL_MISSING') }
   return result.url
+}
+
+const documentIdSimilarity = (left: string, right: string) => {
+  if (!left || !right || left.length !== right.length)
+  { return 0 }
+  let same = 0
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] === right[index])
+    { same += 1 }
+  }
+  return same / left.length
+}
+
+export const findKnowledgeDocumentByName = async (filename: string, hintDocumentId?: string) => {
+  const normalized = cleanReferenceDocumentName(filename)
+  if (!normalized)
+  { return null }
+  const compact = (value: unknown) =>
+    cleanReferenceDocumentName(value)
+      .normalize('NFKC')
+      .replace(/[^\p{L}\p{N}]+/gu, '')
+      .toLocaleLowerCase('zh-CN')
+  const normalizedCompact = compact(filename)
+  const rankMatch = (document: DifyKnowledgeDocument) => {
+    const documentName = cleanReferenceDocumentName(document.name)
+    const documentCompact = compact(document.name)
+    const idScore = hintDocumentId && document.id
+      ? documentIdSimilarity(document.id, hintDocumentId)
+      : 0
+    if (idScore >= 0.92)
+    { return 110_000 + Math.round(idScore * 1000) }
+    if (documentName === normalized)
+    { return 100_000 + documentName.length }
+    if (documentCompact && documentCompact === normalizedCompact)
+    { return 90_000 + documentCompact.length }
+    if (documentCompact && normalizedCompact && documentCompact.includes(normalizedCompact))
+    { return 70_000 + normalizedCompact.length }
+    if (documentCompact && normalizedCompact && normalizedCompact.includes(documentCompact))
+    { return 60_000 + documentCompact.length }
+    return 0
+  }
+  const bestMatch = (documents: DifyKnowledgeDocument[]) => {
+    const matches = documents
+      .map(document => ({ document, score: rankMatch(document) }))
+      .filter(item => item.score > 0)
+      .sort((left, right) => right.score - left.score)
+    return matches[0]?.document || null
+  }
+
+  await ensureKnowledgeDocumentCatalogTable()
+  const catalog = await db.knowledgeDocumentCatalog.findUnique({
+    where: { id: 'default' },
+  }).catch(() => null)
+  const cachedDocuments = Array.isArray(catalog?.documents)
+    ? catalog.documents as unknown as DifyKnowledgeDocument[]
+    : []
+  const cachedMatch = bestMatch(cachedDocuments)
+  if (cachedMatch)
+  { return cachedMatch }
+
+  const documents = await fetchCompleteKnowledgeCatalog()
+  return bestMatch(documents)
 }
 
 export const getKnowledgeDocumentIndexedText = async (documentId: string) => {
@@ -549,6 +626,8 @@ export interface KnowledgeDocumentPageImage {
   url: string
 }
 
+const pageImageUrlPattern = /(?:https:\/\/(?:dify\.jasonsome\.cn(?::22380)?|www\.jasonsome\.cn|jasonsome\.cn))?\/page-images\/[^\s<>"')\]]+?\/page_(\d+)\.(?:jpe?g|png|webp)(?:[?#][^\s<>"')\]]*)?/gi
+
 export const getKnowledgeDocumentPageImages = async (documentId: string) => {
   const apiKey = process.env.DIFY_DATASET_API_KEY
   const datasetId = process.env.DIFY_DATASET_ID
@@ -572,14 +651,14 @@ export const getKnowledgeDocumentPageImages = async (documentId: string) => {
     result.data.forEach((segment) => {
       if (!segment.content)
       { return }
-      const matches = segment.content.matchAll(
-        /!\[[^\]]*]\((https:\/\/(?:dify\.jasonsome\.cn(?::22380)?|www\.jasonsome\.cn|jasonsome\.cn)\/page-images\/[^\s)]+\.(?:jpe?g|png|webp))\)/gi,
-      )
+      const matches = segment.content.matchAll(pageImageUrlPattern)
       for (const match of matches) {
-        const pageMatch = match[1].match(/\/page_(\d+)\.(?:jpe?g|png|webp)$/i)
-        const pageNumber = Number(pageMatch?.[1] || segment.position || images.size + 1)
+        const pageNumber = Number(match[1] || segment.position || images.size + 1)
+        const imageUrl = match[0].startsWith('/page-images/')
+          ? `https://dify.jasonsome.cn:22380${match[0]}`
+          : match[0]
         if (Number.isFinite(pageNumber) && !images.has(pageNumber))
-        { images.set(pageNumber, match[1]) }
+        { images.set(pageNumber, imageUrl) }
       }
     })
     hasMore = Boolean(result.has_more) && result.data.length > 0

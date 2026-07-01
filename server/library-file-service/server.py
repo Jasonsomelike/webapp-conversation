@@ -25,6 +25,14 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("library-file-service")
 
 STORAGE_ROOT = Path(os.getenv("DIFY_STORAGE_ROOT", "/data/storage")).resolve()
+PAGE_IMAGES_ROOTS = [
+    path.resolve()
+    for path in (
+        *(Path(value) for value in os.getenv("PAGE_IMAGES_ROOTS", "").split(",") if value.strip()),
+        STORAGE_ROOT / "page_images",
+        Path("/data/page_images"),
+    )
+]
 INTERNAL_TOKEN = os.getenv("LIBRARY_FILE_SERVICE_TOKEN", "")
 DATASET_ID = os.getenv("DIFY_DATASET_ID", "")
 USE_X_ACCEL = os.getenv("USE_X_ACCEL_REDIRECT", "false").lower() == "true"
@@ -227,6 +235,30 @@ def storage_file_response(
     response.headers["Accept-Ranges"] = "bytes"
     return response
 
+def direct_file_response(
+    file_path: Path,
+    mimetype: str,
+    filename: str,
+    disposition: str,
+    request_id: str,
+    source: str,
+) -> Response:
+    response = send_file(
+        file_path,
+        mimetype=mimetype or "application/octet-stream",
+        as_attachment=disposition == "attachment",
+        download_name=filename,
+        conditional=True,
+        etag=True,
+        max_age=300,
+    )
+    response.headers["Cache-Control"] = "private, max-age=300"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Request-Id"] = request_id
+    response.headers["X-Library-File-Source"] = source
+    response.headers["Accept-Ranges"] = "bytes"
+    return response
+
 
 @app.get("/health")
 def health():
@@ -375,14 +407,30 @@ def page_image_file(batch: str, filename: str):
         return error_response("Unauthorized", 401, request_id)
 
     storage_key = f"page_images/{batch}/{filename}"
-    file_path = (STORAGE_ROOT / storage_key).resolve()
-    try:
-        file_path.relative_to(STORAGE_ROOT)
-    except ValueError:
-        return error_response("Invalid page image path", 403, request_id)
-    if not file_path.is_file():
+    file_path = None
+    source_root = None
+    for root in PAGE_IMAGES_ROOTS:
+        candidate = (root / batch / filename).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            continue
+        if candidate.is_file():
+            file_path = candidate
+            source_root = root
+            break
+    if file_path is None:
         return error_response("Page image not found", 404, request_id)
     mimetype = "image/png" if filename.lower().endswith(".png") else "image/webp" if filename.lower().endswith(".webp") else "image/jpeg"
+    if source_root != STORAGE_ROOT / "page_images":
+        return direct_file_response(
+            file_path,
+            mimetype,
+            filename,
+            "inline",
+            request_id,
+            "dify-page-image-data-root",
+        )
     return storage_file_response(
         file_path,
         storage_key,

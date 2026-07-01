@@ -1,9 +1,11 @@
 'use client'
 
 import type { MouseEvent, ReactNode } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import gsap from 'gsap'
+import { useGSAP } from '@gsap/react'
 import {
   AcademicCapIcon,
   ArrowRightStartOnRectangleIcon,
@@ -26,12 +28,16 @@ import { isThemeId, themes, type ThemeId } from '@/lib/themes'
 import { resetChatRuntime, useChatRuntime } from '@/app/components/chat/runtime-store'
 import { isAdminSession } from '@/lib/admin'
 import { isNetworkStudyApp } from '@/lib/native-app'
+import GsapPresence from '@/app/components/motion/gsap-presence'
+
+gsap.registerPlugin(useGSAP)
 
 const navItems = [
   { href: '/chat', label: 'AI 学习助手', shortLabel: '对话', icon: ChatBubbleLeftRightIcon },
   { href: '/library', label: '知识库文档', shortLabel: '文档', icon: CircleStackIcon },
   { href: '/sources', label: '我的文档引用', shortLabel: '引用', icon: BookOpenIcon },
-  { href: '/knowledge-graph', label: '知识图谱', shortLabel: '图谱', icon: ShareIcon },
+  { href: '/knowledge-graph', label: '个人知识图谱', shortLabel: '个人图谱', icon: ShareIcon },
+  { href: '/textbook-knowledge-graph', label: '教材知识图谱', shortLabel: '教材图谱', icon: BookOpenIcon },
   { href: '/analysis', label: '个性化分析', shortLabel: '分析', icon: ChartBarSquareIcon },
   { href: '/profile', label: '我的画像', shortLabel: '我的', icon: UserCircleIcon },
 ]
@@ -57,6 +63,11 @@ const routeMeta: Record<string, { eyebrow: string, title: string, description: s
     eyebrow: '学习关系网络',
     title: '个人知识图谱',
     description: '把知识点、文档、问题和薄弱环节连成一张可探索的地图',
+  },
+  '/textbook-knowledge-graph': {
+    eyebrow: '教材概念网络',
+    title: '教材知识图谱',
+    description: '由 Neo4j JSON 转译生成的计算机网络教材概念关系图',
   },
   '/analysis': {
     eyebrow: 'AI 学情洞察',
@@ -96,7 +107,7 @@ interface WorkspaceShellProps {
   avatarUrl?: string | null
 }
 
-const guestAllowedRoutes = new Set(['/chat', '/library'])
+const guestAllowedRoutes = new Set(['/chat', '/library', '/textbook-knowledge-graph'])
 
 export default function WorkspaceShell({ children, session, avatarUrl: initialAvatarUrl = null }: WorkspaceShellProps) {
   const pathname = usePathname()
@@ -111,12 +122,83 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
   const [loginPromptOpen, setLoginPromptOpen] = useState(false)
   const initialTheme = isThemeId(session.theme) ? session.theme : 'forest'
   const [theme, setTheme] = useState<ThemeId>(initialTheme)
+  const shellRef = useRef<HTMLDivElement>(null)
   const chatResponding = useChatRuntime(state => state.isResponding)
   const current = routeMeta[pathname] || routeMeta['/chat']
   const sidebarNavItems = isAdminSession(session) ? [...navItems, adminNavItem] : navItems
   const isGuest = session.provider === 'guest'
 
+  useGSAP(() => {
+    const root = shellRef.current
+    if (!root || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+    { return }
+    const navLinks = gsap.utils.toArray<HTMLElement>('[data-shell-nav-item]', root)
+    const timeline = gsap.timeline({ defaults: { ease: 'power3.out', overwrite: 'auto' } })
+    timeline
+      .fromTo(
+        root.querySelector('[data-shell-sidebar]'),
+        { autoAlpha: 0, x: -18 },
+        { autoAlpha: 1, x: 0, duration: 0.42, clearProps: 'opacity,visibility,transform' },
+      )
+      .fromTo(
+        navLinks,
+        { autoAlpha: 0, x: -10 },
+        {
+          autoAlpha: 1,
+          x: 0,
+          duration: 0.28,
+          stagger: 0.035,
+          clearProps: 'opacity,visibility,transform',
+        },
+        '-=0.22',
+      )
+  }, { scope: shellRef })
+
+  useGSAP(() => {
+    const root = shellRef.current
+    if (!root || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+    { return }
+    const activeItems = gsap.utils.toArray<HTMLElement>('[data-shell-nav-active="true"]', root)
+    if (!activeItems.length)
+    { return }
+    gsap.fromTo(
+      activeItems,
+      {
+        boxShadow: '0 10px 30px rgba(0,0,0,0.16), 0 0 0 0 color-mix(in srgb, var(--studio-accent) 44%, transparent)',
+      },
+      {
+        boxShadow: '0 10px 30px rgba(0,0,0,0.16), 0 0 0 8px color-mix(in srgb, var(--studio-accent) 0%, transparent)',
+        duration: 1.8,
+        ease: 'sine.inOut',
+        repeat: -1,
+        yoyo: true,
+      },
+    )
+  }, { dependencies: [pathname], scope: shellRef, revertOnUpdate: true })
+
+  useGSAP(() => {
+    const root = shellRef.current
+    if (!root || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+    { return }
+    const activeItems = gsap.utils.toArray<HTMLElement>('[data-shell-mobile-nav-active="true"]', root)
+    if (!activeItems.length)
+    { return }
+    gsap.fromTo(
+      activeItems,
+      { y: 4, scale: 0.92 },
+      {
+        y: 0,
+        scale: 1,
+        duration: 0.32,
+        ease: 'back.out(1.65)',
+        clearProps: 'transform',
+      },
+    )
+  }, { dependencies: [pathname], scope: shellRef, revertOnUpdate: true })
+
   useEffect(() => {
+    if (document.documentElement.dataset.loginThemeLock === 'true')
+    { return }
     document.documentElement.dataset.theme = theme
   }, [theme])
 
@@ -232,7 +314,7 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
   }
 
   const sidebar = (
-    <div className="flex h-full flex-col bg-[var(--studio-sidebar)] text-white">
+    <div data-shell-sidebar className="flex h-full flex-col bg-[var(--studio-sidebar)] text-white">
       <div className="flex h-[84px] items-center gap-3 border-b border-white/10 px-6">
         <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[var(--studio-accent)] text-[var(--studio-deep)] shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
           <AcademicCapIcon className="h-6 w-6" strokeWidth={2.2} />
@@ -253,6 +335,8 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
               <Link
                 href={item.href}
                 key={item.href}
+                data-shell-nav-item=""
+                data-shell-nav-active={active ? 'true' : 'false'}
                 aria-current={active ? 'page' : undefined}
                 onClick={event => handleNavClick(event, item.href)}
                 className={`group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm transition-all ${
@@ -320,13 +404,13 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
   )
 
   return (
-    <div className="flex h-[100svh] h-[100dvh] min-h-0 overflow-hidden bg-[var(--studio-paper)] text-[var(--studio-ink)] lg:min-h-[620px]">
+    <div ref={shellRef} className="flex h-[100svh] h-[100dvh] min-h-0 overflow-hidden bg-[var(--studio-paper)] text-[var(--studio-ink)] lg:min-h-[620px]">
       <aside className="hidden w-[252px] shrink-0 lg:block">{sidebar}</aside>
 
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <button className="absolute inset-0 bg-black/55 backdrop-blur-sm" aria-label="关闭菜单" onClick={() => setMobileOpen(false)} />
-          <aside className="relative h-full w-[280px] shadow-2xl">
+          <GsapPresence variant="drawer-left" className="relative h-full w-[280px] shadow-2xl">
             <button
               onClick={() => setMobileOpen(false)}
               className="absolute right-3 top-3 z-10 grid h-8 w-8 place-items-center rounded-lg bg-white/10 text-white"
@@ -335,7 +419,7 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
               <XMarkIcon className="h-5 w-5" />
             </button>
             {sidebar}
-          </aside>
+          </GsapPresence>
         </div>
       )}
 
@@ -373,7 +457,7 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
               <PaintBrushIcon className="h-[18px] w-[18px]" />
             </button>
             {themeOpen && (
-              <div className="absolute right-0 top-12 z-40 max-h-[360px] w-48 overflow-y-auto rounded-2xl border border-black/10 bg-white p-2 shadow-xl">
+              <GsapPresence variant="dropdown" className="absolute right-0 top-12 z-40 max-h-[360px] w-48 overflow-y-auto rounded-2xl border border-black/10 bg-white p-2 shadow-xl">
                 {themes.map(item => (
                   <button
                     key={item.id}
@@ -385,7 +469,7 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
                     {theme === item.id && <span className="ml-auto text-[var(--studio-accent-strong)]">●</span>}
                   </button>
                 ))}
-              </div>
+              </GsapPresence>
             )}
           </div>
           <div className="relative">
@@ -398,13 +482,13 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
               <BellIcon className="h-[18px] w-[18px]" />
             </button>
             {notificationsOpen && (
-              <div className="absolute right-0 top-12 z-40 w-72 rounded-2xl border border-black/10 bg-[var(--studio-surface)] p-4 shadow-xl">
+              <GsapPresence variant="dropdown" className="absolute right-0 top-12 z-40 w-72 rounded-2xl border border-black/10 bg-[var(--studio-surface)] p-4 shadow-xl">
                 <div className="text-sm font-semibold">通知中心</div>
                 <div className="mt-4 rounded-xl border border-dashed border-black/10 bg-black/[0.025] px-4 py-8 text-center">
                   <BellIcon className="mx-auto h-6 w-6 text-[var(--studio-muted)]" />
                   <div className="mt-2 text-xs text-[var(--studio-muted)]">暂无新消息</div>
                 </div>
-              </div>
+              </GsapPresence>
             )}
           </div>
         </header>
@@ -421,6 +505,7 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
               <Link
                 key={item.href}
                 href={item.href}
+                data-shell-mobile-nav-active={active ? 'true' : 'false'}
                 aria-current={active ? 'page' : undefined}
                 onClick={event => handleNavClick(event, item.href)}
                 className={`flex min-w-[53px] flex-col items-center gap-1 text-[10px] font-medium ${active ? 'text-[var(--studio-deep)]' : 'text-black/45'}`}
@@ -438,13 +523,13 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
         </nav>
         {loginPromptOpen && (
           <div className="fixed inset-0 z-[90] grid place-items-center bg-black/45 p-5 backdrop-blur-sm">
-            <div className="w-full max-w-sm rounded-[26px] bg-[var(--studio-surface)] p-6 text-center shadow-2xl">
+            <GsapPresence variant="dialog" className="w-full max-w-sm rounded-[26px] bg-[var(--studio-surface)] p-6 text-center shadow-2xl">
               <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[var(--studio-accent)]/45 text-[var(--studio-accent-strong)]">
                 <UserCircleIcon className="h-7 w-7" />
               </div>
               <h2 className="mt-4 text-lg font-semibold">登录后继续使用</h2>
               <p className="mt-2 text-sm leading-6 text-[var(--studio-muted)]">
-                游客模式可体验 AI 对话和知识库文档。引用、图谱、分析与画像需要登录后按账号保存。
+                游客模式可体验 AI 对话、知识库文档和教材知识图谱。引用、个人图谱、分析与画像需要登录后按账号保存。
               </p>
               <div className="mt-6 grid grid-cols-2 gap-3">
                 <button
@@ -462,7 +547,7 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
                   去登录
                 </button>
               </div>
-            </div>
+            </GsapPresence>
           </div>
         )}
       </div>

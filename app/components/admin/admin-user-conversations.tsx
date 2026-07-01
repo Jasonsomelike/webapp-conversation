@@ -46,6 +46,17 @@ export default function AdminUserConversations({
   const [error, setError] = useState('')
 
   useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow
+    const previousHtmlOverflow = document.documentElement.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousBodyOverflow
+      document.documentElement.style.overflow = previousHtmlOverflow
+    }
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
@@ -109,8 +120,8 @@ export default function AdminUserConversations({
   }, [selectedId, userId])
 
   return (
-    <div className="fixed inset-0 z-[90] bg-black/45 p-0 backdrop-blur-sm sm:p-5">
-      <div className="mx-auto flex h-full max-w-[1500px] flex-col overflow-hidden bg-[var(--studio-surface)] shadow-2xl sm:rounded-3xl">
+    <div className="fixed inset-0 z-[90] grid place-items-center overflow-hidden bg-black/45 p-4 backdrop-blur-sm sm:p-6">
+      <div className="flex h-[min(88dvh,900px)] w-full max-w-[1500px] flex-col overflow-hidden rounded-[28px] bg-[var(--studio-surface)] shadow-2xl">
         <header className="flex h-16 shrink-0 items-center gap-3 border-b border-black/10 px-4 sm:px-6">
           <ChatBubbleLeftRightIcon className="h-5 w-5 text-[var(--studio-accent-strong)]" />
           <div className="min-w-0 flex-1">

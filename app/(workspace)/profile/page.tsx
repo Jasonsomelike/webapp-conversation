@@ -19,19 +19,38 @@ export default async function ProfilePage() {
   let qqIdentity = { bound: false, appIds: [] as string[] }
   if (isDatabaseConfigured()) {
     try {
-      const [user, savedProfile, conversations, references, messages, accountAvatar, qqSummary] = await withDatabaseRetry(() => Promise.all([
+      const [user, savedProfile, activeConversations, accountAvatar, qqSummary] = await withDatabaseRetry(() => Promise.all([
         db.appUser.findUnique({ where: { id: session.id }, select: { createdAt: true, displayName: true } }),
         db.userProfile.findUnique({ where: { appUserId: session.id } }),
-        db.chatConversation.count({ where: { appUserId: session.id, deletedAt: null } }),
-        db.messageReference.count({ where: { appUserId: session.id } }),
-        db.chatMessage.count({ where: { appUserId: session.id, role: 'user' } }),
+        db.chatConversation.findMany({
+          where: { appUserId: session.id, deletedAt: null },
+          select: { difyConversationId: true },
+        }),
         getAccountAvatar(session.id),
         getQqIdentitySummary(session.id),
       ]))
+      const activeConversationIds = activeConversations.map(item => item.difyConversationId)
+      const [references, messages] = activeConversationIds.length
+        ? await withDatabaseRetry(() => Promise.all([
+          db.messageReference.count({
+            where: {
+              appUserId: session.id,
+              difyConversationId: { in: activeConversationIds },
+            },
+          }),
+          db.chatMessage.count({
+            where: {
+              appUserId: session.id,
+              difyConversationId: { in: activeConversationIds },
+              role: 'user',
+            },
+          }),
+        ]))
+        : [0, 0]
       profile = savedProfile
       joinedAt = user?.createdAt.toISOString() || joinedAt
       currentDisplayName = user?.displayName || currentDisplayName
-      stats = { conversations, references, messages }
+      stats = { conversations: activeConversationIds.length, references, messages }
       avatarUrl = accountAvatar
       qqIdentity = qqSummary
     }

@@ -120,6 +120,24 @@ export async function POST(request: NextRequest) {
     difyUserId: session.difyUserId,
     requestId,
   })
+  if (request.nextUrl.searchParams.get('relayTicket') === '1') {
+    if (!relayUrl) {
+      return Response.json(
+        { error: 'Dify 浏览器中继尚未配置', requestId },
+        { status: 503, headers: { 'X-Request-Id': requestId } },
+      )
+    }
+    return Response.json(
+      { url: relayUrl.toString(), requestId, expiresIn: 120 },
+      {
+        headers: {
+          'Cache-Control': 'no-store',
+          'X-Request-Id': requestId,
+        },
+      },
+    )
+  }
+
   if (relayUrl && request.nextUrl.searchParams.get('serverRelay') !== '1') {
     return new Response(null, {
       status: 307,

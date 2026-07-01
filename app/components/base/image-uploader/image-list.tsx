@@ -54,6 +54,7 @@ const ImageList: FC<ImageListProps> = ({
         list.map(item => (
           <div
             key={item._id}
+            data-composer-asset={composer ? '' : undefined}
             className='group relative rounded-2xl border-[0.5px] border-black/5'
           >
             {

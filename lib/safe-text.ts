@@ -26,7 +26,7 @@ const toSafeTextInternal = (
   depth: number,
 ): string => {
   if (typeof value === 'string') {
-    const text = value === '[object Object]' ? fallback : value
+    const text = /^\[object (Object|Response)\]$/i.test(value.trim()) ? fallback : value
     return text
   }
   if (value == null)
@@ -35,6 +35,10 @@ const toSafeTextInternal = (
   { return String(value) }
   if (value instanceof Date)
   { return value.toISOString() }
+  if (typeof Response !== 'undefined' && value instanceof Response)
+  { return `请求失败（HTTP ${value.status || 'unknown'}）` }
+  if (value instanceof Error)
+  { return value.message || fallback }
   if (typeof value !== 'object')
   { return String(value) }
   if (seen.has(value))

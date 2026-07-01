@@ -1,6 +1,8 @@
 'use client'
 import type { FC } from 'react'
 import React from 'react'
+import gsap from 'gsap'
+import { useGSAP } from '@gsap/react'
 import type { IChatItem } from '../type'
 import s from '../style.module.css'
 
@@ -9,6 +11,9 @@ import ImageGallery from '@/app/components/base/image-gallery'
 import FileTypeIcon from '@/app/components/base/file-uploader-in-attachment/file-type-icon'
 import { getFileAppearanceType } from '@/app/components/base/file-uploader-in-attachment/utils'
 import type { VisionFile } from '@/types/app'
+import { toMessageText } from '@/lib/safe-text'
+
+gsap.registerPlugin(useGSAP)
 
 type IQuestionProps = Pick<IChatItem, 'id' | 'content' | 'useCurrentUserAvatar'> & {
   imgSrcs?: string[]
@@ -49,8 +54,31 @@ const QuestionFileList: FC<{ files: VisionFile[] }> = ({ files }) => {
 
 const Question: FC<IQuestionProps> = ({ id, content, useCurrentUserAvatar, imgSrcs, files = [] }) => {
   const userName = ''
+  const rootRef = React.useRef<HTMLDivElement>(null)
+  const safeContent = toMessageText(content)
+
+  useGSAP(() => {
+    const root = rootRef.current
+    if (!root || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+    { return }
+    gsap.fromTo(
+      root,
+      { autoAlpha: 0, x: 18, y: 8, scale: 0.98 },
+      {
+        autoAlpha: 1,
+        x: 0,
+        y: 0,
+        scale: 1,
+        duration: 0.34,
+        ease: 'power3.out',
+        clearProps: 'opacity,visibility,transform',
+      },
+    )
+  }, { scope: rootRef })
+
   return (
     <div
+      ref={rootRef}
       id={`message-${id}`}
       data-message-id={id}
       className='chat-message-target flex min-w-0 items-start justify-end rounded-2xl'
@@ -67,7 +95,7 @@ const Question: FC<IQuestionProps> = ({ id, content, useCurrentUserAvatar, imgSr
               </div>
             )}
             <QuestionFileList files={files} />
-            <StreamdownMarkdown content={content} />
+            <StreamdownMarkdown content={safeContent} />
           </div>
         </div>
       </div>

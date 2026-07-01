@@ -5,6 +5,8 @@ import cn from 'classnames'
 import { useTranslation } from 'react-i18next'
 import Textarea from 'rc-textarea'
 import { PaperAirplaneIcon } from '@heroicons/react/24/solid'
+import gsap from 'gsap'
+import { useGSAP } from '@gsap/react'
 import s from './style.module.css'
 import Answer from './answer'
 import Question from './question'
@@ -21,6 +23,8 @@ import type { FileEntity, FileUpload } from '@/app/components/base/file-uploader
 import { fileIsUploaded, getFileAppearanceType, getProcessedFiles } from '@/app/components/base/file-uploader-in-attachment/utils'
 import FileTypeIcon from '@/app/components/base/file-uploader-in-attachment/file-type-icon'
 import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
+
+gsap.registerPlugin(useGSAP)
 
 type SendResult = boolean | void | Promise<boolean | void>
 
@@ -99,12 +103,31 @@ const Chat: FC<IChatProps> = ({
   const { t } = useTranslation()
   const { notify } = Toast
   const isUseInputMethod = useRef(false)
+  const composerRef = useRef<HTMLDivElement>(null)
 
   const [query, setQuery] = React.useState('')
   const [draftState, setDraftState] = React.useState({ hasContent: false, length: 0 })
   const [isSending, setIsSending] = React.useState(false)
   const queryRef = useRef('')
   const textareaRef = useRef<any>(null)
+
+  useGSAP(() => {
+    const composer = composerRef.current
+    if (!composer || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+    { return }
+    gsap.fromTo(
+      composer,
+      { autoAlpha: 0, y: 18, scale: 0.985 },
+      {
+        autoAlpha: 1,
+        y: 0,
+        scale: 1,
+        duration: 0.42,
+        ease: 'back.out(1.45)',
+        clearProps: 'opacity,visibility,transform',
+      },
+    )
+  }, { scope: composerRef })
 
   const getDraftValue = () =>
     String(
@@ -338,6 +361,44 @@ const Chat: FC<IChatProps> = ({
     || attachmentFiles.some(file => file.progress !== -1 && fileIsUploaded(file))
   const canSend = canSendText || hasReadyFiles
 
+  useGSAP(() => {
+    const composer = composerRef.current
+    if (!composer || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+    { return }
+    const items = gsap.utils.toArray<HTMLElement>('[data-composer-asset]', composer)
+    if (!items.length)
+    { return }
+    gsap.fromTo(
+      items,
+      { autoAlpha: 0, y: 10, scale: 0.9, rotation: () => gsap.utils.random(-3, 3) },
+      {
+        autoAlpha: 1,
+        y: 0,
+        scale: 1,
+        rotation: 0,
+        duration: 0.34,
+        ease: 'back.out(1.8)',
+        stagger: 0.035,
+        clearProps: 'opacity,visibility,transform',
+      },
+    )
+  }, { dependencies: [files.length, attachmentFiles.length], scope: composerRef, revertOnUpdate: true })
+
+  useGSAP(() => {
+    const composer = composerRef.current
+    if (!composer || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+    { return }
+    const button = composer.querySelector<HTMLElement>('[data-composer-send]')
+    if (!button)
+    { return }
+    gsap.to(button, {
+      scale: canSend && !isResponding && !isSending ? 1.06 : 1,
+      duration: 0.24,
+      ease: 'power2.out',
+      overwrite: 'auto',
+    })
+  }, { dependencies: [canSend, isResponding, isSending], scope: composerRef, revertOnUpdate: true })
+
   return (
     <div className={cn(!feedbackDisabled && 'px-1 sm:px-3.5', 'flex h-full min-h-0 flex-col')}>
       {/* Chat List */}
@@ -379,7 +440,10 @@ const Chat: FC<IChatProps> = ({
       {
         !isHideSendInput && (
           <div className='z-10 mx-auto w-full max-w-[720px] shrink-0 bg-gradient-to-t from-[var(--studio-chat-surface)] via-[var(--studio-chat-surface)] to-transparent px-4 pb-[calc(10px+env(safe-area-inset-bottom))] pt-2 sm:px-5 sm:pb-4 sm:pt-3'>
-            <div className='chat-composer max-h-[230px] overflow-y-auto rounded-[22px] border border-[#17342b]/15 bg-white px-2.5 py-2 shadow-[0_14px_36px_rgba(35,55,47,.13)]'>
+            <div
+              ref={composerRef}
+              className='chat-composer max-h-[230px] overflow-y-auto rounded-[22px] border border-[#17342b]/15 bg-white px-2.5 py-2 shadow-[0_14px_36px_rgba(35,55,47,.13)] transition-[border-color,box-shadow] duration-200 focus-within:border-[var(--studio-accent-strong)]/35 focus-within:shadow-[0_18px_44px_rgba(35,55,47,.18)]'
+            >
               {(files.length > 0 || attachmentFiles.length > 0) && (
                 <div className="mb-2 flex max-w-full items-center gap-2 overflow-x-auto px-1 pb-1">
                   {visionConfig?.enabled && files.length > 0 && (
@@ -393,11 +457,12 @@ const Chat: FC<IChatProps> = ({
                     />
                   )}
                   {attachmentFiles.map(file => (
-                    <ComposerFileCard
-                      key={file.id}
-                      file={file}
-                      onRemove={fileId => setAttachmentFiles(current => current.filter(item => item.id !== fileId))}
-                    />
+                    <div key={file.id} data-composer-asset="">
+                      <ComposerFileCard
+                        file={file}
+                        onRemove={fileId => setAttachmentFiles(current => current.filter(item => item.id !== fileId))}
+                      />
+                    </div>
                   ))}
                 </div>
               )}
@@ -462,6 +527,7 @@ const Chat: FC<IChatProps> = ({
                   >
                     <button
                       type="button"
+                      data-composer-send=""
                       onClick={() => void handleSend()}
                       disabled={!canSend || isResponding || isSending}
                       className="grid h-9 w-9 place-items-center rounded-full bg-[var(--studio-deep)] text-white shadow-sm transition active:scale-95 disabled:bg-black/10 disabled:text-black/25"

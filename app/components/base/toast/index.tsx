@@ -10,11 +10,12 @@ import {
   XCircleIcon,
 } from '@heroicons/react/20/solid'
 import { createContext, useContext } from 'use-context-selector'
+import { toMessageText } from '@/lib/safe-text'
 
 export interface IToastProps {
   type?: 'success' | 'error' | 'warning' | 'info'
   duration?: number
-  message: string
+  message: unknown
   children?: ReactNode
   onClose?: () => void
 }
@@ -32,8 +33,7 @@ const Toast = ({
   message,
   children,
 }: IToastProps) => {
-  // sometimes message is react node array. Not handle it.
-  if (typeof message !== 'string') { return null }
+  const safeMessage = toMessageText(message, type === 'error' ? '操作失败，请稍后重试' : '提示')
 
   return <div className={classNames(
     'fixed rounded-md p-4 my-4 mx-8 z-50',
@@ -60,7 +60,7 @@ const Toast = ({
             type === 'warning' ? 'text-yellow-800' : '',
             type === 'info' ? 'text-blue-800' : '',
           )
-        }>{message}</h3>
+        }>{safeMessage}</h3>
         {children && <div className={
           classNames(
             'mt-2 text-sm',
@@ -120,7 +120,7 @@ Toast.notify = ({
     const holder = document.createElement('div')
     const root = createRoot(holder)
 
-    root.render(<Toast type={type} message={message} duration={duration} />)
+    root.render(<Toast type={type} message={toMessageText(message, type === 'error' ? '操作失败，请稍后重试' : '提示')} duration={duration} />)
     document.body.appendChild(holder)
     setTimeout(() => {
       if (holder) { holder.remove() }

@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import gsap from 'gsap'
+import { useGSAP } from '@gsap/react'
 import {
   ChatBubbleOvalLeftEllipsisIcon,
   MagnifyingGlassIcon,
@@ -11,6 +13,9 @@ import {
 } from '@heroicons/react/24/outline'
 import type { ConversationItem } from '@/types/app'
 import { toConversationPreview } from '@/lib/message-preview'
+import GsapPresence from '@/app/components/motion/gsap-presence'
+
+gsap.registerPlugin(useGSAP)
 
 interface MobileConversationListProps {
   list: ConversationItem[]
@@ -59,6 +64,7 @@ export default function MobileConversationList({
   const [actionTarget, setActionTarget] = useState<ConversationItem | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
   const longPressTimerRef = useRef<number | null>(null)
   const longPressedRef = useRef(false)
   const conversations = useMemo(() => list
@@ -73,6 +79,32 @@ export default function MobileConversationList({
       return right - left
     })
     .filter(item => `${item.name} ${item.preview}`.toLowerCase().includes(query.trim().toLowerCase())), [list, query])
+
+  useGSAP(() => {
+    const root = rootRef.current
+    if (!root || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+    { return }
+    const items = gsap.utils.toArray<HTMLElement>('[data-mobile-conversation-item]', root)
+    if (!items.length)
+    { return }
+    gsap.fromTo(
+      items,
+      { autoAlpha: 0, x: -14, y: 8, scale: 0.985 },
+      {
+        autoAlpha: 1,
+        x: 0,
+        y: 0,
+        scale: 1,
+        duration: 0.32,
+        ease: 'power3.out',
+        stagger: {
+          amount: Math.min(0.28, items.length * 0.028),
+          from: 'start',
+        },
+        clearProps: 'opacity,visibility,transform',
+      },
+    )
+  }, { dependencies: [conversations.length, query], scope: rootRef, revertOnUpdate: true })
 
   const clearLongPressTimer = () => {
     if (!longPressTimerRef.current)
@@ -117,7 +149,7 @@ export default function MobileConversationList({
   }
 
   return (
-    <div className="mobile-conversation-list flex h-full min-h-0 max-w-full select-none flex-col overflow-x-hidden bg-[var(--studio-chat-surface)] [-webkit-touch-callout:none] [-webkit-user-select:none]">
+    <div ref={rootRef} className="mobile-conversation-list flex h-full min-h-0 max-w-full select-none flex-col overflow-x-hidden bg-[var(--studio-chat-surface)] [-webkit-touch-callout:none] [-webkit-user-select:none]">
       <div className="flex h-16 shrink-0 items-center justify-between border-b border-black/[0.07] px-4">
         <div>
           <h2 className="text-xl font-semibold tracking-[-0.025em]">对话记录</h2>
@@ -150,6 +182,7 @@ export default function MobileConversationList({
           ? conversations.map((item, index) => (
             <button
               key={item.id}
+              data-mobile-conversation-item=""
               type="button"
               onClick={() => {
                 if (longPressedRef.current) {
@@ -212,10 +245,11 @@ export default function MobileConversationList({
             setConfirmingDelete(false)
           }}
         >
-          <div
+          <GsapPresence
+            variant="sheet-up"
+            className="w-full max-w-sm overflow-hidden rounded-3xl border border-black/10 bg-white shadow-[0_24px_70px_rgba(0,0,0,.22)]"
             role="dialog"
             aria-modal="true"
-            className="w-full max-w-sm overflow-hidden rounded-3xl border border-black/10 bg-white shadow-[0_24px_70px_rgba(0,0,0,.22)]"
             onClick={event => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4 border-b border-black/5 px-5 py-4">
@@ -253,7 +287,7 @@ export default function MobileConversationList({
               <span className="flex items-center gap-2"><TrashIcon className="h-4 w-4" />{confirmingDelete ? '确认删除' : '删除对话'}</span>
               <span className="text-xs text-red-300">{deleting ? '删除中…' : '不可撤销'}</span>
             </button>
-          </div>
+          </GsapPresence>
         </div>
       )}
     </div>

@@ -130,6 +130,91 @@ const pendingGenerationKey = 'network-study-pending-generation'
 const resumeFollowDistancePx = 4
 const userScrollIntentDurationMs = 6000
 
+const extractChatMessagesData = (result: unknown, source: string): any[] => {
+  if (typeof Response !== 'undefined' && result instanceof Response) {
+    console.warn('[chat] messages endpoint returned HTTP response', {
+      source,
+      status: result.status,
+      statusText: result.statusText,
+    })
+    throw new Error(`消息列表请求失败（HTTP ${result.status || 'unknown'}）`)
+  }
+
+  const data = (result as { data?: unknown } | null | undefined)?.data
+  if (Array.isArray(data))
+  { return data }
+
+  const message = toMessageText(
+    (result as { error?: unknown, message?: unknown } | null | undefined)?.error
+    || (result as { error?: unknown, message?: unknown } | null | undefined)?.message
+    || result,
+    '',
+  )
+  console.warn('[chat] messages endpoint returned invalid payload', {
+    source,
+    message,
+    result,
+  })
+  throw new Error(message || '消息列表响应格式异常')
+}
+
+const normalizeConversationItem = (item: unknown): ConversationItem | null => {
+  if (!item || typeof item !== 'object')
+  { return null }
+  const record = item as Record<string, any>
+  const id = toMessageText(record.id || record.conversation_id || record.difyConversationId || record.dify_conversation_id)
+  if (!id)
+  { return null }
+  const inputs = record.inputs && typeof record.inputs === 'object' && !Array.isArray(record.inputs)
+    ? record.inputs as Record<string, any>
+    : null
+  const suggestedQuestions = Array.isArray(record.suggested_questions || record.suggestedQuestions)
+    ? (record.suggested_questions || record.suggestedQuestions)
+      .map((question: unknown) => toMessageText(question))
+      .filter(Boolean)
+    : []
+  return {
+    id,
+    name: toMessageText(record.name || record.title, '网络学习会话'),
+    inputs,
+    introduction: toMessageText(record.introduction || record.opening_statement),
+    suggested_questions: suggestedQuestions,
+    preview: toMessageText(record.preview),
+    updatedAt: toMessageText(record.updatedAt || record.updated_at || record.lastMessageAt || record.createdAt),
+  }
+}
+
+const extractConversationsData = (result: unknown, source: string): ConversationItem[] => {
+  if (typeof Response !== 'undefined' && result instanceof Response) {
+    console.warn('[chat] conversations endpoint returned HTTP response', {
+      source,
+      status: result.status,
+      statusText: result.statusText,
+    })
+    throw new Error(`会话列表请求失败（HTTP ${result.status || 'unknown'}）`)
+  }
+
+  const data = (result as { data?: unknown } | null | undefined)?.data
+  if (!Array.isArray(data)) {
+    const message = toMessageText(
+      (result as { error?: unknown, message?: unknown } | null | undefined)?.error
+      || (result as { error?: unknown, message?: unknown } | null | undefined)?.message
+      || result,
+      '',
+    )
+    console.warn('[chat] conversations endpoint returned invalid payload', {
+      source,
+      message,
+      result,
+    })
+    throw new Error(message || '会话列表响应格式异常')
+  }
+
+  return data
+    .map(normalizeConversationItem)
+    .filter((item): item is ConversationItem => Boolean(item))
+}
+
 const readPendingGenerationState = (): PendingGenerationState | null => {
   if (typeof window === 'undefined')
   { return null }
@@ -183,6 +268,7 @@ const Main: FC<IMainProps> = () => {
   const [shareOpen, setShareOpen] = useState(false)
   const [shareTarget, setShareTarget] = useState<ConversationShareTarget | null>(null)
   const [showJumpToBottom, setShowJumpToBottom] = useState(false)
+  const conversationSwitchSeqRef = useRef(0)
   const chatSplit = useResizableSplit({
     storageKey: 'network-study-chat-sidebar-width',
     cssVariable: '--chat-sidebar-width',
@@ -296,12 +382,14 @@ const Main: FC<IMainProps> = () => {
 
   const handleConversationSwitch = () => {
     if (!inited) { return }
+    const requestedConversationId = toMessageText(currConversationId, '-1')
+    const switchSeq = ++conversationSwitchSeqRef.current
 
     // update inputs of current conversation
     let notSyncToStateIntroduction = ''
     let notSyncToStateInputs: Record<string, any> | undefined | null = {}
     if (!isNewConversation) {
-      const item = conversationList.find(item => item.id === currConversationId)
+      const item = conversationList.find(item => item.id === requestedConversationId)
       notSyncToStateInputs = item?.inputs || {}
       setCurrInputs(notSyncToStateInputs as any)
       notSyncToStateIntroduction = item?.introduction || ''
@@ -319,11 +407,15 @@ const Main: FC<IMainProps> = () => {
     // update chat list of current conversation
     if (!isNewConversation && !conversationIdChangeBecauseOfNew && !isResponding) {
       setChatList(generateNewChatListWithOpenStatement(notSyncToStateIntroduction, notSyncToStateInputs))
-      fetchChatList(currConversationId).then((res: any) => {
-        const { data } = res
+      fetchChatList(requestedConversationId).then((res: any) => {
+        if (switchSeq !== conversationSwitchSeqRef.current || getCurrConversationId() !== requestedConversationId)
+        { return }
+        const data = extractChatMessagesData(res, `switch:${requestedConversationId}`)
         setChatList(buildChatListFromMessages(data, notSyncToStateIntroduction, notSyncToStateInputs))
       }).catch((error) => {
-        console.warn('[chat] failed to switch conversation', { conversationId: currConversationId, error })
+        if (switchSeq !== conversationSwitchSeqRef.current || getCurrConversationId() !== requestedConversationId)
+        { return }
+        console.warn('[chat] failed to switch conversation', { conversationId: requestedConversationId, error })
         Toast.notify({ type: 'error', message: '加载对话失败，请稍后重试' })
       })
     }
@@ -760,11 +852,11 @@ const Main: FC<IMainProps> = () => {
       try {
         const [conversationData, appParams] = await Promise.all([fetchConversations(), fetchAppParams()])
         // handle current conversation id
-        const { data: conversations, error } = conversationData as { data: ConversationItem[], error: string }
+        const conversations = extractConversationsData(conversationData, 'init')
+        const error = toMessageText((conversationData as { error?: unknown } | null | undefined)?.error)
         if (error) {
           Toast.notify({ type: 'error', message: error })
           throw new Error(error)
-          return
         }
         const urlParams = new URLSearchParams(globalThis.location.search)
         const sourceReturnState = readSourceReturnState()
@@ -818,7 +910,7 @@ const Main: FC<IMainProps> = () => {
           number_limits: file_upload?.number_limits,
           fileUploadConfig: file_upload?.fileUploadConfig,
         })
-        setConversationList(conversations as ConversationItem[])
+        setConversationList(conversations)
 
         if (isNotNewConversation) { setCurrConversationId(_conversationId, APP_ID, false) }
 
@@ -951,7 +1043,7 @@ const Main: FC<IMainProps> = () => {
     }
     try {
       const result = await fetchChatList(conversation.id)
-      const messages = Array.isArray((result as any)?.data) ? (result as any).data : []
+      const messages = extractChatMessagesData(result, `share:${conversation.id}`)
       setShareTarget({
         conversationId: conversation.id,
         title: conversation.name || '网络学习会话',
@@ -984,9 +1076,7 @@ const Main: FC<IMainProps> = () => {
 
     try {
       const conversationsResult = await fetchConversations()
-      const refreshedConversations = Array.isArray((conversationsResult as any)?.data)
-        ? (conversationsResult as any).data as ConversationItem[]
-        : []
+      const refreshedConversations = extractConversationsData(conversationsResult, `recover-pending:${reason}`)
       if (!refreshedConversations.length)
       { return false }
 
@@ -1005,7 +1095,7 @@ const Main: FC<IMainProps> = () => {
       { return false }
 
       const messagesResult = await fetchChatList(targetConversation.id)
-      const messages = Array.isArray((messagesResult as any)?.data) ? (messagesResult as any).data : []
+      const messages = extractChatMessagesData(messagesResult, `recover-pending:${targetConversation.id}`)
       setConversationIdChangeBecauseOfNew(false)
       setShowMobileConversationList(false)
       setCurrConversationId(targetConversation.id, APP_ID, true)
@@ -1046,8 +1136,8 @@ const Main: FC<IMainProps> = () => {
           return null
         }),
       ])
-      const refreshedConversations = Array.isArray((conversationsResult as any)?.data)
-        ? (conversationsResult as any).data as ConversationItem[]
+      const refreshedConversations = conversationsResult
+        ? extractConversationsData(conversationsResult, `refresh-current:${reason}:${currentId}`)
         : null
       if (refreshedConversations)
       { setConversationList(refreshedConversations) }
@@ -1055,7 +1145,7 @@ const Main: FC<IMainProps> = () => {
       const activeConversation = (refreshedConversations || conversationList).find(item => item.id === currentId)
       const activeInputs = activeConversation?.inputs ?? currInputs
       const activeIntroduction = activeConversation?.introduction ?? currConversationInfo?.introduction ?? conversationIntroduction
-      const messages = Array.isArray((messagesResult as any)?.data) ? (messagesResult as any).data : []
+      const messages = extractChatMessagesData(messagesResult, `refresh-current:${currentId}`)
       if (messages.length > 0) {
         setChatList(buildChatListFromMessages(messages, activeIntroduction, activeInputs))
         setConversationIdChangeBecauseOfNew(false)
@@ -1388,7 +1478,7 @@ const Main: FC<IMainProps> = () => {
         try {
           if (!hasError) {
             clearPendingGenerationState()
-            const { data: allConversations }: any = await fetchConversations()
+            const allConversations = extractConversationsData(await fetchConversations(), `completed:${tempNewConversationId || currConversationId}`)
             const mergedConversations: ConversationItem[] = [...allConversations]
             if (tempNewConversationId && optimisticConversation && !mergedConversations.some(item => item.id === tempNewConversationId))
             { mergedConversations.unshift({ ...optimisticConversation, preview: '刚刚创建 · 点击继续本次对话' }) }

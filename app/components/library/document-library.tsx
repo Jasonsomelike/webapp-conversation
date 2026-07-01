@@ -1,19 +1,21 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ArrowPathIcon,
+  ArrowDownTrayIcon,
+  BookOpenIcon,
+  ChevronDownIcon,
   CheckCircleIcon,
   CircleStackIcon,
   ClockIcon,
-  ArrowDownTrayIcon,
   DocumentTextIcon,
   EyeIcon,
   MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
-import type { DifyDocumentList } from '@/lib/dify-dataset'
+import type { DifyDocumentList, DifyKnowledgeDocument } from '@/lib/dify-dataset'
 
 const statusLabel: Record<string, string> = {
   completed: '索引完成',
@@ -43,6 +45,136 @@ const formatDateTime = (value: string) =>
     hour12: false,
   }).format(new Date(value))
 
+interface DocumentBookGroup {
+  key: string
+  title: string
+  documents: DifyKnowledgeDocument[]
+  totalWords: number
+  totalTokens: number
+  totalHits: number
+  latestCreatedAt?: number
+  primaryStatus: string
+  healthyCount: number
+  errorCount: number
+  sourceTypes: string[]
+  docForms: string[]
+}
+
+const documentPartPattern = /(?:[_\s-]*(?:part|第)\s*\d+\s*(?:部分|卷|册)?|[_\s-]*p(?:age)?\s*\d+\s*(?:[-~–—]\s*\d+)?|[_\s-]*第\s*\d+\s*(?:[-~–—]\s*\d+)?\s*页)+$/i
+const documentExtensionPattern = /\.(?:pdf|docx?|pptx?|xlsx?|txt|md)$/i
+const duplicatedWhitespacePattern = /\s+/g
+const chapterShardPattern = /^第\s*(\d{1,2})\s*章\s*(.+?)(?:\s*[-_—–]\s*\d+|\s*[（(]\s*\d+\s*[）)])$/u
+
+const toChineseChapterNumber = (value: number) => {
+  if (!Number.isFinite(value) || value < 0 || value > 99)
+  { return String(value) }
+  if (value === 0)
+  { return '零' }
+  const digits = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九']
+  if (value < 10)
+  { return digits[value] }
+  if (value === 10)
+  { return '十' }
+  if (value < 20)
+  { return `十${digits[value % 10]}` }
+  const tens = Math.floor(value / 10)
+  const ones = value % 10
+  return `${digits[tens]}十${ones ? digits[ones] : ''}`
+}
+
+const normalizeChapterShardTitle = (title: string) => {
+  const matched = title.match(chapterShardPattern)
+  if (!matched)
+  { return title }
+  const chapterNumber = Number(matched[1])
+  const chapterName = matched[2]
+    .replace(/[_\s-]+$/g, '')
+    .replace(duplicatedWhitespacePattern, ' ')
+    .trim()
+  return `第${toChineseChapterNumber(chapterNumber)}章 ${chapterName}`.trim()
+}
+
+const normalizeDocumentBookTitle = (name: string) => {
+  const withoutExtension = name.replace(documentExtensionPattern, '')
+  const cleaned = withoutExtension
+    .replace(documentPartPattern, '')
+    .replace(/[_\s-]+$/g, '')
+    .replace(duplicatedWhitespacePattern, ' ')
+    .trim()
+  return normalizeChapterShardTitle(cleaned || withoutExtension.trim() || name)
+}
+
+const groupKeyFromTitle = (title: string) =>
+  title
+    .toLowerCase()
+    .replace(/[《》「」『』"'`*_()[\]（）【】\s-]+/g, '')
+    .trim()
+
+const compareDocumentPart = (left: DifyKnowledgeDocument, right: DifyKnowledgeDocument) => {
+  const byPosition = (left.position ?? Number.MAX_SAFE_INTEGER) - (right.position ?? Number.MAX_SAFE_INTEGER)
+  if (byPosition !== 0)
+  { return byPosition }
+  const byCreated = (left.created_at || 0) - (right.created_at || 0)
+  if (byCreated !== 0)
+  { return byCreated }
+  return left.name.localeCompare(right.name, 'zh-CN')
+}
+
+const buildDocumentGroups = (documents: DifyKnowledgeDocument[]): DocumentBookGroup[] => {
+  const groups = new Map<string, DocumentBookGroup>()
+
+  documents.forEach((document) => {
+    const title = normalizeDocumentBookTitle(document.name)
+    const key = groupKeyFromTitle(title) || document.id
+    const currentStatus = document.indexing_status || document.display_status || 'waiting'
+    const group = groups.get(key) || {
+      key,
+      title,
+      documents: [],
+      totalWords: 0,
+      totalTokens: 0,
+      totalHits: 0,
+      primaryStatus: currentStatus,
+      healthyCount: 0,
+      errorCount: 0,
+      sourceTypes: [],
+      docForms: [],
+    }
+    group.documents.push(document)
+    group.totalWords += document.word_count || 0
+    group.totalTokens += document.tokens || 0
+    group.totalHits += document.hit_count || 0
+    group.latestCreatedAt = Math.max(group.latestCreatedAt || 0, document.created_at || 0) || undefined
+    if (['completed', 'available'].includes(currentStatus))
+    { group.healthyCount += 1 }
+    if (currentStatus === 'error' || document.error)
+    { group.errorCount += 1 }
+    if (document.data_source_type && !group.sourceTypes.includes(document.data_source_type))
+    { group.sourceTypes.push(document.data_source_type) }
+    if (document.doc_form && !group.docForms.includes(document.doc_form))
+    { group.docForms.push(document.doc_form) }
+    groups.set(key, group)
+  })
+
+  return [...groups.values()].map((group) => {
+    group.documents.sort(compareDocumentPart)
+    if (group.errorCount)
+    { group.primaryStatus = 'error' }
+    else if (group.healthyCount === group.documents.length)
+    { group.primaryStatus = 'completed' }
+    else {
+      group.primaryStatus = group.documents.find((document) => {
+        const status = document.indexing_status || document.display_status || ''
+        return !['completed', 'available'].includes(status)
+      })?.indexing_status || group.documents[0]?.indexing_status || group.documents[0]?.display_status || 'waiting'
+    }
+    return group
+  })
+}
+
+const groupsPerPage = 20
+const documentActionClass = 'inline-flex h-10 min-w-[78px] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-4 text-xs font-semibold leading-none transition hover:-translate-y-0.5 hover:shadow-md'
+
 export default function DocumentLibrary({
   result: initialResult,
   keyword,
@@ -62,6 +194,7 @@ export default function DocumentLibrary({
     tone: 'info' | 'success' | 'warning' | 'error'
     message: string
   } | null>(null)
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     setResult(initialResult)
@@ -85,8 +218,9 @@ export default function DocumentLibrary({
         setRefreshPending(false)
       }
       const params = new URLSearchParams({
-        page: String(initialResult.page),
-        limit: '20',
+        page: '1',
+        limit: '10000',
+        all: '1',
       })
       if (keyword)
       { params.set('keyword', keyword) }
@@ -120,8 +254,9 @@ export default function DocumentLibrary({
         window.setTimeout(() => {
           void (async () => {
             const pollParams = new URLSearchParams({
-              page: String(initialResult.page),
-              limit: '20',
+              page: '1',
+              limit: '10000',
+              all: '1',
               _: String(Date.now()),
             })
             if (keyword)
@@ -185,10 +320,20 @@ export default function DocumentLibrary({
       if (showLoading)
       { setRefreshing(false) }
     }
-  }, [initialResult.page, keyword, status])
+  }, [keyword, status])
 
+  const documentGroups = useMemo(() => buildDocumentGroups(result.data), [result.data])
+  const totalGroupPages = Math.max(1, Math.ceil(documentGroups.length / groupsPerPage))
+  const currentGroupPage = Math.min(Math.max(1, initialResult.page || 1), totalGroupPages)
+  const groupPageStart = (currentGroupPage - 1) * groupsPerPage
+  const visibleDocumentGroups = useMemo(
+    () => documentGroups.slice(groupPageStart, groupPageStart + groupsPerPage),
+    [documentGroups, groupPageStart],
+  )
+  const hasMoreGroupPages = groupPageStart + groupsPerPage < documentGroups.length
   const completed = result.data.filter(item => ['completed', 'available'].includes(item.indexing_status || item.display_status || '')).length
   const totalWords = result.data.reduce((sum, item) => sum + (item.word_count || 0), 0)
+  const groupedCount = documentGroups.length
   const refreshInProgress = refreshPending || refreshNotice?.tone === 'info'
   const showCachedFallbackWarning = Boolean(
     result.stale
@@ -202,7 +347,8 @@ export default function DocumentLibrary({
     && result.refresh_error_visible === false,
   )
   const summaryCards = [
-    { label: '知识库文档', value: result.total, unit: '份', icon: CircleStackIcon },
+    { label: '自动合并后', value: groupedCount, unit: '组', icon: CircleStackIcon },
+    { label: '原始文档', value: result.total, unit: '份', icon: DocumentTextIcon },
     { label: '本页索引完成', value: completed, unit: '份', icon: CheckCircleIcon },
     { label: '本页总字符数', value: totalWords.toLocaleString('zh-CN'), unit: '字符', icon: DocumentTextIcon },
   ]
@@ -216,9 +362,16 @@ export default function DocumentLibrary({
     return `/library?${params}`
   }
 
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(current => ({
+      ...current,
+      [key]: !current[key],
+    }))
+  }
+
   return (
     <div className="mx-auto max-w-[1450px] p-4 sm:p-6">
-      <div className="mb-5 grid gap-4 sm:grid-cols-3">
+      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map(({ label, value, unit, icon: Icon }) => (
           <PageCard key={label} className="flex items-center justify-between px-5 py-4">
             <div>
@@ -312,69 +465,161 @@ export default function DocumentLibrary({
             : (
               <>
                 <div className="divide-y divide-black/[0.06]">
-                  {result.data.map((document) => {
-                    const currentStatus = document.indexing_status || document.display_status || 'waiting'
-                    const healthy = ['completed', 'available'].includes(currentStatus)
+                  {visibleDocumentGroups.map((group) => {
+                    const healthy = ['completed', 'available'].includes(group.primaryStatus)
+                    const expanded = Boolean(expandedGroups[group.key])
+                    const sourceSummary = [
+                      group.sourceTypes.length ? group.sourceTypes.join(' / ') : '上传文件',
+                      group.docForms.length ? group.docForms.join(' / ') : '文本分段',
+                    ].join(' · ')
                     return (
-                      <div key={document.id} className="grid gap-4 px-5 py-5 transition [contain-intrinsic-size:116px] [content-visibility:auto] hover:bg-black/[0.018] md:grid-cols-[minmax(0,1fr)_110px_100px_150px_150px] md:items-center">
-                        <div className="flex min-w-0 items-start gap-4">
-                          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[var(--studio-accent)]/30 text-[var(--studio-accent-strong)]">
-                            <DocumentTextIcon className="h-5 w-5" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold" title={document.name}>{document.name}</div>
-                            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-black/40">
-                              <span>{document.data_source_type || '上传文件'}</span>
-                              <span>{document.doc_form || '文本分段'}</span>
-                              <span>命中 {document.hit_count || 0} 次</span>
+                      <div key={group.key} className="transition hover:bg-black/[0.012]">
+                        <div className="grid gap-4 px-5 py-5 md:grid-cols-[minmax(0,1fr)_120px_110px_150px_170px] md:items-center">
+                          <div className="flex min-w-0 items-start gap-4">
+                            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[var(--studio-accent)]/30 text-[var(--studio-accent-strong)]">
+                              <BookOpenIcon className="h-5 w-5" />
                             </div>
-                            {document.error && <div className="mt-2 text-[10px] text-red-600">{document.error}</div>}
+                            <div className="min-w-0">
+                              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                <div className="truncate text-sm font-semibold" title={group.title}>{group.title}</div>
+                                <span className="rounded-full bg-[var(--studio-accent)]/35 px-2 py-0.5 text-[10px] font-semibold text-[var(--studio-accent-strong)]">
+                                  {group.documents.length} 份
+                                </span>
+                              </div>
+                              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-black/40">
+                                <span>{sourceSummary}</span>
+                                <span>命中 {group.totalHits} 次</span>
+                                <span>已自动合并同书分片</span>
+                              </div>
+                              {group.errorCount > 0 && <div className="mt-2 text-[10px] text-red-600">{group.errorCount} 份文档处理失败，展开查看详情。</div>}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${healthy ? 'bg-emerald-50 text-emerald-700' : group.primaryStatus === 'error' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                              <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                              {healthy && group.documents.length > 1 ? `全部${statusLabel[group.primaryStatus] || '可用'}` : statusLabel[group.primaryStatus] || group.primaryStatus}
+                            </div>
+                          </div>
+
+                          <div className="text-xs">
+                            <div className="font-semibold">
+                              {group.totalWords.toLocaleString('zh-CN')}
+                              <span className="ml-1 text-[10px] font-normal text-black/35">字符</span>
+                            </div>
+                            {Boolean(group.totalTokens > 0) && (
+                              <div className="mt-1 text-[10px] text-black/35">{group.totalTokens.toLocaleString('zh-CN')} tokens</div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 text-[10px] text-black/40">
+                            <ClockIcon className="h-4 w-4" />
+                            {formatDate(group.latestCreatedAt)}
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            {group.documents.length === 1 && (
+                              <>
+                                <a
+                                  href={`/library/preview/${group.documents[0].id}?filename=${encodeURIComponent(group.documents[0].name)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className={`${documentActionClass} border border-black/10 bg-white text-[var(--studio-ink)]`}
+                                >
+                                  <EyeIcon className="h-4 w-4" />预览
+                                </a>
+                                <a
+                                  href={`/api/library/documents/${group.documents[0].id}/file?disposition=attachment&filename=${encodeURIComponent(group.documents[0].name)}`}
+                                  className={`${documentActionClass} bg-[var(--studio-deep)] text-white`}
+                                >
+                                  <ArrowDownTrayIcon className="h-4 w-4" />下载
+                                </a>
+                              </>
+                            )}
+                            {group.documents.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => toggleGroup(group.key)}
+                                aria-expanded={expanded}
+                                className={`${documentActionClass} border border-black/10 bg-white text-[var(--studio-ink)]`}
+                              >
+                                <ChevronDownIcon className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                                {expanded ? '收起' : '展开'}
+                              </button>
+                            )}
                           </div>
                         </div>
-                        <div>
-                          <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${healthy ? 'bg-emerald-50 text-emerald-700' : currentStatus === 'error' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
-                            <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                            {statusLabel[currentStatus] || currentStatus}
+
+                        {expanded && group.documents.length > 1 && (
+                          <div className="mx-5 mb-5 overflow-hidden rounded-2xl border border-black/[0.07] bg-black/[0.018]">
+                            <div className="border-b border-black/[0.06] px-4 py-2 text-[10px] font-semibold text-black/45">
+                              该书包含的知识库分片
+                            </div>
+                            <div className="divide-y divide-black/[0.055]">
+                              {group.documents.map((document) => {
+                                const currentStatus = document.indexing_status || document.display_status || 'waiting'
+                                const partHealthy = ['completed', 'available'].includes(currentStatus)
+                                return (
+                                  <div key={document.id} className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_100px_95px_130px_140px] md:items-center">
+                                    <div className="min-w-0">
+                                      <div className="truncate text-xs font-semibold" title={document.name}>{document.name}</div>
+                                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-black/40">
+                                        <span>{document.data_source_type || '上传文件'}</span>
+                                        <span>{document.doc_form || '文本分段'}</span>
+                                        <span>命中 {document.hit_count || 0} 次</span>
+                                      </div>
+                                      {document.error && <div className="mt-1 text-[10px] text-red-600">{document.error}</div>}
+                                    </div>
+                                    <div>
+                                      <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${partHealthy ? 'bg-emerald-50 text-emerald-700' : currentStatus === 'error' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                                        <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                                        {statusLabel[currentStatus] || currentStatus}
+                                      </div>
+                                    </div>
+                                    <div className="text-xs">
+                                      <div className="font-semibold">
+                                        {(document.word_count || 0).toLocaleString('zh-CN')}
+                                        <span className="ml-1 text-[10px] font-normal text-black/35">字符</span>
+                                      </div>
+                                      {Boolean(document.tokens && document.tokens > 0) && (
+                                        <div className="mt-1 text-[10px] text-black/35">{document.tokens!.toLocaleString('zh-CN')} tokens</div>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[10px] text-black/40">
+                                      <ClockIcon className="h-4 w-4" />
+                                      {formatDate(document.created_at)}
+                                    </div>
+                                    <div className="flex flex-wrap items-center justify-end gap-2">
+                                      <a
+                                        href={`/library/preview/${document.id}?filename=${encodeURIComponent(document.name)}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className={`${documentActionClass} border border-black/10 bg-white text-[var(--studio-ink)]`}
+                                      >
+                                        <EyeIcon className="h-4 w-4" />预览
+                                      </a>
+                                      <a
+                                        href={`/api/library/documents/${document.id}/file?disposition=attachment&filename=${encodeURIComponent(document.name)}`}
+                                        className={`${documentActionClass} bg-[var(--studio-deep)] text-white`}
+                                      >
+                                        <ArrowDownTrayIcon className="h-4 w-4" />下载
+                                      </a>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
                           </div>
-                        </div>
-                        <div className="text-xs">
-                          <div className="font-semibold">
-                            {(document.word_count || 0).toLocaleString('zh-CN')}
-                            <span className="ml-1 text-[10px] font-normal text-black/35">字符</span>
-                          </div>
-                          {Boolean(document.tokens && document.tokens > 0) && (
-                            <div className="mt-1 text-[10px] text-black/35">{document.tokens!.toLocaleString('zh-CN')} tokens</div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-[10px] text-black/40">
-                          <ClockIcon className="h-4 w-4" />
-                          {formatDate(document.created_at)}
-                        </div>
-                        <div className="flex items-center justify-end gap-2">
-                          <a
-                            href={`/library/preview/${document.id}?filename=${encodeURIComponent(document.name)}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 bg-white px-2.5 py-2 text-[10px] font-semibold transition hover:-translate-y-0.5 hover:shadow-md"
-                          >
-                            <EyeIcon className="h-3.5 w-3.5" />预览
-                          </a>
-                          <a
-                            href={`/api/library/documents/${document.id}/file?disposition=attachment&filename=${encodeURIComponent(document.name)}`}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--studio-deep)] px-2.5 py-2 text-[10px] font-semibold text-white transition hover:-translate-y-0.5 hover:shadow-md"
-                          >
-                            <ArrowDownTrayIcon className="h-3.5 w-3.5" />下载
-                          </a>
-                        </div>
+                        )}
                       </div>
                     )
                   })}
                 </div>
                 <div className="flex items-center justify-between border-t border-black/[0.07] px-5 py-4 text-xs">
-                  <span className="text-black/40">第 {result.page} 页 · 共 {result.total} 份文档</span>
+                  <span className="text-black/40">第 {currentGroupPage} 页 · 共 {documentGroups.length} 本/组 · {result.total} 份原始文档</span>
                   <div className="flex gap-2">
-                    <Link href={buildHref(Math.max(1, result.page - 1))} aria-disabled={result.page <= 1} className={`rounded-xl border border-black/10 px-4 py-2 ${result.page <= 1 ? 'pointer-events-none opacity-35' : 'bg-white'}`}>上一页</Link>
-                    <Link href={buildHref(result.page + 1)} aria-disabled={!result.has_more} className={`rounded-xl border border-black/10 px-4 py-2 ${!result.has_more ? 'pointer-events-none opacity-35' : 'bg-white'}`}>下一页</Link>
+                    <Link href={buildHref(Math.max(1, currentGroupPage - 1))} aria-disabled={currentGroupPage <= 1} className={`rounded-xl border border-black/10 px-4 py-2 ${currentGroupPage <= 1 ? 'pointer-events-none opacity-35' : 'bg-white'}`}>上一页</Link>
+                    <Link href={buildHref(currentGroupPage + 1)} aria-disabled={!hasMoreGroupPages} className={`rounded-xl border border-black/10 px-4 py-2 ${!hasMoreGroupPages ? 'pointer-events-none opacity-35' : 'bg-white'}`}>下一页</Link>
                   </div>
                 </div>
               </>

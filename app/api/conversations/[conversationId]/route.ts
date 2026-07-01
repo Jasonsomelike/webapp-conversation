@@ -18,18 +18,16 @@ export async function DELETE(
   if (!conversationId || conversationId === '-1')
   { return NextResponse.json({ error: 'Invalid conversation id' }, { status: 400 }) }
 
-  const deletedAt = new Date()
   const result = await db.$transaction(async (tx) => {
-    const conversation = await tx.chatConversation.updateMany({
+    const conversation = await tx.chatConversation.findFirst({
       where: {
         appUserId: session.id,
         difyConversationId: conversationId,
-        deletedAt: null,
       },
-      data: { deletedAt },
+      select: { id: true },
     })
 
-    if (!conversation.count)
+    if (!conversation)
     { return null }
 
     const memorySources = await deleteConversationMemorySources({
@@ -38,16 +36,29 @@ export async function DELETE(
       conversationId,
       reason: 'conversation-delete',
     })
+    const conversations = await tx.chatConversation.deleteMany({
+      where: {
+        appUserId: session.id,
+        difyConversationId: conversationId,
+      },
+    })
+    const derivedMemory = {
+      graphEdges: (await tx.graphEdge.deleteMany({ where: { appUserId: session.id } })).count,
+      graphNodes: (await tx.graphNode.deleteMany({ where: { appUserId: session.id } })).count,
+      reports: (await tx.userAnalysisReport.deleteMany({ where: { appUserId: session.id } })).count,
+    }
     console.info('[memory-consistency] conversation deleted with memory cleanup', {
       appUserId: session.id,
       conversationId,
-      deletedAt: deletedAt.toISOString(),
+      hardDeleted: true,
       memorySources,
+      derivedMemory,
     })
 
     return {
-      conversations: conversation.count,
+      conversations: conversations.count,
       memorySources,
+      derivedMemory,
     }
   })
 

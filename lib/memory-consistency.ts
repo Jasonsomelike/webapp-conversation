@@ -7,6 +7,26 @@ type MemorySourceClient = Prisma.TransactionClient | typeof db
 
 const compactIds = (ids: string[], limit = 12) => ids.slice(0, limit)
 
+const deleteOptionalConversationShares = async (
+  client: MemorySourceClient,
+  appUserId: string,
+  conversationId: string,
+) => {
+  try {
+    return Number(await client.$executeRawUnsafe(
+      'DELETE FROM "conversation_shares" WHERE "app_user_id" = $1::uuid AND "dify_conversation_id" = $2',
+      appUserId,
+      conversationId,
+    ))
+  }
+  catch (error) {
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+    if (/relation .* does not exist|42P01/i.test(message))
+    { return 0 }
+    throw error
+  }
+}
+
 const compactTitle = (value: string | null | undefined, fallback: string) => {
   const text = (value || '').replace(/\s+/g, ' ').trim()
   return text ? text.slice(0, 120) : fallback
@@ -35,6 +55,7 @@ export const deleteConversationMemorySources = async ({
       difyConversationId: conversationId,
     },
   })
+  const shares = await deleteOptionalConversationShares(client, appUserId, conversationId)
 
   console.info('[memory-consistency] deleted conversation memory sources', {
     appUserId,
@@ -42,11 +63,13 @@ export const deleteConversationMemorySources = async ({
     reason,
     messages: messages.count,
     references: references.count,
+    shares,
   })
 
   return {
     messages: messages.count,
     references: references.count,
+    shares,
   }
 }
 
@@ -207,6 +230,33 @@ export const auditMemorySourceConsistency = async ({
     const inactiveSources = [...sourceIds].filter(id => !activeIds.has(id))
 
     if (staleDeletedSources.length || missingConversationSources.length || nullReferenceCount) {
+      const sourceIdsToDelete = [...new Set([...staleDeletedSources, ...missingConversationSources])]
+      const [deletedMessages, deletedReferences, deletedNullReferences] = await Promise.all([
+        sourceIdsToDelete.length
+          ? db.chatMessage.deleteMany({
+            where: {
+              appUserId,
+              difyConversationId: { in: sourceIdsToDelete },
+            },
+          })
+          : Promise.resolve({ count: 0 }),
+        sourceIdsToDelete.length
+          ? db.messageReference.deleteMany({
+            where: {
+              appUserId,
+              difyConversationId: { in: sourceIdsToDelete },
+            },
+          })
+          : Promise.resolve({ count: 0 }),
+        nullReferenceCount
+          ? db.messageReference.deleteMany({
+            where: {
+              appUserId,
+              difyConversationId: null,
+            },
+          })
+          : Promise.resolve({ count: 0 }),
+      ])
       console.warn('[memory-consistency] orphan memory sources ignored', {
         appUserId,
         reason,
@@ -214,6 +264,8 @@ export const auditMemorySourceConsistency = async ({
         missingConversations: missingConversationSources.length,
         nullReferences: nullReferenceCount,
         inactiveSources: inactiveSources.length,
+        cleanedMessages: deletedMessages.count,
+        cleanedReferences: deletedReferences.count + deletedNullReferences.count,
         sampleDeletedIds: compactIds(staleDeletedSources),
         sampleMissingIds: compactIds(missingConversationSources),
       })

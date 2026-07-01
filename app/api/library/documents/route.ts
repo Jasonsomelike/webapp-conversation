@@ -13,6 +13,7 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams
   try {
     const wantsRefresh = params.get('refresh') === '1'
+    const wantsAll = params.get('all') === '1'
     const data = await (wantsRefresh
       ? refreshKnowledgeDocuments
       : listKnowledgeDocuments)({
@@ -20,6 +21,7 @@ export async function GET(request: Request) {
       limit: Number(params.get('limit') || 20),
       keyword: params.get('keyword') || '',
       status: params.get('status') || '',
+      all: wantsAll,
     })
     const enrichedData = await attachUserKnowledgeDocumentHitCounts(data, session.id)
     return NextResponse.json({

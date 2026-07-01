@@ -353,6 +353,76 @@ const emptyAnalysis: LearningAnalysis = {
   ],
 }
 
+const conceptPatterns: Array<{ key: string, label: string, hints: string[], advice: string }> = [
+  {
+    key: 'tcp-reliable',
+    label: 'TCP 可靠传输',
+    hints: ['tcp', '可靠', '重传', '确认', 'ack', '拥塞', '窗口', 'rto', 'rtt'],
+    advice: '把确认、超时重传、快速重传和窗口变化放到同一张时序图里复盘。',
+  },
+  {
+    key: 'ip-routing',
+    label: 'IP 与路由',
+    hints: ['ip', '路由', '转发', '子网', '掩码', 'cidr', '最长前缀', 'icmp'],
+    advice: '用“目的地址 → 最长前缀匹配 → 下一跳”的链路复盘典型题。',
+  },
+  {
+    key: 'link-layer',
+    label: '数据链路层',
+    hints: ['mac', '以太网', '交换机', '帧', 'crc', 'csma', '碰撞', '链路'],
+    advice: '把帧格式、差错检测和交换机学习表分开整理，避免概念串线。',
+  },
+  {
+    key: 'dns-http',
+    label: 'DNS / HTTP 应用层',
+    hints: ['dns', 'http', 'https', 'url', '缓存', 'cookie', '状态码', '报文'],
+    advice: '按一次网页访问的完整路径复盘 DNS、TCP、TLS 与 HTTP 的先后关系。',
+  },
+  {
+    key: 'transport',
+    label: '运输层基础',
+    hints: ['udp', '端口', '运输层', '复用', '分用', '校验和', '流量控制'],
+    advice: '先区分 UDP/TCP 的服务模型，再对照可靠性和拥塞控制机制。',
+  },
+  {
+    key: 'physical',
+    label: '物理层与信道',
+    hints: ['物理层', '带宽', '信道', '码元', '奈奎斯特', '香农', '传输速率'],
+    advice: '把公式题的单位、条件和适用场景列成小抄再练题。',
+  },
+]
+
+const normalizeLearningText = (value: string) => value.toLowerCase().replace(/\s+/g, '')
+
+const extractConceptSignals = (texts: string[]) => {
+  const joined = normalizeLearningText(texts.join('\n'))
+  return conceptPatterns
+    .map((pattern) => {
+      const hits = pattern.hints.reduce((count, hint) => count + (joined.includes(hint.toLowerCase()) ? 1 : 0), 0)
+      return { ...pattern, hits }
+    })
+    .filter(item => item.hits > 0)
+    .sort((a, b) => b.hits - a.hits)
+}
+
+const stripPdfSuffix = (name: string) => name.replace(/\.pdf$/i, '')
+
+const compactTopic = (name: string, length = 42) => stripPdfSuffix(name).slice(0, length)
+
+const jsonToAnalysisText = (value: unknown): string => {
+  if (!value)
+  { return '' }
+  if (typeof value === 'string')
+  { return value }
+  if (typeof value === 'number' || typeof value === 'boolean')
+  { return String(value) }
+  if (Array.isArray(value))
+  { return value.map(jsonToAnalysisText).filter(Boolean).join('、') }
+  if (typeof value === 'object')
+  { return Object.values(value as Record<string, unknown>).map(jsonToAnalysisText).filter(Boolean).join('、') }
+  return ''
+}
+
 const getUserAnalysisOnce = async (appUserId: string): Promise<LearningAnalysis> => {
   if (!isDatabaseConfigured())
   { return emptyAnalysis }
@@ -366,7 +436,7 @@ const getUserAnalysisOnce = async (appUserId: string): Promise<LearningAnalysis>
     select: { difyConversationId: true },
   })).map(item => item.difyConversationId)
 
-  const [conversationCount, referenceCount, messages, references, profile] = await Promise.all([
+  const [conversationCount, referenceCount, messages, recentUserMessages, references, profile] = await Promise.all([
     Promise.resolve(activeConversationIds.length),
     activeConversationIds.length
       ? db.messageReference.count({
@@ -384,6 +454,16 @@ const getUserAnalysisOnce = async (appUserId: string): Promise<LearningAnalysis>
       },
       select: { createdAt: true, role: true },
     }),
+    db.chatMessage.findMany({
+      where: {
+        appUserId,
+        role: 'user',
+        difyConversationId: { in: activeConversationIds },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 40,
+      select: { content: true, createdAt: true },
+    }),
     db.messageReference.findMany({
       where: {
         appUserId,
@@ -391,7 +471,7 @@ const getUserAnalysisOnce = async (appUserId: string): Promise<LearningAnalysis>
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
-      select: { documentName: true },
+      select: { documentName: true, quote: true, score: true },
     }),
     db.userProfile.findUnique({ where: { appUserId } }),
   ])
@@ -414,21 +494,56 @@ const getUserAnalysisOnce = async (appUserId: string): Promise<LearningAnalysis>
     documents.set(name, (documents.get(name) || 0) + 1)
   })
   const rankedDocuments = [...documents.entries()].sort((a, b) => b[1] - a[1])
-  const weakTopics: WeakTopic[] = rankedDocuments.slice(0, 3).map(([topic, count], index) => ({
-    topic: topic.replace(/\.pdf$/i, '').slice(0, 42),
-    reason: `近期在该文档中产生 ${count} 次知识命中，建议集中复盘相关概念`,
-    confidence: Math.max(60, 88 - index * 12),
-  }))
+  const conceptSignals = extractConceptSignals([
+    ...recentUserMessages.map(message => message.content),
+    ...references.map(reference => `${reference.documentName || ''}\n${reference.quote || ''}`),
+    jsonToAnalysisText(profile?.weakTopics),
+    jsonToAnalysisText(profile?.strongTopics),
+    profile?.profileSummary || '',
+  ])
+  const weakTopics: WeakTopic[] = [
+    ...conceptSignals.slice(0, 2).map((signal, index) => ({
+      topic: signal.label,
+      reason: `${signal.advice} 近期提问/引用中命中 ${signal.hits} 类相关线索。`,
+      confidence: Math.min(94, 70 + signal.hits * 6 - index * 4),
+    })),
+    ...rankedDocuments.slice(0, 3).map(([topic, count], index) => ({
+      topic: compactTopic(topic),
+      reason: `该文档近期被命中 ${count} 次，适合回到原文集中复盘。`,
+      confidence: Math.max(58, 84 - index * 9),
+    })),
+  ]
+    .filter((item, index, array) => array.findIndex(other => other.topic === item.topic) === index)
+    .slice(0, 4)
 
   const userMessages = messages.filter(message => message.role === 'user').length
-  const momentum = Math.min(100, userMessages * 8 + Math.min(referenceCount, 20) * 2)
-  const studyMinutes = Math.max(userMessages * 4, conversationCount * 6)
+  const activeDays = trend.filter(Boolean).length
+  const todayMessages = trend[6] || 0
+  const yesterdayMessages = trend[5] || 0
+  const momentum = Math.min(100, userMessages * 8 + Math.min(referenceCount, 20) * 2 + activeDays * 5)
+  const studyMinutes = Math.max(userMessages * 5 + referenceCount, conversationCount * 7)
   const currentStage = profile?.learningStage
     ? `${profile.learningStage}阶段`
-    : conversationCount >= 8 ? '持续强化阶段' : '知识探索阶段'
+    : conversationCount >= 8
+      ? '持续强化阶段'
+      : referenceCount >= 6
+        ? '证据复盘阶段'
+        : '知识探索阶段'
+  const topDocumentNames = rankedDocuments.slice(0, 2).map(([name]) => compactTopic(name, 24))
+  const topConceptNames = conceptSignals.slice(0, 2).map(signal => signal.label)
+  const cadenceText = activeDays >= 4
+    ? `近 7 天有 ${activeDays} 天保持提问，学习节奏比较连续`
+    : todayMessages > yesterdayMessages
+      ? '今天提问量较昨天上升，适合趁热做一次小结'
+      : '近期学习节奏偏分散，建议安排一次短时集中复盘'
+  const profileText = [
+    profile?.learningStage && `画像阶段为“${profile.learningStage}”`,
+    profile?.preferredStyle && `偏好“${profile.preferredStyle}”式回答`,
+    profile?.target && `目标是“${profile.target}”`,
+  ].filter(Boolean).join('，')
 
   return {
-    summary: `当前分析仅基于你的 ${conversationCount} 个会话和 ${referenceCount} 条知识库引用。最近 7 天提出了 ${userMessages} 个问题，学习关注主要集中在 ${rankedDocuments.slice(0, 2).map(([name]) => name.replace(/\.pdf$/i, '')).join('、') || '课程基础内容'}。`,
+    summary: `当前分析仅基于你的 ${conversationCount} 个会话、${referenceCount} 条知识库引用和近 7 天 ${userMessages} 个提问。${cadenceText}；关注点主要集中在 ${[...topConceptNames, ...topDocumentNames].slice(0, 3).join('、') || '课程基础内容'}。${profileText ? `结合你的${profileText}，建议把回答进一步压到“概念辨析 + 例题演练 + 原文定位”的节奏。` : '完善学习画像后，建议会更贴近你的阶段和答题偏好。'}`,
     currentStage,
     momentum,
     conversations: conversationCount,
@@ -436,12 +551,15 @@ const getUserAnalysisOnce = async (appUserId: string): Promise<LearningAnalysis>
     documents: documents.size,
     studyMinutes,
     weakTopics,
-    strongTopics: rankedDocuments.slice(0, 3).map(([name]) => name.replace(/\.pdf$/i, '').slice(0, 30)),
+    strongTopics: [
+      ...conceptSignals.slice(0, 2).map(signal => signal.label),
+      ...rankedDocuments.slice(0, 3).map(([name]) => compactTopic(name, 30)),
+    ].filter((item, index, array) => array.indexOf(item) === index).slice(0, 4),
     trend,
     recommendations: weakTopics.length
-      ? weakTopics.map((topic, index) => ({
-        title: `复盘：${topic.topic}`,
-        reason: topic.reason,
+      ? weakTopics.slice(0, 3).map((topic, index) => ({
+        title: index === 0 ? `今日主线：${topic.topic}` : `补强：${topic.topic}`,
+        reason: `${topic.reason} 建议先让 AI 生成 3 道辨析题，再回到引用原文核对。`,
         priority: index === 0 ? '今天' : '本周',
         tone: index === 0 ? 'primary' : index === 1 ? 'mint' : 'orange',
       }))

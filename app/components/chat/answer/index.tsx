@@ -6,6 +6,8 @@ import type { Emoji } from '@/types/tools'
 import { HandThumbDownIcon, HandThumbUpIcon } from '@heroicons/react/24/outline'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
+import gsap from 'gsap'
+import { useGSAP } from '@gsap/react'
 import Button from '@/app/components/base/button'
 import StreamdownMarkdown from '@/app/components/base/streamdown-markdown'
 import Tooltip from '@/app/components/base/tooltip'
@@ -20,6 +22,9 @@ import {
   isImageAsset,
   toDifyAssetProxyUrl,
 } from '@/lib/dify-assets'
+import { toMessageText } from '@/lib/safe-text'
+
+gsap.registerPlugin(useGSAP)
 
 function OperationBtn({ innerContent, onClick, className }: { innerContent: React.ReactNode, onClick?: () => void, className?: string }) {
   return (
@@ -88,11 +93,13 @@ const Answer: FC<IAnswerProps> = ({
   suggestionClick = () => { },
   onRetry,
 }) => {
+  const rootRef = React.useRef<HTMLDivElement>(null)
   const { id, content, feedback, agent_thoughts, workflowProcess, message_files, suggestedQuestions = [] } = item
+  const safeContent = toMessageText(content)
   const isAgentMode = !!agent_thoughts && agent_thoughts.length > 0
-  const answerSegments = splitReasoningContent(content)
+  const answerSegments = splitReasoningContent(safeContent)
   const contentImageUrls = new Set(
-    [...content.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)]
+    [...safeContent.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)]
       .map(match => toDifyAssetProxyUrl(match[1]))
       .filter(Boolean),
   )
@@ -105,6 +112,25 @@ const Answer: FC<IAnswerProps> = ({
     .filter(file => file.url && file.type !== 'image' && !isImageAsset(file.url))
 
   const { t } = useTranslation()
+
+  useGSAP(() => {
+    const root = rootRef.current
+    if (!root || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+    { return }
+    gsap.fromTo(
+      root,
+      { autoAlpha: 0, x: -16, y: 10, scale: 0.985 },
+      {
+        autoAlpha: 1,
+        x: 0,
+        y: 0,
+        scale: 1,
+        duration: 0.4,
+        ease: 'power3.out',
+        clearProps: 'opacity,visibility,transform',
+      },
+    )
+  }, { scope: rootRef })
 
   /**
    * Render feedback results (distinguish between users and administrators)
@@ -229,6 +255,7 @@ const Answer: FC<IAnswerProps> = ({
 
   return (
     <div
+      ref={rootRef}
       key={id}
       id={`message-${id}`}
       data-message-id={id}
@@ -251,7 +278,7 @@ const Answer: FC<IAnswerProps> = ({
                   <WorkflowProcess data={workflowProcess} hideInfo />
                 </div>
               )}
-              {(isResponding && (isAgentMode ? (!content && (agent_thoughts || []).filter(item => !!item.thought || !!item.tool).length === 0) : !content))
+              {(isResponding && (isAgentMode ? (!safeContent && (agent_thoughts || []).filter(item => !!item.thought || !!item.tool).length === 0) : !safeContent))
                 ? (
                   <div className="flex items-center justify-center w-6 h-5">
                     <LoadingAnim type="text" />

@@ -27,7 +27,7 @@ export async function GET(
 
   if (conversationId) {
     const conversation = await withDatabaseRetry(() => db.chatConversation.findFirst({
-      where: { appUserId: userId, difyConversationId: conversationId },
+      where: { appUserId: userId, difyConversationId: conversationId, deletedAt: null },
       select: {
         difyConversationId: true,
         title: true,
@@ -55,7 +55,7 @@ export async function GET(
   }
 
   const conversations = await withDatabaseRetry(() => db.chatConversation.findMany({
-    where: { appUserId: userId },
+    where: { appUserId: userId, deletedAt: null },
     orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
     take: 200,
     select: {

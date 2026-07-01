@@ -2,10 +2,11 @@
 import type { FC } from 'react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
+import { toMessageText } from '@/lib/safe-text'
 
 interface IAppUnavailableProps {
   isUnknownReason: boolean
-  errMessage?: string
+  errMessage?: unknown
 }
 
 const AppUnavailable: FC<IAppUnavailableProps> = ({
@@ -13,7 +14,7 @@ const AppUnavailable: FC<IAppUnavailableProps> = ({
   errMessage,
 }) => {
   const { t } = useTranslation()
-  let message = errMessage
+  let message = toMessageText(errMessage)
   if (!errMessage) { message = (isUnknownReason ? t('app.common.appUnkonwError') : t('app.common.appUnavailable')) as string }
 
   return (

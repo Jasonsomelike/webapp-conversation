@@ -58,11 +58,27 @@ export const listVisibleAdminUsers = async (): Promise<AdminUserListItem[]> =>
           SELECT COUNT(*)::int
           FROM "chat_messages" m
           WHERE m."app_user_id" = u."id"
+            AND m."role" = 'user'
+            AND EXISTS (
+              SELECT 1
+              FROM "chat_conversations" c
+              WHERE c."app_user_id" = u."id"
+                AND c."dify_conversation_id" = m."dify_conversation_id"
+                AND c."deleted_at" IS NULL
+            )
         ) AS "messages",
         (
           SELECT COUNT(*)::int
           FROM "message_references" r
           WHERE r."app_user_id" = u."id"
+            AND r."dify_conversation_id" IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+              FROM "chat_conversations" c
+              WHERE c."app_user_id" = u."id"
+                AND c."dify_conversation_id" = r."dify_conversation_id"
+                AND c."deleted_at" IS NULL
+            )
         ) AS "references"
       FROM "app_users" u
       WHERE u."deleted_at" IS NULL

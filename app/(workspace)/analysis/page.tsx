@@ -19,11 +19,13 @@ export default async function AnalysisPage() {
   const analysis = await getUserAnalysis(session.id)
   const maxTrend = Math.max(1, ...analysis.trend)
   const statCards = [
-    { label: '学习动量', value: `${analysis.momentum}%`, description: '按当前账号近 7 天活动计算', icon: FireIcon, tone: 'bg-orange-50 text-orange-700' },
+    { label: '学习动量', value: `${analysis.momentum}%`, description: '综合近 7 天提问、引用和活跃天数', icon: FireIcon, tone: 'bg-orange-50 text-orange-700' },
     { label: '有效会话', value: analysis.conversations, description: '仅统计你的 Dify 会话', icon: ChatBubbleBottomCenterTextIcon, tone: 'bg-blue-50 text-blue-700' },
     { label: '教材引用', value: analysis.references, description: `覆盖 ${analysis.documents} 份文档`, icon: BookOpenIcon, tone: 'bg-emerald-50 text-emerald-700' },
-    { label: '估算学习时长', value: `${analysis.studyMinutes}m`, description: '根据提问与会话活跃度估算', icon: ClockIcon, tone: 'bg-violet-50 text-violet-700' },
+    { label: '估算学习时长', value: `${analysis.studyMinutes}m`, description: '按提问、引用与会话活跃度估算', icon: ClockIcon, tone: 'bg-violet-50 text-violet-700' },
   ]
+  const activeDays = analysis.trend.filter(Boolean).length
+  const weeklyQuestions = analysis.trend.reduce((total, value) => total + value, 0)
 
   return (
     <div className="mx-auto max-w-[1450px] p-4 sm:p-6">
@@ -37,7 +39,7 @@ export default async function AnalysisPage() {
 
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {statCards.map(({ label, value, description, icon: Icon, tone }) => (
-          <PageCard key={label} className="p-5">
+          <PageCard key={label} className="ux-micro-card p-5">
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-xs text-black/45">{label}</div>
@@ -61,7 +63,21 @@ export default async function AnalysisPage() {
               <span className="rounded-full bg-[var(--studio-accent)]/35 px-3 py-1.5 text-[10px] font-semibold text-[var(--studio-accent-strong)]">{analysis.currentStage}</span>
             </div>
             <div className="grid gap-6 p-6 md:grid-cols-[1fr_170px]">
-              <p className="text-sm leading-7 text-black/60">{analysis.summary}</p>
+              <div>
+                <p className="text-sm leading-7 text-black/60">{analysis.summary}</p>
+                <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                  {[
+                    ['本周提问', `${weeklyQuestions} 次`],
+                    ['活跃天数', `${activeDays} 天`],
+                    ['当前阶段', analysis.currentStage],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-2xl bg-black/[0.025] px-4 py-3">
+                      <div className="text-[10px] text-black/40">{label}</div>
+                      <div className="mt-1 truncate text-xs font-semibold">{value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
               <div className="relative mx-auto grid h-[150px] w-[150px] place-items-center rounded-full" style={{ background: `conic-gradient(var(--studio-accent-strong) ${analysis.momentum}%, #e8ebe7 0)` }}>
                 <div className="grid h-[118px] w-[118px] place-items-center rounded-full bg-[var(--studio-surface)] text-center">
                   <div>
@@ -86,7 +102,7 @@ export default async function AnalysisPage() {
                 <div key={index} className="flex h-full flex-1 flex-col items-center justify-end gap-2">
                   <div className="relative flex w-full flex-1 items-end justify-center">
                     <div
-                      className={`w-full max-w-[48px] rounded-t-xl ${index === 6 ? 'bg-[var(--studio-deep)]' : 'bg-[var(--studio-accent)]'}`}
+                      className={`w-full max-w-[48px] rounded-t-xl transition duration-200 hover:scale-y-[1.04] ${index === 6 ? 'bg-[var(--studio-deep)]' : 'bg-[var(--studio-accent)]'}`}
                       style={{ height: `${Math.max(value ? 12 : 3, value / maxTrend * 100)}%` }}
                     />
                   </div>
@@ -105,7 +121,7 @@ export default async function AnalysisPage() {
               ? (
                 <div className="space-y-4">
                   {analysis.weakTopics.map((item, index) => (
-                    <div key={item.topic} className="grid items-center gap-4 rounded-2xl border border-black/[0.07] p-4 sm:grid-cols-[36px_1fr_150px]">
+                    <div key={item.topic} className="ux-micro-card grid items-center gap-4 rounded-2xl border border-black/[0.07] p-4 sm:grid-cols-[36px_1fr_150px]">
                       <div className="grid h-9 w-9 place-items-center rounded-xl bg-orange-50 text-xs font-bold text-orange-700">0{index + 1}</div>
                       <div>
                         <div className="text-sm font-semibold">{item.topic}</div>
@@ -140,7 +156,7 @@ export default async function AnalysisPage() {
                     ? 'bg-emerald-50 text-emerald-800'
                     : 'bg-orange-50 text-orange-800'
                 return (
-                  <a href="/chat" key={`${item.title}-${index}`} className={`block rounded-2xl p-4 ${tone}`}>
+                  <a href="/chat" key={`${item.title}-${index}`} className={`ux-micro-card block rounded-2xl p-4 ${tone}`}>
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-semibold opacity-60">任务 0{index + 1}</span>
                       <span className="rounded-full bg-white/20 px-2 py-1 text-[9px] font-semibold">{item.priority}</span>

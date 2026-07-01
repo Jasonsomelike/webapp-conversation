@@ -1,8 +1,11 @@
 'use client'
 
-import type { FormEvent } from 'react'
+import type { CSSProperties, FormEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import gsap from 'gsap'
+import { useGSAP } from '@gsap/react'
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -17,9 +20,24 @@ import { securityQuestions } from '@/lib/account-policy'
 import { isNetworkStudyApp, type NativeQqLoginResult, type NativeQqResultEnvelope } from '@/lib/native-app'
 import { passwordPolicyHint } from '@/lib/password-policy'
 
+gsap.registerPlugin(useGSAP)
+
 type Mode = 'login' | 'register' | 'forgot'
 
 const passwordHint = passwordPolicyHint
+
+const forestThemeVars = {
+  '--studio-ink': '#18231f',
+  '--studio-deep': '#12221e',
+  '--studio-sidebar': '#12221e',
+  '--studio-paper': '#f3f1eb',
+  '--studio-surface': '#faf9f5',
+  '--studio-chat-surface': '#faf9f5',
+  '--studio-accent': '#dff67a',
+  '--studio-accent-strong': '#47705e',
+  '--studio-muted': '#668074',
+  '--studio-warm': '#ffb86b',
+} as CSSProperties
 
 const qqLoginErrorMessage = (error: string) => {
   if (error === 'config')
@@ -52,6 +70,66 @@ export default function LoginPanel() {
   const qqTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const qqPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const qqCompletingRef = useRef(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const previousTheme = document.documentElement.dataset.theme
+    document.documentElement.dataset.theme = 'forest'
+    document.documentElement.dataset.loginThemeLock = 'true'
+    return () => {
+      delete document.documentElement.dataset.loginThemeLock
+      document.documentElement.dataset.theme = previousTheme || 'forest'
+    }
+  }, [])
+
+  useGSAP(() => {
+    const root = rootRef.current
+    if (!root || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+    { return }
+    const native = isNetworkStudyApp()
+    const timeline = gsap.timeline({
+      defaults: {
+        ease: 'power3.out',
+        overwrite: 'auto',
+      },
+    })
+    timeline
+      .fromTo(
+        root.querySelectorAll('[data-login-orb]'),
+        { autoAlpha: 0, scale: 0.62, rotation: -12 },
+        {
+          autoAlpha: native ? 0.65 : 1,
+          scale: 1,
+          rotation: 0,
+          duration: native ? 0.5 : 0.85,
+          stagger: 0.08,
+        },
+      )
+      .fromTo(
+        root.querySelector('[data-login-hero]'),
+        { autoAlpha: 0, x: native ? 0 : -28, y: native ? 12 : 0, scale: 0.985 },
+        { autoAlpha: 1, x: 0, y: 0, scale: 1, duration: native ? 0.45 : 0.68, clearProps: 'opacity,visibility,transform' },
+        native ? 0 : '-=0.46',
+      )
+      .fromTo(
+        root.querySelector('[data-login-card]'),
+        { autoAlpha: 0, x: native ? 0 : 30, y: native ? 18 : 0, scale: 0.985 },
+        { autoAlpha: 1, x: 0, y: 0, scale: 1, duration: native ? 0.5 : 0.72, clearProps: 'opacity,visibility,transform' },
+        native ? '-=0.32' : '-=0.52',
+      )
+      .fromTo(
+        root.querySelectorAll('[data-login-field]'),
+        { autoAlpha: 0, y: 12 },
+        {
+          autoAlpha: 1,
+          y: 0,
+          duration: 0.34,
+          stagger: 0.045,
+          clearProps: 'opacity,visibility,transform',
+        },
+        '-=0.34',
+      )
+  }, { scope: rootRef })
 
   useEffect(() => {
     router.prefetch('/chat')
@@ -260,15 +338,18 @@ export default function LoginPanel() {
 
   return (
     <div
+      ref={rootRef}
       className={`relative min-h-screen overflow-x-hidden ${nativeApp ? 'bg-[var(--studio-surface)] px-6 pb-[max(24px,env(safe-area-inset-bottom))] pt-[max(26px,env(safe-area-inset-top))] text-[var(--studio-ink)]' : 'overflow-hidden bg-[var(--studio-deep)] px-5 py-8 text-white'}`}
       data-theme="forest"
       data-native-login={nativeApp ? 'true' : 'false'}
+      style={forestThemeVars}
     >
-      {!nativeApp && <div className="pointer-events-none absolute -left-24 top-[-80px] h-[360px] w-[360px] rounded-full bg-[var(--studio-accent)]/10 blur-3xl" />}
-      {!nativeApp && <div className="pointer-events-none absolute -bottom-44 right-[-70px] h-[480px] w-[480px] rounded-full bg-[#f69c63]/10 blur-3xl" />}
+      {!nativeApp && <div data-login-orb className="pointer-events-none absolute -left-14 top-[-42px] h-[180px] w-[180px] rounded-full bg-[var(--studio-accent)]/10 blur-3xl" />}
+      {!nativeApp && <div data-login-orb className="pointer-events-none absolute -bottom-24 right-[-36px] h-[240px] w-[240px] rounded-full bg-[#f69c63]/10 blur-3xl" />}
+      <div data-login-orb className="pointer-events-none absolute right-[18%] top-[12%] hidden h-12 w-12 rounded-full border border-[var(--studio-accent)]/25 bg-[var(--studio-accent)]/10 blur-sm sm:block" />
 
       <div className={`relative mx-auto grid ${nativeApp ? 'min-h-[calc(100dvh-50px)] max-w-[480px] bg-[var(--studio-surface)]' : 'min-h-[calc(100vh-64px)] max-w-[1180px] overflow-hidden rounded-[32px] border border-white/10 bg-[var(--studio-sidebar)] shadow-[0_30px_100px_rgba(0,0,0,.32)] lg:grid-cols-[1.04fr_.96fr]'}`}>
-        <div className="relative hidden overflow-hidden border-r border-white/10 p-12 lg:flex lg:flex-col">
+        <div data-login-hero className="relative hidden overflow-hidden border-r border-white/10 p-12 lg:flex lg:flex-col">
           <div className="flex items-center gap-3">
             <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[var(--studio-accent)] text-[var(--studio-deep)]">
               <SparklesIcon className="h-6 w-6" />
@@ -314,7 +395,7 @@ export default function LoginPanel() {
           </div>
         </div>
 
-        <div className={`flex justify-center bg-[var(--studio-surface)] text-[var(--studio-ink)] ${nativeApp ? 'items-start py-2' : 'items-center px-6 py-10 sm:px-12'}`}>
+        <div data-login-card className={`flex justify-center bg-[var(--studio-surface)] text-[var(--studio-ink)] ${nativeApp ? 'items-start py-2' : 'items-center px-6 py-10 sm:px-12'}`}>
           <div className="w-full max-w-[430px]">
             <div className={`${nativeApp ? 'mb-8' : 'mb-7'} lg:hidden`}>
               <div className="inline-flex items-center gap-3">
@@ -481,6 +562,12 @@ export default function LoginPanel() {
               <ShieldCheckIcon className="h-3.5 w-3.5" />
               QQ 凭证仅用于身份校验，App Key 只保存在服务端
             </div>
+            <Link
+              href="/guide"
+              className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl border border-[var(--studio-accent-strong)]/20 bg-[var(--studio-accent)]/20 text-sm font-semibold text-[var(--studio-accent-strong)] transition hover:bg-[var(--studio-accent)]/30"
+            >
+              查看使用说明
+            </Link>
             {!nativeApp && (
               <a
                 href="https://beian.miit.gov.cn/"
@@ -512,7 +599,7 @@ function Field({
   autoComplete?: string
 }) {
   return (
-    <label className="block">
+    <label data-login-field className="block">
       <span className="mb-1.5 block text-xs font-semibold">{label}</span>
       <input
         name={name}

@@ -245,6 +245,50 @@ a {
   will-change: opacity, transform, filter;
 }
 
+[data-gsap-card],
+[data-graph-node],
+[data-graph-panel],
+[data-card-shine],
+[data-ux-micro-card],
+.ux-micro-card,
+[data-composer-asset],
+[data-composer-send],
+[data-shell-nav-active="true"],
+.chat-message-target {
+  will-change: transform, opacity;
+}
+
+.ux-micro-card {
+  transform: translateZ(0);
+  transition:
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ux-micro-card:hover {
+    transform: translate3d(0, -2px, 0) scale(1.015);
+    box-shadow: 0 18px 42px color-mix(in srgb, var(--studio-deep) 10%, transparent);
+  }
+}
+
+[data-graph-node] {
+  transform-origin: 50% 50%;
+  backface-visibility: hidden;
+}
+
+[data-graph-edge] {
+  will-change: stroke-dashoffset, opacity;
+}
+
+:root[data-native-app="true"] [data-gsap-card],
+:root[data-native-app="true"] [data-graph-node],
+:root[data-native-app="true"] .chat-message-target {
+  backface-visibility: hidden;
+}
+
 @keyframes workspace-route-enter {
   from {
     opacity: 0;
@@ -441,6 +485,19 @@ a {
   .workspace-route-enter,
   .streamdown-markdown > * {
     animation: none !important;
+  }
+
+  [data-gsap-card],
+  [data-graph-node],
+  [data-graph-edge],
+  [data-graph-panel],
+  [data-card-shine],
+  .ux-micro-card,
+  [data-composer-asset],
+  [data-composer-send],
+  [data-shell-nav-active="true"],
+  .chat-message-target {
+    transition: none !important;
   }
 }
 
