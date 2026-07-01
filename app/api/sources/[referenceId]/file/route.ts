@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from 'node:crypto'
 import type { NextRequest } from 'next/server'
 import { db, withDatabaseRetry } from '@/lib/db'
-import { getKnowledgeDocumentDownloadUrl } from '@/lib/dify-dataset'
+import { findKnowledgeDocumentByName, getKnowledgeDocumentDownloadUrl } from '@/lib/dify-dataset'
 import { cleanReferenceDocumentName } from '@/lib/reference-extractor'
 import { getSessionFromRequest } from '@/lib/session'
 
@@ -253,6 +253,20 @@ export async function GET(
     ? reference.rawPayload as Record<string, unknown>
     : undefined
   let documentId = typeof rawPayload?.document_id === 'string' ? rawPayload.document_id : undefined
+  const latestDocument = await findKnowledgeDocumentByName(filename || documentName, documentId).catch((error) => {
+    console.warn('[reference-file] latest document lookup failed', {
+      requestId,
+      referenceId,
+      documentName,
+      filename,
+      documentId,
+      error,
+    })
+    return null
+  })
+  if (latestDocument?.id)
+  { documentId = latestDocument.id }
+
   if (!documentId) {
     const catalog = await withDatabaseRetry(() => db.knowledgeDocumentCatalog.findUnique({
       where: { id: 'default' },

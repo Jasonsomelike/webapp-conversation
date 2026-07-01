@@ -25,11 +25,13 @@ services:
       - ./.env
     environment:
       DIFY_STORAGE_ROOT: /data/storage
+      PAGE_IMAGES_ROOTS: /data/page_images,/data/storage/page_images
       USE_X_ACCEL_REDIRECT: "true"
       HOME: /tmp
     volumes:
       - ./server.py:/srv/server.py:ro
       - /opt/dify/volumes/app/storage:/data/storage:ro
+      - /data/page_images:/data/page_images:ro
     ports:
       - 127.0.0.1:3011:3011
     read_only: true
@@ -51,6 +53,7 @@ services:
     volumes:
       - ./accelerator.conf:/etc/nginx/nginx.conf:ro
       - /opt/dify/volumes/app/storage:/data/storage:ro
+      - /data/page_images:/data/page_images:ro
     read_only: true
     tmpfs:
       - /var/cache/nginx:size=32m,mode=0755

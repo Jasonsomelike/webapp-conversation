@@ -521,6 +521,68 @@ export const getKnowledgeDocumentDownloadUrl = async (documentId: string) => {
   return result.url
 }
 
+const documentIdSimilarity = (left: string, right: string) => {
+  if (!left || !right || left.length !== right.length)
+  { return 0 }
+  let same = 0
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] === right[index])
+    { same += 1 }
+  }
+  return same / left.length
+}
+
+export const findKnowledgeDocumentByName = async (filename: string, hintDocumentId?: string) => {
+  const normalized = cleanReferenceDocumentName(filename)
+  if (!normalized)
+  { return null }
+  const compact = (value: unknown) =>
+    cleanReferenceDocumentName(value)
+      .normalize('NFKC')
+      .replace(/[^\p{L}\p{N}]+/gu, '')
+      .toLocaleLowerCase('zh-CN')
+  const normalizedCompact = compact(filename)
+  const rankMatch = (document: DifyKnowledgeDocument) => {
+    const documentName = cleanReferenceDocumentName(document.name)
+    const documentCompact = compact(document.name)
+    const idScore = hintDocumentId && document.id
+      ? documentIdSimilarity(document.id, hintDocumentId)
+      : 0
+    if (idScore >= 0.92)
+    { return 110_000 + Math.round(idScore * 1000) }
+    if (documentName === normalized)
+    { return 100_000 + documentName.length }
+    if (documentCompact && documentCompact === normalizedCompact)
+    { return 90_000 + documentCompact.length }
+    if (documentCompact && normalizedCompact && documentCompact.includes(normalizedCompact))
+    { return 70_000 + normalizedCompact.length }
+    if (documentCompact && normalizedCompact && normalizedCompact.includes(documentCompact))
+    { return 60_000 + documentCompact.length }
+    return 0
+  }
+  const bestMatch = (documents: DifyKnowledgeDocument[]) => {
+    const matches = documents
+      .map(document => ({ document, score: rankMatch(document) }))
+      .filter(item => item.score > 0)
+      .sort((left, right) => right.score - left.score)
+    return matches[0]?.document || null
+  }
+
+  await ensureKnowledgeDocumentCatalogTable()
+  const catalog = await db.knowledgeDocumentCatalog.findUnique({
+    where: { id: 'default' },
+  }).catch(() => null)
+  const cachedDocuments = Array.isArray(catalog?.documents)
+    ? catalog.documents as unknown as DifyKnowledgeDocument[]
+    : []
+  const cachedMatch = bestMatch(cachedDocuments)
+  if (cachedMatch)
+  { return cachedMatch }
+
+  const documents = await fetchCompleteKnowledgeCatalog()
+  return bestMatch(documents)
+}
+
 export const getKnowledgeDocumentIndexedText = async (documentId: string) => {
   const apiKey = process.env.DIFY_DATASET_API_KEY
   const datasetId = process.env.DIFY_DATASET_ID
@@ -564,6 +626,8 @@ export interface KnowledgeDocumentPageImage {
   url: string
 }
 
+const pageImageUrlPattern = /(?:https:\/\/(?:dify\.jasonsome\.cn(?::22380)?|www\.jasonsome\.cn|jasonsome\.cn))?\/page-images\/[^\s<>"')\]]+?\/page_(\d+)\.(?:jpe?g|png|webp)(?:[?#][^\s<>"')\]]*)?/gi
+
 export const getKnowledgeDocumentPageImages = async (documentId: string) => {
   const apiKey = process.env.DIFY_DATASET_API_KEY
   const datasetId = process.env.DIFY_DATASET_ID
@@ -587,14 +651,14 @@ export const getKnowledgeDocumentPageImages = async (documentId: string) => {
     result.data.forEach((segment) => {
       if (!segment.content)
       { return }
-      const matches = segment.content.matchAll(
-        /!\[[^\]]*]\((https:\/\/(?:dify\.jasonsome\.cn(?::22380)?|www\.jasonsome\.cn|jasonsome\.cn)\/page-images\/[^\s)]+\.(?:jpe?g|png|webp))\)/gi,
-      )
+      const matches = segment.content.matchAll(pageImageUrlPattern)
       for (const match of matches) {
-        const pageMatch = match[1].match(/\/page_(\d+)\.(?:jpe?g|png|webp)$/i)
-        const pageNumber = Number(pageMatch?.[1] || segment.position || images.size + 1)
+        const pageNumber = Number(match[1] || segment.position || images.size + 1)
+        const imageUrl = match[0].startsWith('/page-images/')
+          ? `https://dify.jasonsome.cn:22380${match[0]}`
+          : match[0]
         if (Number.isFinite(pageNumber) && !images.has(pageNumber))
-        { images.set(pageNumber, match[1]) }
+        { images.set(pageNumber, imageUrl) }
       }
     })
     hasMore = Boolean(result.has_more) && result.data.length > 0
