@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDownTrayIcon,
   ArrowLeftIcon,
@@ -10,6 +10,7 @@ import {
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
 } from '@heroicons/react/24/outline'
+import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
 
 let pdfJsPromise: Promise<typeof import('pdfjs-dist')> | undefined
 
@@ -44,6 +45,29 @@ const withProxyFallback = (url: string) => {
   }
 }
 
+const inferPageCountFromFilename = (filename: string) => {
+  const matched = filename.match(/(?:^|[_\-\s])p(\d{1,5})-(\d{1,5})(?:\.|_|-|$)/i)
+  if (!matched)
+  { return 0 }
+  const start = Number(matched[1])
+  const end = Number(matched[2])
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start)
+  { return 0 }
+  return end - start + 1
+}
+
+const unwrapDifyProxyUrl = (value: string) => {
+  try {
+    const parsed = new URL(value, globalThis.location.origin)
+    if (parsed.origin === globalThis.location.origin && parsed.pathname === '/api/dify/file-proxy')
+    { return parsed.searchParams.get('url') || value }
+  }
+  catch {
+    // Keep the already usable value.
+  }
+  return value
+}
+
 interface PdfReferenceViewerProps {
   referenceId?: string
   filename: string
@@ -76,6 +100,23 @@ export default function PdfReferenceViewer({
   const [imageLoading, setImageLoading] = useState(Boolean(pageImageUrl))
   const [error, setError] = useState('')
   const [imageFallback, setImageFallback] = useState(false)
+  const pageImageCount = useMemo(
+    () => pageImageUrl ? Math.max(page, inferPageCountFromFilename(filename) || page) : 0,
+    [filename, page, pageImageUrl],
+  )
+  const pageImageBaseUrl = useMemo(
+    () => pageImageUrl ? unwrapDifyProxyUrl(pageImageUrl) : '',
+    [pageImageUrl],
+  )
+  const currentPageImageUrl = useMemo(() => {
+    if (!pageImageUrl)
+    { return '' }
+    const nextRawUrl = pageImageBaseUrl.replace(
+      /\/page_\d+(\.(?:jpe?g|png|webp)(?:[?#].*)?)$/i,
+      `/page_${page}$1`,
+    )
+    return toDifyAssetProxyUrl(nextRawUrl || pageImageBaseUrl || pageImageUrl)
+  }, [page, pageImageBaseUrl, pageImageUrl])
   // This authenticated same-origin route issues a short-lived signed redirect
   // to the file service. Keep source references on the same path style as the
   // knowledge-library preview; forcing Vercel to proxy large range streams is
@@ -120,6 +161,12 @@ export default function PdfReferenceViewer({
         setError('')
         setImageFallback(false)
         setImageLoading(Boolean(pageImageUrl))
+        if (pageImageUrl) {
+          setPdf(undefined)
+          setImageFallback(true)
+          setLoading(false)
+          return
+        }
         const pdfjs = await loadPdfJs()
         const loadDocument = async (url: string) => {
           loadingTask = pdfjs.getDocument({
@@ -214,12 +261,19 @@ export default function PdfReferenceViewer({
     globalThis.history.replaceState({}, '', `${url.pathname}${url.search}`)
   }, [page])
 
-  const pageCount = Number(pdf?.numPages || (imageFallback ? page : 0))
+  useEffect(() => {
+    if (!imageFallback || !pageImageUrl)
+    { return }
+    setError('')
+    setImageLoading(true)
+  }, [imageFallback, page, pageImageUrl])
+
+  const pageCount = Number(pdf?.numPages || (imageFallback ? pageImageCount || page : 0))
   const updatePage = useCallback((value: number) => {
-    if (!pageCount || imageFallback)
+    if (!pageCount)
     { return }
     setPage(Math.min(pageCount, Math.max(1, Math.round(value))))
-  }, [pageCount, imageFallback])
+  }, [pageCount])
   const changeScale = (delta: number) =>
     setScale(value => Math.min(2.4, Math.max(0.65, Number((value + delta).toFixed(2)))))
 
@@ -329,7 +383,7 @@ export default function PdfReferenceViewer({
             </div>
           </div>
         )}
-        {!loading && !error && imageFallback && pageImageUrl && (
+        {!loading && !error && imageFallback && currentPageImageUrl && (
           <div
             className="mx-auto flex w-fit max-w-full flex-col items-center gap-3"
             style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}
@@ -341,7 +395,7 @@ export default function PdfReferenceViewer({
               </div>
             )}
             <img
-              src={pageImageUrl}
+              src={currentPageImageUrl}
               alt={`${filename} 第 ${page} 页`}
               className={`block max-h-none max-w-[min(100%,1100px)] rounded-xl bg-white object-contain shadow-[0_18px_55px_rgba(20,40,31,.16)] transition-opacity ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
               onLoad={() => setImageLoading(false)}
@@ -368,7 +422,7 @@ export default function PdfReferenceViewer({
         </div>
       </main>
 
-      {!loading && !error && !imageFallback && pageCount > 1 && (
+      {!loading && !error && pageCount > 1 && (
         <>
           <button
             type="button"
@@ -393,7 +447,7 @@ export default function PdfReferenceViewer({
 
       {!error && (
         <div className="shrink-0 border-t border-black/10 bg-white/95 px-3 pb-[calc(9px+env(safe-area-inset-bottom))] pt-2.5 backdrop-blur">
-          {!imageFallback && pageCount > 1 && (
+          {pageCount > 1 && (
             <input
               type="range"
               min={1}
@@ -405,7 +459,7 @@ export default function PdfReferenceViewer({
             />
           )}
           <div className="flex items-center justify-between gap-2">
-            {!imageFallback && <div className="flex overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm lg:hidden">
+            <div className="flex overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm lg:hidden">
               <button type="button" disabled={page <= 1} onClick={() => updatePage(page - 1)} className="grid h-11 w-11 place-items-center disabled:opacity-30" aria-label="上一页">
                 <ChevronLeftIcon className="h-5 w-5" />
               </button>
@@ -424,7 +478,7 @@ export default function PdfReferenceViewer({
               <button type="button" disabled={!pageCount || page >= pageCount} onClick={() => updatePage(page + 1)} className="grid h-11 w-11 place-items-center disabled:opacity-30" aria-label="下一页">
                 <ChevronRightIcon className="h-5 w-5" />
               </button>
-            </div>}
+            </div>
             <div className="flex overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
               <button type="button" onClick={() => changeScale(-0.15)} className="grid h-11 w-11 place-items-center border-r border-black/10" aria-label="缩小">
                 <MagnifyingGlassMinusIcon className="h-5 w-5" />
