@@ -127,7 +127,10 @@ export default function PdfReferenceViewer({
             withCredentials: true,
             rangeChunkSize: 256 * 1024,
             disableAutoFetch: true,
-            disableStream: false,
+            // Keep previews responsive behind the same-origin proxy. The first
+            // non-range full PDF fetch can be slow or fail on mobile networks,
+            // while range requests are fast and enough for page-by-page viewing.
+            disableStream: true,
           })
           return await loadingTask.promise
         }

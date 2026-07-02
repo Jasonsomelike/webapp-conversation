@@ -249,6 +249,8 @@ export async function GET(
     : 'inline'
   const filename = (request.nextUrl.searchParams.get('filename') || documentName)
     .replace(/["\r\n]/g, '_')
+  const requestRange = request.headers.get('range')
+  const previewRange = disposition === 'inline' && !requestRange ? 'bytes=0-262143' : requestRange
   const inferredPage = Number(reference.pageImageUrl?.match(/\/page_(\d+)\./i)?.[1] || 0) || undefined
   const page = reference.pageNumber || inferredPage
   const rawPayload = reference.rawPayload && typeof reference.rawPayload === 'object' && !Array.isArray(reference.rawPayload)
@@ -296,7 +298,7 @@ export async function GET(
       disposition,
       filename,
       requestId,
-      range: request.headers.get('range'),
+      range: previewRange,
     }) || new Response('Reference file service is not configured', {
       status: 503,
       headers: { 'X-Request-Id': requestId },

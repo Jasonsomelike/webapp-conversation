@@ -247,6 +247,8 @@ export async function GET(
   const errors: string[] = []
   const matchedDocument = await findKnowledgeDocumentByName(filename, documentId).catch(() => null)
   const resolvedDocumentId = matchedDocument?.id || documentId
+  const requestRange = request.headers.get('range')
+  const previewRange = disposition === 'inline' && !requestRange ? 'bytes=0-262143' : requestRange
 
   if (request.nextUrl.searchParams.get('proxy') !== '1') {
     const directRedirect = signedLibraryFileRedirect({
@@ -266,7 +268,7 @@ export async function GET(
       disposition,
       filename,
       requestId,
-      range: request.headers.get('range'),
+      range: previewRange,
     })
     if (serviceResponse.ok && serviceResponse.body)
     { return streamedResponse(serviceResponse, disposition, filename, requestId, 'server-file-service') }
@@ -283,7 +285,7 @@ export async function GET(
     const upstream = await fetch(signedUrl, {
       cache: 'no-store',
       redirect: 'follow',
-      headers: request.headers.get('range') ? { Range: request.headers.get('range')! } : undefined,
+      headers: previewRange ? { Range: previewRange } : undefined,
     })
     if (!upstream.ok || !upstream.body)
     { throw new Error(`DIFY_DOCUMENT_FILE_UNAVAILABLE:${upstream.status}`) }
