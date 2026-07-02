@@ -35,11 +35,11 @@ export default async function SourcePdfPreviewPage({
     : ''
   const encodedFilename = encodeURIComponent(filename)
   const sourceUrl = resolvedDocumentId
-    ? `/api/library/documents/${encodeURIComponent(resolvedDocumentId)}/file?proxy=1&disposition=inline&page=${page}&filename=${encodedFilename}`
-    : `/api/sources/${encodeURIComponent(referenceId)}/file?proxy=1&disposition=inline&page=${page}&filename=${encodedFilename}`
+    ? `/api/library/documents/${encodeURIComponent(resolvedDocumentId)}/file?disposition=inline&page=${page}&filename=${encodedFilename}`
+    : `/api/sources/${encodeURIComponent(referenceId)}/file?disposition=inline&page=${page}&filename=${encodedFilename}`
   const downloadUrl = resolvedDocumentId
-    ? `/api/library/documents/${encodeURIComponent(resolvedDocumentId)}/file?proxy=1&disposition=attachment&filename=${encodedFilename}`
-    : `/api/sources/${encodeURIComponent(referenceId)}/file?proxy=1&disposition=attachment&filename=${encodedFilename}`
+    ? `/api/library/documents/${encodeURIComponent(resolvedDocumentId)}/file?disposition=attachment&filename=${encodedFilename}`
+    : `/api/sources/${encodeURIComponent(referenceId)}/file?disposition=attachment&filename=${encodedFilename}`
   return (
     <PdfReferenceViewer
       referenceId={referenceId}

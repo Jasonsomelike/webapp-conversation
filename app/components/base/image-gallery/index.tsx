@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import cn from 'classnames'
 import s from './style.module.css'
 import ImagePreview from '@/app/components/base/image-uploader/image-preview'
+import { toBrowserImageFallbackUrl } from '@/lib/dify-assets'
 import { isNetworkStudyApp } from '@/lib/native-app'
 
 interface Props {
@@ -38,10 +39,11 @@ const ImageGallery: FC<Props> = ({
   const imgNum = validSrcs.length
   const imgStyle = getWidthStyle(imgNum)
   const openImage = (src: string) => {
+    const fallbackSrc = toBrowserImageFallbackUrl(src) || src
     if (isNetworkStudyApp())
-    { setImagePreviewUrl(src) }
+    { setImagePreviewUrl(fallbackSrc) }
     else
-    { window.open(src, '_blank', 'noopener,noreferrer') }
+    { window.open(fallbackSrc, '_blank', 'noopener,noreferrer') }
   }
 
   if (imgNum === 0) { return null }
@@ -76,7 +78,12 @@ const ImageGallery: FC<Props> = ({
               alt=''
               loading='lazy'
               decoding='async'
-              onError={() => {
+              onError={(event) => {
+                const fallbackSrc = toBrowserImageFallbackUrl(src)
+                if (fallbackSrc && event.currentTarget.src !== fallbackSrc) {
+                  event.currentTarget.src = fallbackSrc
+                  return
+                }
                 setFailedUrls((previous) => {
                   const next = new Set(previous)
                   next.add(src)

@@ -42,6 +42,18 @@ const asNumber = (value: unknown) => {
   return Number.isFinite(number) ? number : undefined
 }
 
+const isSourceOnlyContent = (value: string) => {
+  const stripped = value
+    .replace(/\s+/g, ' ')
+    .replace(/来源文件\s*[:：]\s*.+?(?=\s*来源页码\s*[:：]|$)/gi, '')
+    .replace(/来源页码\s*[:：]\s*(?:原\s*PDF\s*)?第?\s*\d{1,5}\s*页(?:\s*[（(][^)）]*[）)])?/gi, '')
+    .replace(/PDF\s*第\s*\d{1,5}\s*页/gi, '')
+    .replace(/!\[[^\]]*]\([^)]+\)/g, '')
+    .replace(/[，,。.;；:\s\-—–()（）·、]/g, '')
+    .trim()
+  return stripped.length < 8
+}
+
 const referenceFromObject = (value: Record<string, any>): ExtractedReference | null => {
   const metadata = value.metadata && typeof value.metadata === 'object' ? value.metadata : {}
   const rawDocumentName = value.document_name
@@ -136,31 +148,17 @@ const referencesFromAnswer = (answer: string): ExtractedReference[] => {
     const page = window.match(/(?:分卷内|来源页码|第)\s*第?\s*(\d+)\s*页/i)
     const nearestImage = imageMatches.find(image => (image.index || 0) >= (match.index || 0) && (image.index || 0) < (match.index || 0) + 900)
     const identity = `${documentName}|${originalPage?.[1] || page?.[1] || index}|`
+    const content = window.split('\n').slice(0, 3).join(' ').slice(0, 800)
+    if (isSourceOnlyContent(content))
+    { return }
     references.push({
       document_name: documentName,
       segment_id: stableSegmentId(identity),
-      content: window.split('\n').slice(0, 3).join(' ').slice(0, 800),
+      content,
       page_number: asNumber(page?.[1]),
       original_page_number: asNumber(originalPage?.[1]),
       page_image_url: nearestImage?.[0],
       url: nearestImage?.[0],
-    })
-  })
-
-  imageMatches.forEach((match, index) => {
-    if (references.some(reference => reference.page_image_url === match[0]))
-    { return }
-    const before = answer.slice(Math.max(0, (match.index || 0) - 500), match.index || 0)
-    const rawDocumentName = [...before.matchAll(/([^\n`*]+?\.(?:docx?|md|pdf|pptx?|txt|xlsx?))/gi)].pop()?.[1]
-    const documentName = cleanReferenceDocumentName(rawDocumentName)
-    if (!documentName)
-    { return }
-    references.push({
-      document_name: documentName,
-      segment_id: stableSegmentId(`${documentName}|${match[0]}|${index}`),
-      page_number: asNumber(match[0].match(/\/page_(\d+)\./i)?.[1]),
-      page_image_url: match[0],
-      url: match[0],
     })
   })
 

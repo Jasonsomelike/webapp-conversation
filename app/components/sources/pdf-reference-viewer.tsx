@@ -10,7 +10,7 @@ import {
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
 } from '@heroicons/react/24/outline'
-import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
+import { toBrowserImageFallbackUrl, toDifyAssetProxyUrl } from '@/lib/dify-assets'
 
 let pdfJsPromise: Promise<typeof import('pdfjs-dist')> | undefined
 
@@ -100,6 +100,7 @@ export default function PdfReferenceViewer({
   const [imageLoading, setImageLoading] = useState(Boolean(pageImageUrl))
   const [error, setError] = useState('')
   const [imageFallback, setImageFallback] = useState(false)
+  const [imageRawFallback, setImageRawFallback] = useState(false)
   const pageImageCount = useMemo(
     () => pageImageUrl ? Math.max(page, inferPageCountFromFilename(filename) || page) : 0,
     [filename, page, pageImageUrl],
@@ -117,6 +118,18 @@ export default function PdfReferenceViewer({
     )
     return toDifyAssetProxyUrl(nextRawUrl || pageImageBaseUrl || pageImageUrl)
   }, [page, pageImageBaseUrl, pageImageUrl])
+  const currentRawPageImageUrl = useMemo(() => {
+    if (!pageImageUrl)
+    { return '' }
+    const nextRawUrl = pageImageBaseUrl.replace(
+      /\/page_\d+(\.(?:jpe?g|png|webp)(?:[?#].*)?)$/i,
+      `/page_${page}$1`,
+    )
+    return toBrowserImageFallbackUrl(nextRawUrl || pageImageBaseUrl || pageImageUrl)
+  }, [page, pageImageBaseUrl, pageImageUrl])
+  const renderedPageImageUrl = imageRawFallback && currentRawPageImageUrl
+    ? currentRawPageImageUrl
+    : currentPageImageUrl
   // This authenticated same-origin route issues a short-lived signed redirect
   // to the file service. Keep source references on the same path style as the
   // knowledge-library preview; forcing Vercel to proxy large range streams is
@@ -160,6 +173,7 @@ export default function PdfReferenceViewer({
         setLoading(true)
         setError('')
         setImageFallback(false)
+        setImageRawFallback(false)
         setImageLoading(Boolean(pageImageUrl))
         if (pageImageUrl) {
           setPdf(undefined)
@@ -265,6 +279,7 @@ export default function PdfReferenceViewer({
     if (!imageFallback || !pageImageUrl)
     { return }
     setError('')
+    setImageRawFallback(false)
     setImageLoading(true)
   }, [imageFallback, page, pageImageUrl])
 
@@ -383,7 +398,7 @@ export default function PdfReferenceViewer({
             </div>
           </div>
         )}
-        {!loading && !error && imageFallback && currentPageImageUrl && (
+        {!loading && !error && imageFallback && renderedPageImageUrl && (
           <div
             className="mx-auto flex w-fit max-w-full flex-col items-center gap-3"
             style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}
@@ -395,11 +410,16 @@ export default function PdfReferenceViewer({
               </div>
             )}
             <img
-              src={currentPageImageUrl}
+              src={renderedPageImageUrl}
               alt={`${filename} 第 ${page} 页`}
               className={`block max-h-none max-w-[min(100%,1100px)] rounded-xl bg-white object-contain shadow-[0_18px_55px_rgba(20,40,31,.16)] transition-opacity ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
               onLoad={() => setImageLoading(false)}
               onError={() => {
+                if (!imageRawFallback && currentRawPageImageUrl && currentRawPageImageUrl !== renderedPageImageUrl) {
+                  setImageRawFallback(true)
+                  setImageLoading(true)
+                  return
+                }
                 setImageLoading(false)
                 setError('来源页图片加载失败，可使用系统查看器打开 PDF。')
               }}

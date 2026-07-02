@@ -138,6 +138,8 @@ export default function KnowledgeGraphView({
   )
 
   const related = useMemo(() => edges.filter(edge => edge.source === selected || edge.target === selected), [edges, selected])
+  const relatedNodeIds = useMemo(() => new Set(related.flatMap(edge => [edge.source, edge.target])), [related])
+  const rootNode = nodes.find(node => node.id === rootNodeId) || nodes[0]
   const depthTone = (nodeId: string) => {
     const depth = graphDepth.get(nodeId) ?? 2
     if (depth <= 0)
@@ -183,6 +185,7 @@ export default function KnowledgeGraphView({
     const nodeElements = gsap.utils.toArray<HTMLElement>('[data-graph-node]', root)
     const edgeElements = gsap.utils.toArray<SVGLineElement>('[data-graph-edge]', root)
     const sideCards = gsap.utils.toArray<HTMLElement>('[data-graph-panel]', root)
+    const rippleElements = gsap.utils.toArray<HTMLElement>('[data-graph-ripple]', root)
     const rootNodeElement = nodeElements.find(node => node.dataset.graphNodeId === rootNodeId) || nodeElements[0]
     const rootRect = rootNodeElement?.getBoundingClientRect()
     const rootCenter = rootRect
@@ -215,6 +218,11 @@ export default function KnowledgeGraphView({
       })
     })
     gsap.set(nodeElements, { autoAlpha: 0, scale: 0.52 })
+    gsap.set(rippleElements, {
+      autoAlpha: 0,
+      scale: 0.35,
+      transformOrigin: '50% 50%',
+    })
 
     const timeline = gsap.timeline({
       defaults: {
@@ -245,6 +253,34 @@ export default function KnowledgeGraphView({
           clearProps: 'opacity,visibility,transform',
         },
         '-=0.08',
+      )
+    }
+
+    if (rippleElements.length) {
+      timeline.fromTo(
+        rippleElements,
+        { autoAlpha: 0.55, scale: 0.35 },
+        {
+          autoAlpha: 0,
+          scale: 3.1,
+          duration: 1.05,
+          ease: 'power2.out',
+          stagger: 0.16,
+        },
+        '-=0.36',
+      )
+      gsap.fromTo(
+        rippleElements,
+        { autoAlpha: 0.34, scale: 0.45 },
+        {
+          autoAlpha: 0,
+          scale: 3.4,
+          duration: 2.4,
+          repeat: -1,
+          stagger: 0.55,
+          ease: 'power2.out',
+          delay: 0.9,
+        },
       )
     }
 
@@ -353,6 +389,23 @@ export default function KnowledgeGraphView({
       root.querySelectorAll('[data-graph-related-edge="true"]'),
       { autoAlpha: 0.35 },
       { autoAlpha: 1, duration: 0.32, yoyo: true, repeat: 1, ease: 'power2.inOut' },
+    )
+
+    gsap.fromTo(
+      root.querySelectorAll('[data-graph-related-node="true"]'),
+      {
+        scale: 0.98,
+        boxShadow: '0 0 0 0 rgba(84,122,103,0)',
+      },
+      {
+        scale: 1.035,
+        boxShadow: '0 12px 34px rgba(84,122,103,.2)',
+        duration: 0.34,
+        yoyo: true,
+        repeat: 1,
+        ease: 'power2.inOut',
+        clearProps: 'transform,boxShadow',
+      },
     )
   }, { dependencies: [selected], scope: rootRef })
 
@@ -720,8 +773,26 @@ export default function KnowledgeGraphView({
               })}
             </svg>
 
+            {rootNode && (
+              <div
+                data-graph-ripple-root=""
+                className="pointer-events-none absolute z-[4] h-28 w-28 -translate-x-1/2 -translate-y-1/2"
+                style={{ left: `${rootNode.x}%`, top: `${rootNode.y}%` }}
+                aria-hidden="true"
+              >
+                {[0, 1, 2].map(index => (
+                  <span
+                    key={index}
+                    data-graph-ripple=""
+                    className="absolute inset-0 rounded-full border border-[#dff67a]/70 bg-[radial-gradient(circle,rgba(223,246,122,.22),rgba(84,122,103,.08)_46%,transparent_70%)]"
+                  />
+                ))}
+              </div>
+            )}
+
             {nodes.map((node) => {
               const active = node.id === selected
+              const relatedActive = !active && relatedNodeIds.has(node.id)
               const leafNode = leafNodeSet.has(node.id)
               const drillable = canDrillInto(node.id)
               return (
@@ -730,11 +801,13 @@ export default function KnowledgeGraphView({
                   data-graph-node=""
                   data-graph-node-id={node.id}
                   data-graph-depth={graphDepth.get(node.id) ?? 0}
+                  data-graph-related-node={relatedActive ? 'true' : 'false'}
                   onClick={() => openNode(node.id)}
+                  onMouseEnter={() => setSelected(node.id)}
                   title={leafNode && node.id !== rootNodeId ? '叶子节点：点击仅查看详情' : drillable ? '点击进入该节点的两级子图' : node.label}
                   className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-2xl border px-3.5 py-2.5 text-xs font-semibold shadow-[0_10px_28px_rgba(34,55,46,.11)] transition-[filter,box-shadow,border-color] duration-200 hover:brightness-105 ${
                     nodeTone(node)
-                  } ${active ? 'ring-4 ring-[#dff67a]/60' : ''} ${leafNode && node.id !== rootNodeId ? 'cursor-default opacity-90' : ''}`}
+                  } ${active ? 'ring-4 ring-[#dff67a]/60' : ''} ${relatedActive ? 'ring-2 ring-[#8eb9a5]/45' : ''} ${leafNode && node.id !== rootNodeId ? 'cursor-default opacity-90' : ''}`}
                   style={{ left: `${node.x}%`, top: `${node.y}%`, fontSize: `${Math.min(14, 10 + node.weight * 0.35)}px` }}
                 >
                   {node.label}

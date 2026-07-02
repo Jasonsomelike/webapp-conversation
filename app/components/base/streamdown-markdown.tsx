@@ -9,6 +9,7 @@ import {
   isDownloadableAsset,
   normalizeAssistantMarkdown,
   toAbsoluteDifyAssetUrl,
+  toBrowserImageFallbackUrl,
   toDifyAssetProxyUrl,
 } from '@/lib/dify-assets'
 import { isNetworkStudyApp } from '@/lib/native-app'
@@ -52,6 +53,7 @@ interface MarkdownImageProps extends ImgHTMLAttributes<HTMLImageElement> {
 const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) => {
   const [preview, setPreview] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [useDirectImage, setUseDirectImage] = useState(false)
   const [sourceInfo, setSourceInfo] = useState<{
     referenceId?: string
     previewUrl?: string
@@ -61,6 +63,8 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   const sourceUrl = String(src)
   const absoluteSourceUrl = toAbsoluteDifyAssetUrl(sourceUrl)
   const imageUrl = toSharedAssetProxyUrl(sourceUrl, shareToken)
+  const directImageUrl = toBrowserImageFallbackUrl(sourceUrl)
+  const renderedImageUrl = useDirectImage && directImageUrl ? directImageUrl : imageUrl
 
   const isPdfPageImage = /\/page-images\/[^/]+\/page_(\d+)\.(?:jpe?g|png|webp)(?:[?#].*)?$/i.test(absoluteSourceUrl || sourceUrl)
   const isInlineKnowledgeIllustration = Boolean((absoluteSourceUrl || sourceUrl).includes('/page-images/') && !isPdfPageImage)
@@ -79,7 +83,7 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   const showOriginalLink = !isGeneratedImage
   const sourceHref = isKnowledgeSource
     ? sourceInfo?.previewUrl || `/api/sources/image-info?redirect=1&url=${encodeURIComponent(absoluteSourceUrl)}`
-    : imageUrl
+    : directImageUrl || imageUrl
   const disableNativeGeneratedPreview = isGeneratedImage && isNetworkStudyApp()
   const openPreview = () => {
     if (disableNativeGeneratedPreview)
@@ -87,7 +91,7 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
     if (isNetworkStudyApp())
     { setPreview(true) }
     else
-    { window.open(imageUrl, '_blank', 'noopener,noreferrer') }
+    { window.open(renderedImageUrl, '_blank', 'noopener,noreferrer') }
   }
   const getReturnContext = (element?: HTMLElement | null) => {
     if (typeof window === 'undefined')
@@ -143,6 +147,11 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   }
 
   useEffect(() => {
+    setFailed(false)
+    setUseDirectImage(false)
+  }, [sourceUrl, shareToken])
+
+  useEffect(() => {
     if (!isPdfPageImage)
     { return }
     let cancelled = false
@@ -167,14 +176,17 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
     }
   }, [absoluteSourceUrl, isPdfPageImage])
 
-  if (!imageUrl)
+  if (!renderedImageUrl)
   { return null }
 
   if (failed) {
     return (
       <span className='markdown-media-error'>
         <span>{sourceLabel} · 图片加载失败</span>
-        <button type='button' onClick={() => setFailed(false)}>重试</button>
+        <button type='button' onClick={() => {
+          setFailed(false)
+          setUseDirectImage(false)
+        }}>重试</button>
         {showOriginalLink && !isInlineKnowledgeIllustration && (
           <a href={sourceHrefWithReturn()} onClick={(event) => {
             rememberReturnPosition(event.currentTarget)
@@ -200,7 +212,18 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
             { openPreview() }
           }}
         >
-          <img src={imageUrl} alt={alt} loading='lazy' onError={() => setFailed(true)} />
+          <img
+            src={renderedImageUrl}
+            alt={alt}
+            loading='lazy'
+            onError={() => {
+              if (!useDirectImage && directImageUrl && directImageUrl !== renderedImageUrl) {
+                setUseDirectImage(true)
+                return
+              }
+              setFailed(true)
+            }}
+          />
           {!disableNativeGeneratedPreview && (
             <span className='pointer-events-none absolute inset-x-0 bottom-0 translate-y-full bg-black/65 px-3 py-2 text-[11px] text-white transition-transform group-hover:translate-y-0'>
               点击放大查看
@@ -228,7 +251,7 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
           </figcaption>
         )}
       </figure>
-      {preview && <ImagePreview url={imageUrl} onCancel={() => setPreview(false)} />}
+      {preview && <ImagePreview url={renderedImageUrl} onCancel={() => setPreview(false)} />}
     </>
   )
 }

@@ -14,7 +14,7 @@ import {
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
 import type { KnowledgeReference } from '@/lib/learning-types'
-import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
+import { toBrowserImageFallbackUrl, toDifyAssetProxyUrl } from '@/lib/dify-assets'
 import ImagePreview from '@/app/components/base/image-uploader/image-preview'
 import { ResizableSplitHandle, useResizableSplit } from '@/app/components/base/resizable-split'
 
@@ -27,6 +27,25 @@ const isPdfPageImageUrl = (value?: string | null) =>
 const inferOriginalPdfPageFromQuote = (value?: string | null) =>
   Number(String(value || '').match(/原\s*PDF\s*第\s*(\d{1,5})\s*页/i)?.[1] || 0) || undefined
 
+const isSourceOnlyQuote = (value?: string | null) => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (!text)
+  { return true }
+
+  const stripped = text
+    .replace(/来源文件\s*[:：]\s*.+?(?=\s*来源页码\s*[:：]|$)/gi, '')
+    .replace(/来源页码\s*[:：]\s*(?:原\s*PDF\s*)?第?\s*\d{1,5}\s*页(?:\s*[（(][^)）]*[）)])?/gi, '')
+    .replace(/PDF\s*第\s*\d{1,5}\s*页/gi, '')
+    .replace(/[，,。.;；:\s\-—–()（）·、]/g, '')
+    .trim()
+
+  return stripped.length < 8
+}
+
+const isInlineIllustrationOnlyReference = (item: KnowledgeReference) =>
+  isSourceOnlyQuote(item.quote)
+  && Boolean(item.pageImageUrl || !item.documentId || !item.score || item.score <= 0)
+
 interface SourcesViewProps {
   initialReferences: KnowledgeReference[]
   loadError?: string
@@ -36,7 +55,7 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
   const safeReferences = useMemo(
     () => initialReferences.filter((item): item is KnowledgeReference =>
       Boolean(item && typeof item === 'object' && item.id && item.documentName),
-    ),
+    ).filter(item => !isInlineIllustrationOnlyReference(item)),
     [initialReferences],
   )
   const [query, setQuery] = useState('')
@@ -69,10 +88,13 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
     ? `/sources/preview/${selected.id}?page=${selectedPreviewPage}&filename=${encodeURIComponent(selected.documentName)}&returnTo=${encodeURIComponent('/sources')}`
     : ''
   const documentDownloadUrl = selected
-    ? `/api/sources/${selected.id}/file?proxy=1&disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`
+    ? `/api/sources/${selected.id}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`
     : ''
   const pageImageHref = selectedHasPdfPageImage && selected?.pageImageUrl
     ? toDifyAssetProxyUrl(selected.pageImageUrl)
+    : ''
+  const pageImageRawHref = selectedHasPdfPageImage && selected?.pageImageUrl
+    ? toBrowserImageFallbackUrl(selected.pageImageUrl)
     : ''
 
   useEffect(() => {
@@ -183,14 +205,20 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
           <button
             type="button"
             className="block w-full cursor-zoom-in overflow-hidden rounded-xl"
-            onClick={() => setPreviewImageUrl(pageImageHref)}
+            onClick={() => setPreviewImageUrl(pageImageRawHref || pageImageHref)}
             aria-label="放大来源页图片"
           >
             <img
               src={pageImageHref}
               alt={`${selected.documentName} 来源页`}
               loading="lazy"
-              onError={() => setImageError(true)}
+              onError={(event) => {
+                if (pageImageRawHref && event.currentTarget.src !== pageImageRawHref) {
+                  event.currentTarget.src = pageImageRawHref
+                  return
+                }
+                setImageError(true)
+              }}
               className={`w-full rounded-xl object-contain transition-transform duration-200 group-hover:scale-[1.01] ${mobile ? 'max-h-[34dvh]' : 'max-h-[240px]'}`}
             />
           </button>

@@ -66,6 +66,41 @@ export const toDifyAssetProxyUrl = (value: string, download = false, filename = 
   }
 }
 
+const unwrapDifyAssetProxyUrl = (value: string) => {
+  try {
+    const parsed = new URL(value, 'https://www.jasonsome.cn')
+    if (parsed.pathname === '/api/dify/file-proxy')
+    { return parsed.searchParams.get('url') || value }
+  }
+  catch {
+    // Keep the already usable value.
+  }
+  return value
+}
+
+export const toBrowserImageFallbackUrl = (value: string) => {
+  const url = toAbsoluteDifyAssetUrl(unwrapDifyAssetProxyUrl(value))
+  if (!url || !imageExtension.test(url))
+  { return '' }
+
+  try {
+    const target = new URL(url)
+    if (
+      !['http:', 'https:'].includes(target.protocol)
+      || !difyAssetHosts.has(target.hostname)
+      || (target.hostname === 'dify.jasonsome.cn' && target.port && target.port !== '22380')
+      || (!target.pathname.startsWith('/files/') && !target.pathname.startsWith('/page-images/'))
+    )
+    { return '' }
+
+    target.protocol = 'https:'
+    return target.toString()
+  }
+  catch {
+    return ''
+  }
+}
+
 const currentChinaDate = () => new Intl.DateTimeFormat('zh-CN', {
   timeZone: 'Asia/Shanghai',
   year: 'numeric',
