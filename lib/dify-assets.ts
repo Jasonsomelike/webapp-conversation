@@ -47,7 +47,7 @@ export const toDifyAssetProxyUrl = (value: string, download = false, filename = 
   try {
     const target = new URL(url)
     if (
-      target.protocol !== 'https:'
+      !['http:', 'https:'].includes(target.protocol)
       || !difyAssetHosts.has(target.hostname)
       || (target.hostname === 'dify.jasonsome.cn' && target.port && target.port !== '22380')
       || (!target.pathname.startsWith('/files/') && !target.pathname.startsWith('/page-images/'))

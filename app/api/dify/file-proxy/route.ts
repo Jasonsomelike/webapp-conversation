@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
   }
 
   const uploadedPreview = target.pathname.match(uploadedFilePreviewPattern)
-  const allowed = target.protocol === 'https:'
+  const allowed = ['http:', 'https:'].includes(target.protocol)
     && allowedHosts.has(target.hostname)
     && (target.hostname !== 'dify.jasonsome.cn' || !target.port || target.port === '22380')
     && (allowedPaths.some(path => target.pathname.startsWith(path)) || Boolean(uploadedPreview))

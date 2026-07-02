@@ -172,7 +172,7 @@ export async function GET(
     return new Response('Invalid url', { status: 400, headers: { 'X-Request-Id': requestId } })
   }
 
-  const allowed = target.protocol === 'https:'
+  const allowed = ['http:', 'https:'].includes(target.protocol)
     && allowedHosts.has(target.hostname)
     && (target.hostname !== 'dify.jasonsome.cn' || !target.port || target.port === '22380')
     && allowedPaths.some(path => target.pathname.startsWith(path))

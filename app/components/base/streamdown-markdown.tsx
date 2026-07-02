@@ -27,7 +27,7 @@ const toSharedAssetProxyUrl = (value: string, shareToken?: string, download = fa
   { return '' }
   try {
     const target = new URL(url)
-    const isDifyAsset = target.protocol === 'https:'
+    const isDifyAsset = ['http:', 'https:'].includes(target.protocol)
       && ['dify.jasonsome.cn', 'www.jasonsome.cn', 'jasonsome.cn'].includes(target.hostname)
       && (target.hostname !== 'dify.jasonsome.cn' || !target.port || target.port === '22380')
       && (target.pathname.startsWith('/files/') || target.pathname.startsWith('/page-images/'))

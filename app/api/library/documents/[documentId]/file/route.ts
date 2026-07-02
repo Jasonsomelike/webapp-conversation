@@ -11,6 +11,7 @@ import { getSessionFromRequest } from '@/lib/session'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
+const libraryChunkSize = 512 * 1024
 
 const dispositionHeader = (mode: 'inline' | 'attachment', filename: string) =>
   `${mode}; filename*=UTF-8''${encodeURIComponent(filename.replace(/["\r\n]/g, '_'))}`
@@ -170,24 +171,81 @@ const fetchLibraryFileService = async ({
   const url = new URL(`${baseUrl}/library/documents/${encodeURIComponent(documentId)}/file`)
   url.searchParams.set('disposition', disposition)
   url.searchParams.set('filename', filename)
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(new Error('LIBRARY_FILE_SERVICE_TIMEOUT')), 30_000)
-  try {
-    return await fetch(url, {
-      cache: 'no-store',
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: {
-        'X-Internal-Token': token,
-        'X-Request-Id': requestId,
-        ...(range ? { Range: range } : {}),
-      },
-    })
+  const fetchRange = async (rangeHeader: string | null) => {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(new Error('LIBRARY_FILE_SERVICE_TIMEOUT')), 30_000)
+    try {
+      return await fetch(url, {
+        cache: 'no-store',
+        redirect: 'follow',
+        signal: controller.signal,
+        headers: {
+          'X-Internal-Token': token,
+          'X-Request-Id': requestId,
+          ...(rangeHeader ? { Range: rangeHeader } : {}),
+        },
+      })
+    }
+    finally {
+      clearTimeout(timeout)
+    }
   }
-  finally {
-    clearTimeout(timeout)
-  }
+
+  if (range)
+  { return await fetchRange(range) }
+
+  const firstRange = `bytes=0-${libraryChunkSize - 1}`
+  const firstResponse = await fetchRange(firstRange)
+  const contentRange = firstResponse.headers.get('Content-Range') || ''
+  const matched = contentRange.match(/^bytes\s+(\d+)-(\d+)\/(\d+)$/i)
+  if (!firstResponse.ok || !firstResponse.body || !matched)
+  { return firstResponse }
+
+  const firstStart = Number(matched[1])
+  const firstEnd = Number(matched[2])
+  const totalSize = Number(matched[3])
+  if (firstStart !== 0 || !Number.isFinite(firstEnd) || !Number.isFinite(totalSize) || totalSize <= 0)
+  { return firstResponse }
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        controller.enqueue(new Uint8Array(await firstResponse.arrayBuffer()))
+        for (let start = firstEnd + 1; start < totalSize; start += libraryChunkSize) {
+          const end = Math.min(totalSize - 1, start + libraryChunkSize - 1)
+          const response = await fetchRange(`bytes=${start}-${end}`)
+          if (!response.ok || !response.body)
+          { throw new Error(`LIBRARY_FILE_SERVICE_RANGE_FAILED:${response.status}:${start}-${end}`) }
+          controller.enqueue(new Uint8Array(await response.arrayBuffer()))
+        }
+        controller.close()
+      }
+      catch (error) {
+        controller.error(error)
+      }
+    },
+  })
+
+  const headers = new Headers({
+    'Content-Type': firstResponse.headers.get('Content-Type') || 'application/pdf',
+    'Content-Disposition': dispositionHeader(disposition, filename),
+    'Content-Length': String(totalSize),
+    'Cache-Control': 'private, max-age=600, stale-while-revalidate=1800',
+    'Accept-Ranges': 'bytes',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Request-Id': requestId,
+    'X-Library-File-Source': 'server-file-service-ranged-full',
+  })
+  ;['ETag', 'Last-Modified'].forEach(name => copyHeader(firstResponse.headers, headers, name))
+  return new Response(stream, { status: 200, headers })
 }
+
+const fetchDifySignedFile = async (signedUrl: string, range: string | null) =>
+  await fetch(signedUrl, {
+    cache: 'no-store',
+    redirect: 'follow',
+    headers: range ? { Range: range } : undefined,
+  })
 
 const signedLibraryFileRedirect = ({
   documentId,
@@ -248,7 +306,6 @@ export async function GET(
   const matchedDocument = await findKnowledgeDocumentByName(filename, documentId).catch(() => null)
   const resolvedDocumentId = matchedDocument?.id || documentId
   const requestRange = request.headers.get('range')
-  const previewRange = disposition === 'inline' && !requestRange ? 'bytes=0-262143' : requestRange
 
   if (request.nextUrl.searchParams.get('proxy') !== '1') {
     const directRedirect = signedLibraryFileRedirect({
@@ -268,7 +325,7 @@ export async function GET(
       disposition,
       filename,
       requestId,
-      range: previewRange,
+      range: requestRange,
     })
     if (serviceResponse.ok && serviceResponse.body)
     { return streamedResponse(serviceResponse, disposition, filename, requestId, 'server-file-service') }
@@ -282,11 +339,7 @@ export async function GET(
 
   try {
     const signedUrl = await getKnowledgeDocumentDownloadUrl(resolvedDocumentId)
-    const upstream = await fetch(signedUrl, {
-      cache: 'no-store',
-      redirect: 'follow',
-      headers: previewRange ? { Range: previewRange } : undefined,
-    })
+    const upstream = await fetchDifySignedFile(signedUrl, requestRange)
     if (!upstream.ok || !upstream.body)
     { throw new Error(`DIFY_DOCUMENT_FILE_UNAVAILABLE:${upstream.status}`) }
 
