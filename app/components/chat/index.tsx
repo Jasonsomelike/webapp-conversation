@@ -400,9 +400,9 @@ const Chat: FC<IChatProps> = ({
   }, { dependencies: [canSend, isResponding, isSending], scope: composerRef, revertOnUpdate: true })
 
   return (
-    <div className={cn(!feedbackDisabled && 'px-1 sm:px-3.5', 'flex h-full min-h-0 flex-col')}>
+    <div className={cn(!feedbackDisabled && 'px-1 sm:px-2.5 lg:px-3', 'flex h-full min-h-0 flex-col')}>
       {/* Chat List */}
-      <div ref={scrollContainerRef} className="min-h-0 flex-1 space-y-[30px] overflow-x-hidden overflow-y-auto overscroll-contain pb-4 pt-2">
+      <div ref={scrollContainerRef} className="min-h-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto overscroll-contain pb-3 pt-1 sm:space-y-6 sm:pb-4 sm:pt-2">
         {chatList.map((item) => {
           if (item.isAnswer) {
             const isLast = item.id === chatList[chatList.length - 1].id
@@ -439,7 +439,7 @@ const Chat: FC<IChatProps> = ({
       </div>
       {
         !isHideSendInput && (
-          <div className='z-10 mx-auto w-full max-w-[720px] shrink-0 bg-gradient-to-t from-[var(--studio-chat-surface)] via-[var(--studio-chat-surface)] to-transparent px-4 pb-[calc(10px+env(safe-area-inset-bottom))] pt-2 sm:px-5 sm:pb-4 sm:pt-3'>
+          <div className='z-10 mx-auto w-full max-w-[920px] shrink-0 bg-gradient-to-t from-[var(--studio-chat-surface)] via-[var(--studio-chat-surface)] to-transparent px-3 pb-[calc(10px+env(safe-area-inset-bottom))] pt-2 sm:px-4 sm:pb-4 sm:pt-3'>
             <div
               ref={composerRef}
               className='chat-composer max-h-[230px] overflow-y-auto rounded-[22px] border border-[#17342b]/15 bg-white px-2.5 py-2 shadow-[0_14px_36px_rgba(35,55,47,.13)] transition-[border-color,box-shadow] duration-200 focus-within:border-[var(--studio-accent-strong)]/35 focus-within:shadow-[0_18px_44px_rgba(35,55,47,.18)]'

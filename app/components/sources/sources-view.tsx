@@ -48,6 +48,7 @@ type MergedKnowledgeReference = KnowledgeReference & {
   hitCount: number
   mergedIds: string[]
   mergedQuotes: string[]
+  mergedPageNumbers: number[]
 }
 
 const normalizeReferenceKeyPart = (value?: string | null) =>
@@ -63,16 +64,23 @@ const canonicalReferencePage = (item: KnowledgeReference) =>
   || 0
 
 const canonicalReferenceKey = (item: KnowledgeReference) => {
-  const pageImageKey = String(item.pageImageUrl || '').match(/\/page-images\/[^/]+\/page_\d+\.(?:jpe?g|png|webp)/i)?.[0] || ''
-  const page = canonicalReferencePage(item)
-  const documentKey = normalizeReferenceKeyPart(item.documentId || item.documentName)
-  const fallbackQuoteKey = page ? '' : normalizeReferenceKeyPart(item.quote).slice(0, 80)
+  // Dify re-indexing may change document_id while the human-visible source
+  // filename remains the same. Group the user's reference list by document
+  // name first so one PDF does not split into multiple cards after re-index.
+  const documentKey = normalizeReferenceKeyPart(item.documentName || item.documentId)
+  const datasetKey = normalizeReferenceKeyPart(item.datasetName)
+  return `${datasetKey}|${documentKey}`
+}
 
-  return [
-    documentKey,
-    pageImageKey || `page:${page || 'unknown'}`,
-    fallbackQuoteKey,
-  ].join('|')
+const mergePageNumbers = (left: number[], right: number[]) =>
+  [...new Set([...left, ...right].filter(page => Number.isFinite(page) && page > 0))]
+    .sort((a, b) => a - b)
+
+const formatMergedPages = (pages: number[], limit = 4) => {
+  if (!pages.length)
+  { return '未标注页码' }
+  const visible = pages.slice(0, limit).join('、')
+  return pages.length > limit ? `第 ${visible} 页等 ${pages.length} 页` : `第 ${visible} 页`
 }
 
 const mergeSameReferences = (references: KnowledgeReference[]): MergedKnowledgeReference[] => {
@@ -82,15 +90,18 @@ const mergeSameReferences = (references: KnowledgeReference[]): MergedKnowledgeR
     const key = canonicalReferenceKey(item)
     const existing = groups.get(key)
     if (!existing) {
+      const page = canonicalReferencePage(item)
       groups.set(key, {
         ...item,
         hitCount: 1,
         mergedIds: [item.id],
         mergedQuotes: item.quote ? [item.quote] : [],
+        mergedPageNumbers: page ? [page] : [],
       })
       return
     }
 
+    const page = canonicalReferencePage(item)
     const quotes = item.quote && !existing.mergedQuotes.includes(item.quote)
       ? [...existing.mergedQuotes, item.quote]
       : existing.mergedQuotes
@@ -100,6 +111,7 @@ const mergeSameReferences = (references: KnowledgeReference[]): MergedKnowledgeR
       hitCount: existing.hitCount + 1,
       mergedIds: [...existing.mergedIds, item.id],
       mergedQuotes: quotes,
+      mergedPageNumbers: mergePageNumbers(existing.mergedPageNumbers, page ? [page] : []),
       quote: existing.quote || item.quote,
       conversationId: existing.conversationId || item.conversationId,
       messageId: existing.messageId || item.messageId,
@@ -157,7 +169,7 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
   const selected = mergedReferences.find(item => item.id === selectedId) || filtered[0]
   const documentCount = new Set(safeReferences.map(item => item.documentName)).size
   const selectedPreviewPage = selected
-    ? inferPageFromImageUrl(selected.pageImageUrl) || selected.pageNumber || selected.originalPageNumber || 1
+    ? selected.mergedPageNumbers[0] || inferPageFromImageUrl(selected.pageImageUrl) || selected.pageNumber || selected.originalPageNumber || 1
     : 1
   const originalPageNumber = inferOriginalPdfPageFromQuote(selected?.quote)
   const selectedHasPdfPageImage = isPdfPageImageUrl(selected?.pageImageUrl)
@@ -207,7 +219,7 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
       ['文档名', '分卷页码', '原 PDF 页码', '相关度', '引用片段'],
       ...filtered.map(item => [
         item.documentName,
-        String(item.pageNumber || ''),
+        item.mergedPageNumbers.join(' / '),
         String(inferOriginalPdfPageFromQuote(item.quote) || ''),
         String(item.score || ''),
         item.hitCount > 1 ? `命中 ${item.hitCount} 次；${item.mergedQuotes.join(' / ')}` : item.quote || '',
@@ -317,6 +329,9 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
           <span className="rounded-full bg-[var(--studio-accent)]/35 px-3 py-1.5 font-semibold text-[var(--studio-accent-strong)]">{selected.topic}</span>
           {selectedPreviewPage && <span className="rounded-full bg-black/[0.04] px-3 py-1.5">PDF 第 {selectedPreviewPage} 页</span>}
           {selected.hitCount > 1 && <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">命中 {selected.hitCount} 次</span>}
+          {selected.mergedPageNumbers.length > 1 && (
+            <span className="rounded-full bg-sky-50 px-3 py-1.5 text-sky-700">{formatMergedPages(selected.mergedPageNumbers, 6)}</span>
+          )}
           {originalPageNumber && (
             <span className="rounded-full bg-orange-50 px-3 py-1.5 text-orange-700">原书映射第 {originalPageNumber} 页</span>
           )}
@@ -448,7 +463,7 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
                     >
                       <div className="line-clamp-2 text-xs font-semibold leading-5">{item.documentName}</div>
                       <div className="mt-2 flex items-center justify-between text-[10px] text-black/40">
-                        <span>{inferPageFromImageUrl(item.pageImageUrl) || item.pageNumber ? `第 ${inferPageFromImageUrl(item.pageImageUrl) || item.pageNumber} 页` : '未标注页码'}</span>
+                        <span>{formatMergedPages(item.mergedPageNumbers, 3)}</span>
                         <span>{item.hitCount > 1 ? `命中 ${item.hitCount} 次` : item.score ? `${Math.round(item.score * 100)}%` : '—'}</span>
                       </div>
                       <p className="mt-2 line-clamp-2 break-words text-[11px] leading-5 text-black/45 [overflow-wrap:anywhere]">{item.quote}</p>

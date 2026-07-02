@@ -33,6 +33,8 @@ export default async function SourcePdfPreviewPage({
   const pageImageUrl = reference?.pageImageUrl && /\/page_\d+\.(?:jpe?g|png|webp)(?:[?#].*)?$/i.test(reference.pageImageUrl)
     ? reference.pageImageUrl
     : ''
+  const isPdfSource = /\.pdf(?:[?#].*)?$/i.test(filename)
+  const shouldUsePageImageFallback = Boolean(pageImageUrl && !isPdfSource && !resolvedDocumentId)
   const encodedFilename = encodeURIComponent(filename)
   const sourceUrl = resolvedDocumentId
     ? `/api/library/documents/${encodeURIComponent(resolvedDocumentId)}/file?disposition=inline&page=${page}&filename=${encodedFilename}`
@@ -47,7 +49,7 @@ export default async function SourcePdfPreviewPage({
       initialPage={page}
       sourceUrl={sourceUrl}
       downloadUrl={downloadUrl}
-      pageImageUrl={pageImageUrl ? toDifyAssetProxyUrl(pageImageUrl) : undefined}
+      pageImageUrl={shouldUsePageImageFallback ? toDifyAssetProxyUrl(pageImageUrl) : undefined}
       backHref={query.returnTo?.startsWith('/') ? query.returnTo : '/sources'}
     />
   )

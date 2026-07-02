@@ -1787,7 +1787,7 @@ const Main: FC<IMainProps> = () => {
 
               {
                 hasSetInputs && (
-                  <div className='relative mx-auto flex min-h-0 w-full max-w-[980px] flex-1 flex-col pb-1 pt-1 sm:pb-3 sm:pt-2'>
+                  <div className='relative mx-auto flex min-h-0 w-full max-w-[1180px] flex-1 flex-col pb-1 pt-1 sm:pb-3 sm:pt-2'>
                     <Chat
                       chatList={chatList}
                       onSend={handleSend}
