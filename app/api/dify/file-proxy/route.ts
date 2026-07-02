@@ -111,14 +111,18 @@ export async function GET(request: NextRequest) {
         { return streamUpstreamFile(upstream, filename, shouldDownload, requestId, 'signed-page-image-proxy') }
 
         const body = await upstream.text().catch(() => '')
-        return new Response(
-          `Unable to proxy page image. Upstream status=${upstream.status}. ${body.slice(0, 500)}`,
-          { status: upstream.status || 502, headers: { 'X-Request-Id': requestId } },
-        )
+        console.warn('[dify-file-proxy] signed page image failed, falling back to raw asset url', {
+          requestId,
+          status: upstream.status,
+          body: body.slice(0, 300),
+        })
       }
       catch (error) {
         const message = error instanceof Error ? error.message : 'network error'
-        return new Response(`Unable to proxy page image. ${message}`, { status: 502, headers: { 'X-Request-Id': requestId } })
+        console.warn('[dify-file-proxy] signed page image fetch failed, falling back to raw asset url', {
+          requestId,
+          message,
+        })
       }
     }
   }
