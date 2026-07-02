@@ -211,13 +211,14 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
           ))}
         </div>
       </PageCard>
-      {conversationUser && (
+      {portalReady && conversationUser && createPortal(
         <AdminUserConversations
           userId={conversationUser.id}
           displayName={conversationUser.displayName}
           username={conversationUser.username}
           onClose={() => setConversationUser(undefined)}
-        />
+        />,
+        document.body,
       )}
       {portalReady && deleteTarget && createPortal(
         <div

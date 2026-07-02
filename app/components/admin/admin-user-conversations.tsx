@@ -120,12 +120,26 @@ export default function AdminUserConversations({
   }, [selectedId, userId])
 
   return (
-    <div className="fixed inset-0 z-[90] grid place-items-center overflow-hidden bg-black/45 p-4 backdrop-blur-sm sm:p-6">
-      <div className="flex h-[min(88dvh,900px)] w-full max-w-[1500px] flex-col overflow-hidden rounded-[28px] bg-[var(--studio-surface)] shadow-2xl">
+    <div
+      role="presentation"
+      className="fixed inset-0 z-[9999] grid place-items-center overflow-hidden bg-black/50 px-3 py-[calc(16px+env(safe-area-inset-top))] backdrop-blur-[3px] sm:px-4"
+      onClick={onClose}
+      onWheel={event => event.preventDefault()}
+      onTouchMove={event => event.preventDefault()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="admin-user-conversations-title"
+        className="flex h-[min(86dvh,820px)] w-full max-w-[1180px] flex-col overflow-hidden rounded-[28px] border border-black/[0.08] bg-[var(--studio-surface)] shadow-[0_30px_90px_rgba(0,0,0,.34)]"
+        onClick={event => event.stopPropagation()}
+        onWheel={event => event.stopPropagation()}
+        onTouchMove={event => event.stopPropagation()}
+      >
         <header className="flex h-16 shrink-0 items-center gap-3 border-b border-black/10 px-4 sm:px-6">
           <ChatBubbleLeftRightIcon className="h-5 w-5 text-[var(--studio-accent-strong)]" />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold">{displayName} 的对话记录</div>
+            <div id="admin-user-conversations-title" className="truncate text-sm font-semibold">{displayName} 的对话记录</div>
             <div className="text-[10px] text-black/40">@{username}</div>
           </div>
           <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl border border-black/10" aria-label="关闭">

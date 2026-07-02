@@ -42,9 +42,20 @@ const isSourceOnlyQuote = (value?: string | null) => {
   return stripped.length < 8
 }
 
+const documentFilePattern = /\.(?:docx?|md|pdf|pptx?|txt|xlsx?)$/i
+
 const isInlineIllustrationOnlyReference = (item: KnowledgeReference) =>
   isSourceOnlyQuote(item.quote)
-  && Boolean(item.pageImageUrl || !item.documentId || !item.score || item.score <= 0)
+  && (
+    // OCR/inline illustration snippets are stored under page-images too, but
+    // they do not represent a full PDF page and should not occupy the user's
+    // "我的文档引用" list.
+    Boolean(item.pageImageUrl && !isPdfPageImageUrl(item.pageImageUrl))
+    // Keep real PDF/document references even if the quote only contains a
+    // generated "来源文件/来源页码" line. Those are valid citations recovered
+    // from chat answers after the Dify re-index.
+    || (!documentFilePattern.test(item.documentName || '') && !item.documentId)
+  )
 
 interface SourcesViewProps {
   initialReferences: KnowledgeReference[]
