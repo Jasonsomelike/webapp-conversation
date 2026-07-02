@@ -967,8 +967,24 @@ def chat_messages():
                 completed = True
                 stream_queue.put(("done", None))
             except Exception as error:
-                logger.exception("[chat-relay] upstream stream failed requestId=%s", request_id)
-                stream_queue.put(("error", str(error)))
+                has_useful_stream = bool(
+                    state.get("messageId")
+                    or state.get("answer")
+                    or state.get("metadata")
+                    or state.get("workflowProcess")
+                )
+                if has_useful_stream:
+                    completed = True
+                    logger.warning(
+                        "[chat-relay] upstream stream ended unexpectedly after useful events requestId=%s error=%s",
+                        request_id,
+                        type(error).__name__,
+                        exc_info=True,
+                    )
+                    stream_queue.put(("done", None))
+                else:
+                    logger.exception("[chat-relay] upstream stream failed requestId=%s", request_id)
+                    stream_queue.put(("error", str(error)))
             finally:
                 upstream.close()
 

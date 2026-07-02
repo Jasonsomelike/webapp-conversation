@@ -44,6 +44,71 @@ const isSourceOnlyQuote = (value?: string | null) => {
 
 const documentFilePattern = /\.(?:docx?|md|pdf|pptx?|txt|xlsx?)$/i
 
+type MergedKnowledgeReference = KnowledgeReference & {
+  hitCount: number
+  mergedIds: string[]
+  mergedQuotes: string[]
+}
+
+const normalizeReferenceKeyPart = (value?: string | null) =>
+  String(value || '')
+    .normalize('NFKC')
+    .replace(/\s+/g, '')
+    .toLowerCase()
+
+const canonicalReferencePage = (item: KnowledgeReference) =>
+  inferPageFromImageUrl(item.pageImageUrl)
+  || item.pageNumber
+  || item.originalPageNumber
+  || 0
+
+const canonicalReferenceKey = (item: KnowledgeReference) => {
+  const pageImageKey = String(item.pageImageUrl || '').match(/\/page-images\/[^/]+\/page_\d+\.(?:jpe?g|png|webp)/i)?.[0] || ''
+  const page = canonicalReferencePage(item)
+  const documentKey = normalizeReferenceKeyPart(item.documentId || item.documentName)
+  const fallbackQuoteKey = page ? '' : normalizeReferenceKeyPart(item.quote).slice(0, 80)
+
+  return [
+    documentKey,
+    pageImageKey || `page:${page || 'unknown'}`,
+    fallbackQuoteKey,
+  ].join('|')
+}
+
+const mergeSameReferences = (references: KnowledgeReference[]): MergedKnowledgeReference[] => {
+  const groups = new Map<string, MergedKnowledgeReference>()
+
+  references.forEach((item) => {
+    const key = canonicalReferenceKey(item)
+    const existing = groups.get(key)
+    if (!existing) {
+      groups.set(key, {
+        ...item,
+        hitCount: 1,
+        mergedIds: [item.id],
+        mergedQuotes: item.quote ? [item.quote] : [],
+      })
+      return
+    }
+
+    const quotes = item.quote && !existing.mergedQuotes.includes(item.quote)
+      ? [...existing.mergedQuotes, item.quote]
+      : existing.mergedQuotes
+    groups.set(key, {
+      ...existing,
+      score: Math.max(existing.score || 0, item.score || 0) || undefined,
+      hitCount: existing.hitCount + 1,
+      mergedIds: [...existing.mergedIds, item.id],
+      mergedQuotes: quotes,
+      quote: existing.quote || item.quote,
+      conversationId: existing.conversationId || item.conversationId,
+      messageId: existing.messageId || item.messageId,
+    })
+  })
+
+  return [...groups.values()]
+}
+
 const isInlineIllustrationOnlyReference = (item: KnowledgeReference) =>
   isSourceOnlyQuote(item.quote)
   && (
@@ -69,8 +134,9 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
     ).filter(item => !isInlineIllustrationOnlyReference(item)),
     [initialReferences],
   )
+  const mergedReferences = useMemo(() => mergeSameReferences(safeReferences), [safeReferences])
   const [query, setQuery] = useState('')
-  const [selectedId, setSelectedId] = useState(safeReferences[0]?.id)
+  const [selectedId, setSelectedId] = useState(mergedReferences[0]?.id)
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
   const [previewImageUrl, setPreviewImageUrl] = useState('')
   const [showLoadError, setShowLoadError] = useState(Boolean(loadError))
@@ -85,10 +151,10 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
   })
 
   const [imageError, setImageError] = useState(false)
-  const filtered = useMemo(() => safeReferences.filter(item =>
-    `${item.documentName} ${item.topic} ${item.quote}`.toLowerCase().includes(query.toLowerCase()),
-  ), [query, safeReferences])
-  const selected = safeReferences.find(item => item.id === selectedId) || filtered[0]
+  const filtered = useMemo(() => mergedReferences.filter(item =>
+    `${item.documentName} ${item.topic} ${item.quote} ${item.mergedQuotes.join(' ')}`.toLowerCase().includes(query.toLowerCase()),
+  ), [query, mergedReferences])
+  const selected = mergedReferences.find(item => item.id === selectedId) || filtered[0]
   const documentCount = new Set(safeReferences.map(item => item.documentName)).size
   const selectedPreviewPage = selected
     ? inferPageFromImageUrl(selected.pageImageUrl) || selected.pageNumber || selected.originalPageNumber || 1
@@ -115,10 +181,10 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
     setShowLoadError(Boolean(loadError))
   }, [loadError])
   useEffect(() => {
-    if (selectedId && safeReferences.some(item => item.id === selectedId))
+    if (selectedId && mergedReferences.some(item => item.id === selectedId))
     { return }
-    setSelectedId(safeReferences[0]?.id)
-  }, [safeReferences, selectedId])
+    setSelectedId(mergedReferences[0]?.id)
+  }, [mergedReferences, selectedId])
   useEffect(() => {
     if (!mobileDetailOpen)
     { return }
@@ -136,10 +202,6 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
       window.NetworkStudyApp?.setShellState('/sources', '我的文档引用', '可追溯学习')
     }
   }, [mobileDetailOpen])
-  const averageScore = safeReferences.length
-    ? Math.round(safeReferences.reduce((sum, item) => sum + (item.score || 0), 0) / safeReferences.length * 100)
-    : 0
-
   const exportReferences = () => {
     const rows = [
       ['文档名', '分卷页码', '原 PDF 页码', '相关度', '引用片段'],
@@ -148,7 +210,7 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
         String(item.pageNumber || ''),
         String(inferOriginalPdfPageFromQuote(item.quote) || ''),
         String(item.score || ''),
-        item.quote || '',
+        item.hitCount > 1 ? `命中 ${item.hitCount} 次；${item.mergedQuotes.join(' / ')}` : item.quote || '',
       ]),
     ]
     const csv = rows.map(row => row.map(value => `"${value.replaceAll('"', '""')}"`).join(',')).join('\n')
@@ -254,6 +316,7 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
         <div className="flex flex-wrap gap-2 text-[10px]">
           <span className="rounded-full bg-[var(--studio-accent)]/35 px-3 py-1.5 font-semibold text-[var(--studio-accent-strong)]">{selected.topic}</span>
           {selectedPreviewPage && <span className="rounded-full bg-black/[0.04] px-3 py-1.5">PDF 第 {selectedPreviewPage} 页</span>}
+          {selected.hitCount > 1 && <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">命中 {selected.hitCount} 次</span>}
           {originalPageNumber && (
             <span className="rounded-full bg-orange-50 px-3 py-1.5 text-orange-700">原书映射第 {originalPageNumber} 页</span>
           )}
@@ -263,7 +326,14 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
         {sourcePreview}
         <div className={`mt-5 rounded-2xl border border-black/[0.07] bg-black/[0.025] ${mobile ? 'p-4' : 'p-5 sm:mt-7 sm:p-6'}`}>
           <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.16em] text-black/40">Dify 命中片段</div>
-          <blockquote className={`break-words border-l-2 border-[var(--studio-accent-strong)]/50 pl-4 text-black/70 [overflow-wrap:anywhere] ${mobile ? 'text-[13px] leading-6' : 'text-sm leading-7'}`}>{selected.quote}</blockquote>
+          <blockquote className={`space-y-3 break-words border-l-2 border-[var(--studio-accent-strong)]/50 pl-4 text-black/70 [overflow-wrap:anywhere] ${mobile ? 'text-[13px] leading-6' : 'text-sm leading-7'}`}>
+            {(selected.mergedQuotes.length ? selected.mergedQuotes : [selected.quote || '']).slice(0, 3).map((quote, index) => (
+              <p key={`${selected.id}-${index}`}>{quote}</p>
+            ))}
+            {selected.mergedQuotes.length > 3 && (
+              <p className="text-xs font-semibold text-black/40">另有 {selected.mergedQuotes.length - 3} 条相同来源命中已合并。</p>
+            )}
+          </blockquote>
         </div>
         {!mobile && renderActions()}
         <p className="mt-8 text-[11px] leading-5 text-black/35">该记录由当前账号的 Dify 对话产生，并在服务端按用户 ID 隔离保存。</p>
@@ -304,9 +374,9 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
 
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
         {[
-          ['引用记录', safeReferences.length, '条'],
+          ['原始命中', safeReferences.length, '次'],
+          ['合并后引用', mergedReferences.length, '条'],
           ['命中文档', documentCount, '份'],
-          ['平均相关度', averageScore, '%'],
         ].map(([label, value, unit]) => (
           <PageCard key={label} className="flex items-center justify-between px-5 py-4">
             <div>
@@ -379,7 +449,7 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
                       <div className="line-clamp-2 text-xs font-semibold leading-5">{item.documentName}</div>
                       <div className="mt-2 flex items-center justify-between text-[10px] text-black/40">
                         <span>{inferPageFromImageUrl(item.pageImageUrl) || item.pageNumber ? `第 ${inferPageFromImageUrl(item.pageImageUrl) || item.pageNumber} 页` : '未标注页码'}</span>
-                        <span>{item.score ? `${Math.round(item.score * 100)}%` : '—'}</span>
+                        <span>{item.hitCount > 1 ? `命中 ${item.hitCount} 次` : item.score ? `${Math.round(item.score * 100)}%` : '—'}</span>
                       </div>
                       <p className="mt-2 line-clamp-2 break-words text-[11px] leading-5 text-black/45 [overflow-wrap:anywhere]">{item.quote}</p>
                     </button>

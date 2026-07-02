@@ -56,6 +56,10 @@ const inferPageCountFromFilename = (filename: string) => {
   return end - start + 1
 }
 
+const nearbyPages = (page: number, pageCount: number, distance = 2) =>
+  Array.from({ length: distance * 2 }, (_item, index) => page + index - distance)
+    .filter(nextPage => nextPage !== page && nextPage >= 1 && nextPage <= pageCount)
+
 const unwrapDifyProxyUrl = (value: string) => {
   try {
     const parsed = new URL(value, globalThis.location.origin)
@@ -186,7 +190,7 @@ export default function PdfReferenceViewer({
           loadingTask = pdfjs.getDocument({
             url,
             withCredentials: true,
-            rangeChunkSize: 256 * 1024,
+            rangeChunkSize: 512 * 1024,
             disableAutoFetch: true,
             // Keep previews responsive behind the same-origin proxy. The first
             // non-range full PDF fetch can be slow or fail on mobile networks,
@@ -316,10 +320,29 @@ export default function PdfReferenceViewer({
   useEffect(() => {
     if (!pdf || !pageCount)
     { return }
-    ;[page - 1, page + 1]
-      .filter(nextPage => nextPage >= 1 && nextPage <= pageCount)
+    nearbyPages(page, pageCount, 2)
       .forEach(nextPage => void pdf.getPage(nextPage).catch(() => undefined))
   }, [page, pageCount, pdf])
+
+  useEffect(() => {
+    if (!imageFallback || !pageImageUrl || !pageCount)
+    { return }
+    nearbyPages(page, pageCount, 2).forEach((nextPage) => {
+      const nextRawUrl = pageImageBaseUrl.replace(
+        /\/page_\d+(\.(?:jpe?g|png|webp)(?:[?#].*)?)$/i,
+        `/page_${nextPage}$1`,
+      )
+      const proxiedUrl = toDifyAssetProxyUrl(nextRawUrl || pageImageBaseUrl || pageImageUrl)
+      const rawUrl = toBrowserImageFallbackUrl(nextRawUrl || pageImageBaseUrl || pageImageUrl)
+      ;[proxiedUrl, rawUrl]
+        .filter(Boolean)
+        .forEach((url) => {
+          const image = new Image()
+          image.decoding = 'async'
+          image.src = url
+        })
+    })
+  }, [imageFallback, page, pageCount, pageImageBaseUrl, pageImageUrl])
 
   const goBack = () => {
     if (backHref && backHref !== '/library' && backHref !== '/sources') {
