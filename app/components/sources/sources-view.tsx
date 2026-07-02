@@ -66,10 +66,13 @@ const canonicalReferencePage = (item: KnowledgeReference) =>
 const canonicalReferenceKey = (item: KnowledgeReference) => {
   // Dify re-indexing may change document_id while the human-visible source
   // filename remains the same. Group the user's reference list by document
-  // name first so one PDF does not split into multiple cards after re-index.
+  // name + page so repeated snippets from the same page merge, while different
+  // pages in the same PDF remain independently navigable.
   const documentKey = normalizeReferenceKeyPart(item.documentName || item.documentId)
   const datasetKey = normalizeReferenceKeyPart(item.datasetName)
-  return `${datasetKey}|${documentKey}`
+  const page = canonicalReferencePage(item)
+  const fallbackQuoteKey = page ? '' : normalizeReferenceKeyPart(item.quote).slice(0, 80)
+  return `${datasetKey}|${documentKey}|page:${page || 'unknown'}|${fallbackQuoteKey}`
 }
 
 const mergePageNumbers = (left: number[], right: number[]) =>

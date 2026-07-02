@@ -194,10 +194,16 @@ const fetchLibraryFileService = async ({
   if (range)
   { return await fetchRange(range) }
 
+  // For full downloads, stream the upstream file once instead of stitching many
+  // small range requests. The old serial range loop made large PDFs crawl and
+  // still could not recover when the browser was redirected to a stale file
+  // mapping directly.
+  return await fetchRange(null)
+
   const firstRange = `bytes=0-${libraryChunkSize - 1}`
   const firstResponse = await fetchRange(firstRange)
   const contentRange = firstResponse.headers.get('Content-Range') || ''
-  const matched = contentRange.match(/^bytes\s+(\d+)-(\d+)\/(\d+)$/i)
+  const matched = contentRange.match(/^bytes\s+(\d+)-(\d+)\/(\d+)$/i)!
   if (!firstResponse.ok || !firstResponse.body || !matched)
   { return firstResponse }
 
@@ -307,7 +313,7 @@ export async function GET(
   const resolvedDocumentId = matchedDocument?.id || documentId
   const requestRange = request.headers.get('range')
 
-  if (request.nextUrl.searchParams.get('proxy') !== '1') {
+  if (request.nextUrl.searchParams.get('direct') === '1') {
     const directRedirect = signedLibraryFileRedirect({
       documentId: resolvedDocumentId,
       disposition,

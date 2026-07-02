@@ -304,10 +304,7 @@ export async function GET(
     })
   }
 
-  // References created by Dify occasionally contain a slightly different
-  // document name from the catalog. When we know the document ID, use the
-  // exact same stable file route as the knowledge-library preview.
-  if (documentId) {
+  if (request.nextUrl.searchParams.get('direct') === '1' && documentId) {
     const documentRedirect = signedReferenceDocumentRedirect({
       documentId,
       disposition,
@@ -319,12 +316,40 @@ export async function GET(
     { return documentRedirect }
   }
 
-  return signedReferenceFileRedirect({
+  if (request.nextUrl.searchParams.get('direct') === '1') {
+    return signedReferenceFileRedirect({
+      documentName,
+      disposition,
+      filename,
+      requestId,
+      page: page || undefined,
+    }) || new Response('Reference file service is not configured', {
+      status: 503,
+      headers: { 'X-Request-Id': requestId },
+    })
+  }
+
+  // References created by Dify occasionally contain a slightly different
+  // document name from the catalog. When we know the document ID, route through
+  // the same-origin file endpoint as the knowledge-library preview so old
+  // stale upload mappings can fall back to Dify download/page-images instead of
+  // exposing "Upload file not found" directly to the browser.
+  if (documentId) {
+    const url = new URL(`/api/library/documents/${encodeURIComponent(documentId)}/file`, request.url)
+    url.searchParams.set('disposition', disposition)
+    url.searchParams.set('filename', filename)
+    if (page)
+    { url.searchParams.set('page', String(page)) }
+    return Response.redirect(url, 307)
+  }
+
+  return await proxiedReferenceFile({
+    documentId,
     documentName,
     disposition,
     filename,
     requestId,
-    page: page || undefined,
+    range: requestRange,
   }) || new Response('Reference file service is not configured', {
     status: 503,
     headers: { 'X-Request-Id': requestId },
