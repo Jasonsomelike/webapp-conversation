@@ -14,7 +14,6 @@ import {
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
 import type { KnowledgeReference } from '@/lib/learning-types'
-import { toBrowserImageFallbackUrl, toDifyAssetProxyUrl } from '@/lib/dify-assets'
 import ImagePreview from '@/app/components/base/image-uploader/image-preview'
 import { ResizableSplitHandle, useResizableSplit } from '@/app/components/base/resizable-split'
 
@@ -183,10 +182,10 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
     ? `/api/sources/${selected.id}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`
     : ''
   const pageImageHref = selectedHasPdfPageImage && selected?.pageImageUrl
-    ? toDifyAssetProxyUrl(selected.pageImageUrl)
+    ? `/api/sources/${encodeURIComponent(selected.id)}/page-image?page=${selectedPreviewPage}`
     : ''
   const pageImageRawHref = selectedHasPdfPageImage && selected?.pageImageUrl
-    ? toBrowserImageFallbackUrl(selected.pageImageUrl)
+    ? pageImageHref
     : ''
 
   useEffect(() => {

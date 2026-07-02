@@ -65,6 +65,7 @@ export async function GET(request: NextRequest) {
   return Response.json({
     referenceId: reference.id,
     previewUrl: `${previewUrl.pathname}${previewUrl.search}`,
+    imageUrl: `/api/sources/${encodeURIComponent(reference.id)}/page-image?page=${pageNumber}`,
     documentName: cleanReferenceDocumentName(reference.documentName || '课程知识库原页'),
     pageNumber,
   }, {

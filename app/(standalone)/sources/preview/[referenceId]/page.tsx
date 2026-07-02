@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import PdfReferenceViewer from '@/app/components/sources/pdf-reference-viewer'
 import { db, withDatabaseRetry } from '@/lib/db'
-import { findKnowledgeDocumentByName } from '@/lib/dify-dataset'
+import { findKnowledgeDocumentByName, getKnowledgeDocumentPageImages } from '@/lib/dify-dataset'
 import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
 import { cleanReferenceDocumentName } from '@/lib/reference-extractor'
 import { getSession } from '@/lib/session'
@@ -34,7 +34,14 @@ export default async function SourcePdfPreviewPage({
     ? reference.pageImageUrl
     : ''
   const isPdfSource = /\.pdf(?:[?#].*)?$/i.test(filename)
-  const shouldUsePageImageFallback = Boolean(pageImageUrl && !isPdfSource && !resolvedDocumentId)
+  const pageImages = resolvedDocumentId && isPdfSource
+    ? await getKnowledgeDocumentPageImages(resolvedDocumentId).catch(() => [])
+    : []
+  const freshPageImage = pageImages.find(item => item.page === page)
+    || pageImages[0]
+    || (pageImageUrl ? { page, url: pageImageUrl } : undefined)
+  const pageImageCount = pageImages.reduce((max, item) => Math.max(max, item.page), 0)
+  const shouldUsePageImageFallback = Boolean(freshPageImage && (isPdfSource || !resolvedDocumentId))
   const encodedFilename = encodeURIComponent(filename)
   const sourceUrl = resolvedDocumentId
     ? `/api/library/documents/${encodeURIComponent(resolvedDocumentId)}/file?disposition=inline&page=${page}&filename=${encodedFilename}`
@@ -49,7 +56,8 @@ export default async function SourcePdfPreviewPage({
       initialPage={page}
       sourceUrl={sourceUrl}
       downloadUrl={downloadUrl}
-      pageImageUrl={shouldUsePageImageFallback ? toDifyAssetProxyUrl(pageImageUrl) : undefined}
+      pageImageUrl={shouldUsePageImageFallback && freshPageImage ? toDifyAssetProxyUrl(freshPageImage.url) : undefined}
+      pageImageCount={pageImageCount || undefined}
       backHref={query.returnTo?.startsWith('/') ? query.returnTo : '/sources'}
     />
   )

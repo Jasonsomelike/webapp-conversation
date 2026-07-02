@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import PdfReferenceViewer from '@/app/components/sources/pdf-reference-viewer'
-import { findKnowledgeDocumentByName } from '@/lib/dify-dataset'
+import { findKnowledgeDocumentByName, getKnowledgeDocumentPageImages } from '@/lib/dify-dataset'
+import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
 import { getSession } from '@/lib/session'
 
 export default async function LibraryPdfPreviewPage({
@@ -22,12 +23,19 @@ export default async function LibraryPdfPreviewPage({
   const resolvedDocumentId = currentDocument?.id || documentId
   const encodedId = encodeURIComponent(resolvedDocumentId)
   const encodedFilename = encodeURIComponent(filename)
+  const pageImages = /\.pdf(?:[?#].*)?$/i.test(filename)
+    ? await getKnowledgeDocumentPageImages(resolvedDocumentId).catch(() => [])
+    : []
+  const pageImage = pageImages.find(item => item.page === page) || pageImages[0]
+  const pageImageCount = pageImages.reduce((max, item) => Math.max(max, item.page), 0)
   return (
     <PdfReferenceViewer
       filename={filename}
       initialPage={page}
       sourceUrl={`/api/library/documents/${encodedId}/file?disposition=inline&page=${page}&filename=${encodedFilename}`}
       downloadUrl={`/api/library/documents/${encodedId}/file?disposition=attachment&filename=${encodedFilename}`}
+      pageImageUrl={pageImage ? toDifyAssetProxyUrl(pageImage.url) : undefined}
+      pageImageCount={pageImageCount || undefined}
       backHref={query.returnTo?.startsWith('/') ? query.returnTo : '/library'}
     />
   )

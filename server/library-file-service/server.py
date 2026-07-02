@@ -33,6 +33,7 @@ PAGE_IMAGES_ROOTS = [
         Path("/data/page_images"),
     )
 ]
+PDF_CACHE_ROOT = Path(os.getenv("LIBRARY_PDF_CACHE_ROOT", "/tmp/library-page-image-pdfs")).resolve()
 INTERNAL_TOKEN = os.getenv("LIBRARY_FILE_SERVICE_TOKEN", "")
 DATASET_ID = os.getenv("DIFY_DATASET_ID", "")
 USE_X_ACCEL = os.getenv("USE_X_ACCEL_REDIRECT", "false").lower() == "true"
@@ -259,6 +260,293 @@ def direct_file_response(
     response.headers["X-Library-File-Source"] = source
     response.headers["Accept-Ranges"] = "bytes"
     return response
+
+
+def bytes_file_response(
+    payload: bytes,
+    mimetype: str,
+    filename: str,
+    disposition: str,
+    request_id: str,
+    source: str,
+) -> Response:
+    range_header = request.headers.get("Range", "")
+    headers = {
+        "Content-Type": mimetype or "application/octet-stream",
+        "Content-Disposition": safe_content_disposition(disposition, filename),
+        "Cache-Control": "private, max-age=300",
+        "X-Content-Type-Options": "nosniff",
+        "X-Request-Id": request_id,
+        "X-Library-File-Source": source,
+        "Accept-Ranges": "bytes",
+    }
+    match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header or "")
+    if match:
+        start = int(match.group(1) or "0")
+        end = int(match.group(2) or str(len(payload) - 1))
+        end = min(end, len(payload) - 1)
+        if 0 <= start <= end < len(payload):
+            chunk = payload[start:end + 1]
+            headers["Content-Range"] = f"bytes {start}-{end}/{len(payload)}"
+            headers["Content-Length"] = str(len(chunk))
+            return Response(chunk, status=206, headers=headers)
+    headers["Content-Length"] = str(len(payload))
+    return Response(payload, status=200, headers=headers)
+
+
+PAGE_IMAGE_MARKDOWN_RE = re.compile(
+    r"(?:https://(?:dify\.jasonsome\.cn(?::22380)?|www\.jasonsome\.cn|jasonsome\.cn))?"
+    r"/page-images/([A-Za-z0-9_-]{6,64})/(page_(\d+)\.(?:jpe?g|png|webp))",
+    re.I,
+)
+
+
+def resolve_page_image_file(batch: str, filename: str) -> Path | None:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{6,64}", batch) or not re.fullmatch(
+        r"page_\d+\.(?:jpe?g|png|webp)", filename, re.I
+    ):
+        return None
+    for root in PAGE_IMAGES_ROOTS:
+        candidate = (root / batch / filename).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            continue
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def document_page_images(document_id: uuid.UUID) -> list[tuple[int, Path]]:
+    try:
+        with database_connection() as connection:
+            connection.set_session(readonly=True, autocommit=False)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT position, content
+                    FROM document_segments
+                    WHERE document_id = %s
+                      AND content LIKE '%%/page-images/%%'
+                    ORDER BY position ASC
+                    LIMIT 600
+                    """,
+                    (str(document_id),),
+                )
+                rows = cursor.fetchall()
+    except Exception:
+        logger.exception(
+            "[library-file-service] page image lookup failed documentId=%s",
+            document_id,
+        )
+        return []
+
+    images: dict[int, Path] = {}
+    for position, content in rows:
+        for match in PAGE_IMAGE_MARKDOWN_RE.finditer(content or ""):
+            page = int(match.group(3) or position or len(images) + 1)
+            if page in images:
+                continue
+            image_path = resolve_page_image_file(match.group(1), match.group(2))
+            if image_path:
+                images[page] = image_path
+    return sorted(images.items(), key=lambda item: item[0])
+
+
+def jpeg_dimensions_and_colorspace(path: Path) -> tuple[int, int, int]:
+    data = path.read_bytes()
+    if len(data) < 4 or data[0:2] != b"\xff\xd8":
+        raise ValueError("Not a JPEG page image")
+    offset = 2
+    sof_markers = {
+        0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
+        0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF,
+    }
+    while offset + 4 < len(data):
+        while offset < len(data) and data[offset] != 0xFF:
+            offset += 1
+        while offset < len(data) and data[offset] == 0xFF:
+            offset += 1
+        if offset >= len(data):
+            break
+        marker = data[offset]
+        offset += 1
+        if marker in (0xD8, 0xD9):
+            continue
+        if marker == 0xDA:
+            break
+        if offset + 2 > len(data):
+            break
+        segment_length = int.from_bytes(data[offset:offset + 2], "big")
+        if segment_length < 2 or offset + segment_length > len(data):
+            break
+        if marker in sof_markers:
+            segment = data[offset + 2:offset + segment_length]
+            if len(segment) < 6:
+                break
+            height = int.from_bytes(segment[1:3], "big")
+            width = int.from_bytes(segment[3:5], "big")
+            components = int(segment[5])
+            return width, height, components
+        offset += segment_length
+    raise ValueError("JPEG dimensions not found")
+
+
+def pdf_escape_text(value: str) -> bytes:
+    return (
+        value.replace("\\", "\\\\")
+        .replace("(", "\\(")
+        .replace(")", "\\)")
+        .encode("utf-8", "ignore")
+    )
+
+
+def build_pdf_from_jpeg_pages(title: str, images: list[tuple[int, Path]]) -> bytes:
+    if not images:
+        raise ValueError("No page images")
+
+    objects: dict[int, bytes] = {}
+    page_ids: list[int] = []
+    next_object_id = 3
+
+    for _page_number, image_path in images:
+        image_bytes = image_path.read_bytes()
+        width, height, components = jpeg_dimensions_and_colorspace(image_path)
+        image_object_id = next_object_id
+        content_object_id = next_object_id + 1
+        page_object_id = next_object_id + 2
+        next_object_id += 3
+
+        if components == 1:
+            color_space = b"/DeviceGray"
+            decode = b""
+        elif components == 4:
+            color_space = b"/DeviceCMYK"
+            decode = b" /Decode [1 0 1 0 1 0 1 0]"
+        else:
+            color_space = b"/DeviceRGB"
+            decode = b""
+
+        objects[image_object_id] = (
+            b"<< /Type /XObject /Subtype /Image"
+            + f" /Width {width} /Height {height}".encode()
+            + b" /BitsPerComponent 8 /ColorSpace "
+            + color_space
+            + decode
+            + b" /Filter /DCTDecode"
+            + f" /Length {len(image_bytes)} >>\nstream\n".encode()
+            + image_bytes
+            + b"\nendstream"
+        )
+        content_stream = f"q\n{width} 0 0 {height} 0 0 cm\n/Im0 Do\nQ\n".encode()
+        objects[content_object_id] = (
+            f"<< /Length {len(content_stream)} >>\nstream\n".encode()
+            + content_stream
+            + b"endstream"
+        )
+        objects[page_object_id] = (
+            b"<< /Type /Page /Parent 2 0 R"
+            + f" /MediaBox [0 0 {width} {height}]".encode()
+            + f" /Resources << /XObject << /Im0 {image_object_id} 0 R >> >>".encode()
+            + f" /Contents {content_object_id} 0 R >>".encode()
+        )
+        page_ids.append(page_object_id)
+
+    kids = " ".join(f"{page_id} 0 R" for page_id in page_ids)
+    objects[1] = b"<< /Type /Catalog /Pages 2 0 R >>"
+    objects[2] = f"<< /Type /Pages /Kids [{kids}] /Count {len(page_ids)} >>".encode()
+    info_object_id = next_object_id
+    objects[info_object_id] = (
+        b"<< /Producer ("
+        + pdf_escape_text("知行网络学堂")
+        + b") /Creator ("
+        + pdf_escape_text("计网Agent")
+        + b") /Title ("
+        + pdf_escape_text(title)
+        + b") >>"
+    )
+
+    total_objects = info_object_id
+    pdf = b"%PDF-1.4\n%\x80\x80\x80\x80\n"
+    offsets = [0] * (total_objects + 1)
+    for object_id in range(1, total_objects + 1):
+        body = objects[object_id]
+        offsets[object_id] = len(pdf)
+        pdf += f"{object_id} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref_offset = len(pdf)
+    pdf += f"xref\n0 {total_objects + 1}\n".encode()
+    pdf += b"0000000000 65535 f \n"
+    for object_id in range(1, total_objects + 1):
+        pdf += f"{offsets[object_id]:010d} 00000 n \n".encode()
+    pdf += (
+        b"trailer\n"
+        + f"<< /Size {total_objects + 1} /Root 1 0 R /Info {info_object_id} 0 R >>\n".encode()
+        + b"startxref\n"
+        + str(xref_offset).encode()
+        + b"\n%%EOF\n"
+    )
+    return pdf
+
+
+def page_images_pdf_response(
+    document_id: uuid.UUID,
+    filename: str,
+    disposition: str,
+    request_id: str,
+    reason: str,
+) -> Response | None:
+    images = document_page_images(document_id)
+    if not images:
+        return None
+
+    PDF_CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+    latest_mtime = max(path.stat().st_mtime for _page, path in images)
+    cache_key = hashlib.sha256(
+        f"{document_id}:{len(images)}:{int(latest_mtime)}:{filename}".encode()
+    ).hexdigest()[:24]
+    cache_path = (PDF_CACHE_ROOT / f"{cache_key}.pdf").resolve()
+    try:
+        cache_path.relative_to(PDF_CACHE_ROOT)
+    except ValueError:
+        return None
+
+    if not cache_path.is_file() or cache_path.stat().st_mtime < latest_mtime:
+        logger.info(
+            "[library-file-service] building page-image PDF requestId=%s documentId=%s pages=%s reason=%s",
+            request_id,
+            document_id,
+            len(images),
+            reason,
+        )
+        pdf_bytes = build_pdf_from_jpeg_pages(filename, images)
+        try:
+            temporary_path = cache_path.with_suffix(".tmp")
+            temporary_path.write_bytes(pdf_bytes)
+            temporary_path.replace(cache_path)
+        except OSError as error:
+            logger.warning(
+                "[library-file-service] page-image PDF cache unavailable requestId=%s documentId=%s error=%s",
+                request_id,
+                document_id,
+                error,
+            )
+            return bytes_file_response(
+                pdf_bytes,
+                "application/pdf",
+                filename,
+                disposition,
+                request_id,
+                f"page-images-memory-pdf:{reason}",
+            )
+
+    return direct_file_response(
+        cache_path,
+        "application/pdf",
+        filename,
+        disposition,
+        request_id,
+        f"page-images-local-pdf:{reason}",
+    )
 
 
 @app.get("/health")
@@ -564,6 +852,15 @@ def document_file(document_id: uuid.UUID):
                     or (source_info.get("file") or {}).get("id")
                 )
                 if not upload_file_id:
+                    fallback = page_images_pdf_response(
+                        document_id,
+                        document_name or fallback_filename,
+                        disposition,
+                        request_id,
+                        "missing-upload-file-id",
+                    )
+                    if fallback is not None:
+                        return fallback
                     return error_response(
                         f"File mapping not found for document ({source_type})",
                         404,
@@ -582,6 +879,15 @@ def document_file(document_id: uuid.UUID):
                 )
                 upload_file = cursor.fetchone()
                 if not upload_file:
+                    fallback = page_images_pdf_response(
+                        document_id,
+                        document_name or fallback_filename,
+                        disposition,
+                        request_id,
+                        "missing-upload-file-row",
+                    )
+                    if fallback is not None:
+                        return fallback
                     return error_response("Upload file not found", 404, request_id)
 
         _, _, _, storage_key, stored_name, expected_size, _, mime_type = upload_file
@@ -593,6 +899,15 @@ def document_file(document_id: uuid.UUID):
             return error_response("Invalid file path", 403, request_id)
 
         if not file_path.is_file():
+            fallback = page_images_pdf_response(
+                document_id,
+                document_name or fallback_filename,
+                disposition,
+                request_id,
+                "missing-upload-file-on-disk",
+            )
+            if fallback is not None:
+                return fallback
             return error_response("File missing on disk", 404, request_id)
 
         actual_size = file_path.stat().st_size

@@ -79,6 +79,7 @@ interface PdfReferenceViewerProps {
   sourceUrl?: string
   downloadUrl?: string
   pageImageUrl?: string
+  pageImageCount?: number
   backHref?: string
 }
 
@@ -89,6 +90,7 @@ export default function PdfReferenceViewer({
   sourceUrl: explicitSourceUrl,
   downloadUrl: explicitDownloadUrl,
   pageImageUrl,
+  pageImageCount: explicitPageImageCount,
   backHref = '/library',
 }: PdfReferenceViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -106,8 +108,8 @@ export default function PdfReferenceViewer({
   const [imageFallback, setImageFallback] = useState(false)
   const [imageRawFallback, setImageRawFallback] = useState(false)
   const pageImageCount = useMemo(
-    () => pageImageUrl ? Math.max(page, inferPageCountFromFilename(filename) || page) : 0,
-    [filename, page, pageImageUrl],
+    () => pageImageUrl ? Math.max(page, explicitPageImageCount || inferPageCountFromFilename(filename) || page) : 0,
+    [explicitPageImageCount, filename, page, pageImageUrl],
   )
   const pageImageBaseUrl = useMemo(
     () => pageImageUrl ? unwrapDifyProxyUrl(pageImageUrl) : '',

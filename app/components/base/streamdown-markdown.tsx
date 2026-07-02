@@ -54,9 +54,11 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   const [preview, setPreview] = useState(false)
   const [failed, setFailed] = useState(false)
   const [useDirectImage, setUseDirectImage] = useState(false)
+  const [skipRefreshedSourceImage, setSkipRefreshedSourceImage] = useState(false)
   const [sourceInfo, setSourceInfo] = useState<{
     referenceId?: string
     previewUrl?: string
+    imageUrl?: string
     documentName?: string
     pageNumber?: number
   }>()
@@ -64,7 +66,8 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   const absoluteSourceUrl = toAbsoluteDifyAssetUrl(sourceUrl)
   const imageUrl = toSharedAssetProxyUrl(sourceUrl, shareToken)
   const directImageUrl = toBrowserImageFallbackUrl(sourceUrl)
-  const renderedImageUrl = useDirectImage && directImageUrl ? directImageUrl : imageUrl
+  const refreshedSourceImageUrl = !shareToken && !skipRefreshedSourceImage && sourceInfo?.imageUrl ? sourceInfo.imageUrl : ''
+  const renderedImageUrl = refreshedSourceImageUrl || (useDirectImage && directImageUrl ? directImageUrl : imageUrl)
 
   const isPdfPageImage = /\/page-images\/[^/]+\/page_(\d+)\.(?:jpe?g|png|webp)(?:[?#].*)?$/i.test(absoluteSourceUrl || sourceUrl)
   const isInlineKnowledgeIllustration = Boolean((absoluteSourceUrl || sourceUrl).includes('/page-images/') && !isPdfPageImage)
@@ -149,7 +152,8 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   useEffect(() => {
     setFailed(false)
     setUseDirectImage(false)
-  }, [sourceUrl, shareToken])
+    setSkipRefreshedSourceImage(false)
+  }, [sourceInfo?.imageUrl, sourceUrl, shareToken])
 
   useEffect(() => {
     if (!isPdfPageImage)
@@ -217,6 +221,10 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
             alt={alt}
             loading='lazy'
             onError={() => {
+              if (refreshedSourceImageUrl) {
+                setSkipRefreshedSourceImage(true)
+                return
+              }
               if (!useDirectImage && directImageUrl && directImageUrl !== renderedImageUrl) {
                 setUseDirectImage(true)
                 return
