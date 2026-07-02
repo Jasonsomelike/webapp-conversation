@@ -17,7 +17,7 @@ const contentDisposition = (filename: string, download: boolean) => {
   return `${mode}; filename*=UTF-8''${encodeURIComponent(safeFilename)}`
 }
 
-const signedPageImageRedirect = (path: string, requestId: string) => {
+const signedPageImageUrl = (path: string, requestId: string) => {
   const baseUrl = process.env.LIBRARY_FILE_SERVICE_URL?.replace(/\/$/, '')
   const token = process.env.LIBRARY_FILE_SERVICE_TOKEN
   if (!baseUrl || !token || !pageImagePathPattern.test(path))
@@ -30,14 +30,34 @@ const signedPageImageRedirect = (path: string, requestId: string) => {
   url.searchParams.set('requestId', requestId)
   url.searchParams.set('expires', expires)
   url.searchParams.set('signature', signature)
-  return new Response(null, {
-    status: 307,
-    headers: {
-      'Location': url.toString(),
-      'Cache-Control': 'private, max-age=300, stale-while-revalidate=900',
-      'X-Request-Id': requestId,
-      'X-Dify-Asset-Source': 'signed-page-image-redirect',
-    },
+  return url.toString()
+}
+
+const streamUpstreamFile = (
+  upstream: Response,
+  filename: string,
+  shouldDownload: boolean,
+  requestId: string,
+  source: string,
+) => {
+  const headers = new Headers({
+    'Content-Type': upstream.headers.get('Content-Type') || 'application/octet-stream',
+    'Content-Disposition': upstream.headers.get('Content-Disposition') || contentDisposition(filename, shouldDownload),
+    'Cache-Control': `private, max-age=${THIRTY_DAYS_SECONDS}, stale-while-revalidate=${THIRTY_DAYS_SECONDS}`,
+    'X-Content-Type-Options': 'nosniff',
+    'X-Request-Id': requestId,
+    'X-Dify-Asset-Source': source,
+    'Accept-Ranges': upstream.headers.get('Accept-Ranges') || 'bytes',
+  })
+  ;['Content-Length', 'Content-Range', 'ETag', 'Last-Modified'].forEach((name) => {
+    const value = upstream.headers.get(name)
+    if (value)
+    { headers.set(name, value) }
+  })
+
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers,
   })
 }
 
@@ -67,12 +87,6 @@ export async function GET(request: NextRequest) {
   if (!allowed)
   { return new Response('Forbidden file proxy url', { status: 403, headers: { 'X-Request-Id': requestId } }) }
 
-  if (target.pathname.startsWith('/page-images/')) {
-    const redirect = signedPageImageRedirect(target.pathname, requestId)
-    if (redirect)
-    { return redirect }
-  }
-
   const headers: HeadersInit = {}
   const range = request.headers.get('range')
   if (range)
@@ -81,6 +95,33 @@ export async function GET(request: NextRequest) {
   const shouldDownload = request.nextUrl.searchParams.get('download') === '1'
   const requestedFilename = request.nextUrl.searchParams.get('filename')
   const filename = requestedFilename || target.pathname.split('/').pop() || 'download'
+
+  if (target.pathname.startsWith('/page-images/')) {
+    const signedUrl = signedPageImageUrl(target.pathname, requestId)
+    if (signedUrl) {
+      try {
+        const upstream = await fetch(signedUrl, {
+          method: 'GET',
+          headers,
+          cache: 'no-store',
+          redirect: 'follow',
+          signal: AbortSignal.timeout(30_000),
+        })
+        if (upstream.ok && upstream.body)
+        { return streamUpstreamFile(upstream, filename, shouldDownload, requestId, 'signed-page-image-proxy') }
+
+        const body = await upstream.text().catch(() => '')
+        return new Response(
+          `Unable to proxy page image. Upstream status=${upstream.status}. ${body.slice(0, 500)}`,
+          { status: upstream.status || 502, headers: { 'X-Request-Id': requestId } },
+        )
+      }
+      catch (error) {
+        const message = error instanceof Error ? error.message : 'network error'
+        return new Response(`Unable to proxy page image. ${message}`, { status: 502, headers: { 'X-Request-Id': requestId } })
+      }
+    }
+  }
 
   if (uploadedPreview) {
     const params = new URLSearchParams()
@@ -106,19 +147,7 @@ export async function GET(request: NextRequest) {
         { status: upstream.status || 502, headers: { 'X-Request-Id': requestId } },
       )
     }
-    return new Response(upstream.body, {
-      status: upstream.status,
-      headers: {
-        'Content-Type': upstream.headers.get('Content-Type') || 'application/octet-stream',
-        'Content-Disposition': upstream.headers.get('Content-Disposition') || contentDisposition(filename, shouldDownload),
-        'Cache-Control': `private, max-age=${THIRTY_DAYS_SECONDS}, stale-while-revalidate=${THIRTY_DAYS_SECONDS}`,
-        'X-Content-Type-Options': 'nosniff',
-        'X-Request-Id': requestId,
-        'Accept-Ranges': upstream.headers.get('Accept-Ranges') || 'bytes',
-        ...(upstream.headers.get('Content-Length') ? { 'Content-Length': upstream.headers.get('Content-Length')! } : {}),
-        ...(upstream.headers.get('Content-Range') ? { 'Content-Range': upstream.headers.get('Content-Range')! } : {}),
-      },
-    })
+    return streamUpstreamFile(upstream, filename, shouldDownload, requestId, 'uploaded-file-preview-proxy')
   }
 
   let upstream: Response
@@ -143,17 +172,5 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  return new Response(upstream.body, {
-    status: upstream.status,
-    headers: {
-      'Content-Type': upstream.headers.get('Content-Type') || 'application/octet-stream',
-      'Content-Disposition': contentDisposition(filename, shouldDownload),
-      'Cache-Control': `private, max-age=${THIRTY_DAYS_SECONDS}, stale-while-revalidate=${THIRTY_DAYS_SECONDS}`,
-      'X-Content-Type-Options': 'nosniff',
-      'X-Request-Id': requestId,
-      'Accept-Ranges': upstream.headers.get('Accept-Ranges') || 'bytes',
-      ...(upstream.headers.get('Content-Length') ? { 'Content-Length': upstream.headers.get('Content-Length')! } : {}),
-      ...(upstream.headers.get('Content-Range') ? { 'Content-Range': upstream.headers.get('Content-Range')! } : {}),
-    },
-  })
+  return streamUpstreamFile(upstream, filename, shouldDownload, requestId, 'generic-file-proxy')
 }

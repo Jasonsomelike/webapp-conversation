@@ -283,6 +283,11 @@ const ImagePreview: FC<ImagePreviewProps> = ({
                 decoding='async'
                 loading='eager'
                 draggable={false}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  if (scaleRef.current > 1.01)
+                  { resetTransform() }
+                }}
                 onLoad={() => setLoaded(true)}
                 onError={() => setFailed(true)}
               />

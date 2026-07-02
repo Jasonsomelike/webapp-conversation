@@ -21,6 +21,9 @@ import { ResizableSplitHandle, useResizableSplit } from '@/app/components/base/r
 const inferPageFromImageUrl = (value?: string | null) =>
   Number(String(value || '').match(/\/page_(\d+)\./i)?.[1] || 0) || undefined
 
+const isPdfPageImageUrl = (value?: string | null) =>
+  /\/page-images\/[^/]+\/page_\d+\.(?:jpe?g|png|webp)(?:[?#].*)?$/i.test(String(value || ''))
+
 const inferOriginalPdfPageFromQuote = (value?: string | null) =>
   Number(String(value || '').match(/原\s*PDF\s*第\s*(\d{1,5})\s*页/i)?.[1] || 0) || undefined
 
@@ -61,13 +64,14 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
     ? inferPageFromImageUrl(selected.pageImageUrl) || selected.pageNumber || selected.originalPageNumber || 1
     : 1
   const originalPageNumber = inferOriginalPdfPageFromQuote(selected?.quote)
+  const selectedHasPdfPageImage = isPdfPageImageUrl(selected?.pageImageUrl)
   const documentPreviewUrl = selected
     ? `/sources/preview/${selected.id}?page=${selectedPreviewPage}&filename=${encodeURIComponent(selected.documentName)}&returnTo=${encodeURIComponent('/sources')}`
     : ''
   const documentDownloadUrl = selected
-    ? `/api/sources/${selected.id}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`
+    ? `/api/sources/${selected.id}/file?proxy=1&disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`
     : ''
-  const pageImageHref = selected?.pageImageUrl
+  const pageImageHref = selectedHasPdfPageImage && selected?.pageImageUrl
     ? toDifyAssetProxyUrl(selected.pageImageUrl)
     : ''
 
@@ -151,6 +155,8 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
         )}
         <a
           href={documentPreviewUrl}
+          target="_blank"
+          rel="noreferrer"
           className={`inline-flex items-center justify-center gap-1.5 font-semibold ${mobile ? 'h-11 rounded-2xl border border-black/10 bg-white px-2 text-[11px]' : 'rounded-xl border border-black/10 px-4 py-2.5 text-xs'}`}
         >
           预览 PDF <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
@@ -189,18 +195,20 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
             />
           </button>
           <div className="flex items-center justify-between gap-3 px-2 pb-1 pt-2 text-[10px] text-black/45">
-            <a href={documentPreviewUrl} className="font-semibold text-[var(--studio-accent-strong)]">点击查看来源 PDF</a>
+            <a href={documentPreviewUrl} target="_blank" rel="noreferrer" className="font-semibold text-[var(--studio-accent-strong)]">点击查看来源 PDF</a>
             <span className="font-semibold text-[var(--studio-accent-strong)]">第 {selectedPreviewPage} 页</span>
           </div>
         </div>
       )
-      : (
-        <div className="mt-5 rounded-2xl border border-dashed border-black/10 bg-black/[0.025] px-5 py-10 text-center">
-          <DocumentMagnifyingGlassIcon className="mx-auto h-7 w-7 text-[var(--studio-muted)]" />
-          <div className="mt-2 text-xs font-semibold">{imageError ? '来源页图片加载失败' : '该引用暂无来源页图片'}</div>
-          <div className="mt-1 text-[10px] text-[var(--studio-muted)]">可尝试打开或下载对应文档。</div>
-        </div>
-      )
+      : imageError
+        ? (
+          <div className="mt-5 rounded-2xl border border-dashed border-black/10 bg-black/[0.025] px-5 py-10 text-center">
+            <DocumentMagnifyingGlassIcon className="mx-auto h-7 w-7 text-[var(--studio-muted)]" />
+            <div className="mt-2 text-xs font-semibold">来源页图片加载失败</div>
+            <div className="mt-1 text-[10px] text-[var(--studio-muted)]">可尝试打开或下载对应文档。</div>
+          </div>
+        )
+        : null
 
     return (
       <>

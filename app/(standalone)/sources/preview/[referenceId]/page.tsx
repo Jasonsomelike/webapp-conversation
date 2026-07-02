@@ -3,7 +3,6 @@ import PdfReferenceViewer from '@/app/components/sources/pdf-reference-viewer'
 import { db, withDatabaseRetry } from '@/lib/db'
 import { findKnowledgeDocumentByName } from '@/lib/dify-dataset'
 import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
-import { signedLibraryDocumentFileUrl } from '@/lib/library-file-service'
 import { cleanReferenceDocumentName } from '@/lib/reference-extractor'
 import { getSession } from '@/lib/session'
 
@@ -35,27 +34,12 @@ export default async function SourcePdfPreviewPage({
     ? reference.pageImageUrl
     : ''
   const encodedFilename = encodeURIComponent(filename)
-  const directSourceUrl = resolvedDocumentId
-    ? signedLibraryDocumentFileUrl({
-      documentId: resolvedDocumentId,
-      disposition: 'inline',
-      filename,
-      page,
-    })
-    : ''
-  const directDownloadUrl = resolvedDocumentId
-    ? signedLibraryDocumentFileUrl({
-      documentId: resolvedDocumentId,
-      disposition: 'attachment',
-      filename,
-    })
-    : ''
   const sourceUrl = resolvedDocumentId
-    ? directSourceUrl || `/api/library/documents/${encodeURIComponent(resolvedDocumentId)}/file?disposition=inline&page=${page}&filename=${encodedFilename}`
-    : undefined
+    ? `/api/library/documents/${encodeURIComponent(resolvedDocumentId)}/file?proxy=1&disposition=inline&page=${page}&filename=${encodedFilename}`
+    : `/api/sources/${encodeURIComponent(referenceId)}/file?proxy=1&disposition=inline&page=${page}&filename=${encodedFilename}`
   const downloadUrl = resolvedDocumentId
-    ? directDownloadUrl || `/api/library/documents/${encodeURIComponent(resolvedDocumentId)}/file?disposition=attachment&filename=${encodedFilename}`
-    : undefined
+    ? `/api/library/documents/${encodeURIComponent(resolvedDocumentId)}/file?proxy=1&disposition=attachment&filename=${encodedFilename}`
+    : `/api/sources/${encodeURIComponent(referenceId)}/file?proxy=1&disposition=attachment&filename=${encodedFilename}`
   return (
     <PdfReferenceViewer
       referenceId={referenceId}

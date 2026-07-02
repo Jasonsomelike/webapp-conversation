@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import PdfReferenceViewer from '@/app/components/sources/pdf-reference-viewer'
 import { findKnowledgeDocumentByName } from '@/lib/dify-dataset'
-import { signedLibraryDocumentFileUrl } from '@/lib/library-file-service'
 import { getSession } from '@/lib/session'
 
 export default async function LibraryPdfPreviewPage({
@@ -23,23 +22,12 @@ export default async function LibraryPdfPreviewPage({
   const resolvedDocumentId = currentDocument?.id || documentId
   const encodedId = encodeURIComponent(resolvedDocumentId)
   const encodedFilename = encodeURIComponent(filename)
-  const directSourceUrl = signedLibraryDocumentFileUrl({
-    documentId: resolvedDocumentId,
-    disposition: 'inline',
-    filename,
-    page,
-  })
-  const directDownloadUrl = signedLibraryDocumentFileUrl({
-    documentId: resolvedDocumentId,
-    disposition: 'attachment',
-    filename,
-  })
   return (
     <PdfReferenceViewer
       filename={filename}
       initialPage={page}
-      sourceUrl={directSourceUrl || `/api/library/documents/${encodedId}/file?disposition=inline&page=${page}&filename=${encodedFilename}`}
-      downloadUrl={directDownloadUrl || `/api/library/documents/${encodedId}/file?disposition=attachment&filename=${encodedFilename}`}
+      sourceUrl={`/api/library/documents/${encodedId}/file?proxy=1&disposition=inline&page=${page}&filename=${encodedFilename}`}
+      downloadUrl={`/api/library/documents/${encodedId}/file?proxy=1&disposition=attachment&filename=${encodedFilename}`}
       backHref={query.returnTo?.startsWith('/') ? query.returnTo : '/library'}
     />
   )

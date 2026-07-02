@@ -100,12 +100,14 @@ const signedReferenceDocumentRedirect = ({
 const proxiedReferenceFile = async ({
   documentId,
   documentName,
+  disposition,
   filename,
   requestId,
   range,
 }: {
   documentId?: string
   documentName: string
+  disposition: 'inline' | 'attachment'
   filename: string
   requestId: string
   range: string | null
@@ -116,11 +118,11 @@ const proxiedReferenceFile = async ({
   { return null }
 
   const expires = String(Math.floor(Date.now() / 1000) + 300)
-  const canonical = `${documentName}\ninline\n${filename}\n${requestId}\n${expires}`
+  const canonical = `${documentName}\n${disposition}\n${filename}\n${requestId}\n${expires}`
   const signature = createHmac('sha256', token).update(canonical).digest('base64url')
   const url = new URL(`${baseUrl}/library/documents/by-name/file`)
   url.searchParams.set('name', documentName)
-  url.searchParams.set('disposition', 'inline')
+  url.searchParams.set('disposition', disposition)
   url.searchParams.set('filename', filename)
   url.searchParams.set('requestId', requestId)
   url.searchParams.set('expires', expires)
@@ -147,7 +149,7 @@ const proxiedReferenceFile = async ({
   if (!upstream && documentId) {
     try {
       const directUrl = new URL(`${baseUrl}/library/documents/${encodeURIComponent(documentId)}/file`)
-      directUrl.searchParams.set('disposition', 'inline')
+      directUrl.searchParams.set('disposition', disposition)
       directUrl.searchParams.set('filename', filename)
       const response = await fetch(directUrl, {
         cache: 'no-store',
@@ -203,7 +205,7 @@ const proxiedReferenceFile = async ({
 
   const headers = new Headers({
     'Content-Type': upstream.headers.get('Content-Type') || 'application/pdf',
-    'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    'Content-Disposition': `${disposition}; filename*=UTF-8''${encodeURIComponent(filename)}`,
     'Cache-Control': 'private, max-age=600, stale-while-revalidate=1800',
     'Accept-Ranges': upstream.headers.get('Accept-Ranges') || 'bytes',
     'X-Content-Type-Options': 'nosniff',
@@ -287,10 +289,11 @@ export async function GET(
     { documentId = matched.id }
   }
 
-  if (disposition === 'inline' && request.nextUrl.searchParams.get('proxy') === '1') {
+  if (request.nextUrl.searchParams.get('proxy') === '1') {
     return await proxiedReferenceFile({
       documentId,
       documentName,
+      disposition,
       filename,
       requestId,
       range: request.headers.get('range'),
