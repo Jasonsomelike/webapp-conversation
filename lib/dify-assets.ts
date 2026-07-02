@@ -54,6 +54,15 @@ export const toDifyAssetProxyUrl = (value: string, download = false, filename = 
     )
     { return url }
 
+    // Page images are public static assets served by the Dify nginx layer. Let
+    // the browser load them directly instead of routing through a Vercel
+    // function; server-side fetches to the custom Dify port can intermittently
+    // fail from Vercel, while direct browser requests are fast and stable.
+    if (target.pathname.startsWith('/page-images/')) {
+      target.protocol = 'https:'
+      return target.toString()
+    }
+
     const params = new URLSearchParams({ url: target.toString() })
     if (download)
     { params.set('download', '1') }
