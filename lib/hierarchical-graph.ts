@@ -257,6 +257,119 @@ const distributeSecondRingByParent = ({
   return groups
 }
 
+const visualLength = (label: string) => [...label].reduce((total, char) => {
+  if (/[\u3400-\u9fff]/.test(char))
+  { return total + 1.45 }
+  if (/[A-Z0-9]/.test(char))
+  { return total + 0.82 }
+  return total + 0.68
+}, 0)
+
+const nodeFootprint = (
+  node: UserKnowledgeGraph['nodes'][number],
+  dense: boolean,
+  extraDense: boolean,
+) => {
+  const labelLength = visualLength(node.label)
+  const halfWidth = clamp(
+    2.8 + labelLength * (extraDense ? 0.42 : dense ? 0.48 : 0.56) + node.weight * 0.08,
+    extraDense ? 4.7 : dense ? 5.1 : 5.6,
+    extraDense ? 8.4 : dense ? 9.6 : 11.2,
+  )
+  const halfHeight = clamp(
+    2.6 + node.weight * 0.09,
+    extraDense ? 3.05 : dense ? 3.25 : 3.45,
+    extraDense ? 4.2 : dense ? 4.45 : 4.8,
+  )
+  return { halfWidth, halfHeight }
+}
+
+const relaxNodeCollisions = (
+  nodes: UserKnowledgeGraph['nodes'],
+  centerNodeId: string,
+  dense: boolean,
+  extraDense: boolean,
+) => {
+  if (nodes.length < 3)
+  { return nodes }
+
+  const positions = new Map(nodes.map(node => [node.id, { x: node.x, y: node.y }]))
+  const anchors = new Map(nodes.map(node => [node.id, { x: node.x, y: node.y }]))
+  const footprints = new Map(nodes.map(node => [node.id, nodeFootprint(node, dense, extraDense)]))
+  const iterations = extraDense ? 110 : dense ? 90 : 64
+  const minX = extraDense ? 2.8 : dense ? 3.2 : 3.7
+  const minY = extraDense ? 1.15 : dense ? 1.35 : 1.55
+  const anchorPull = extraDense ? 0.012 : dense ? 0.016 : 0.022
+  const edgePadding = extraDense ? 2.2 : 2.8
+
+  for (let tick = 0; tick < iterations; tick += 1) {
+    const cooling = 1 - tick / iterations
+    for (let i = 0; i < nodes.length; i += 1) {
+      for (let j = i + 1; j < nodes.length; j += 1) {
+        const left = nodes[i]
+        const right = nodes[j]
+        const leftPosition = positions.get(left.id)!
+        const rightPosition = positions.get(right.id)!
+        const leftFootprint = footprints.get(left.id)!
+        const rightFootprint = footprints.get(right.id)!
+        let dx = rightPosition.x - leftPosition.x
+        let dy = rightPosition.y - leftPosition.y
+        if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) {
+          const angle = (i * 37 + j * 19) * Math.PI / 97
+          dx = Math.cos(angle) * 0.01
+          dy = Math.sin(angle) * 0.01
+        }
+        const overlapX = leftFootprint.halfWidth + rightFootprint.halfWidth + minX - Math.abs(dx)
+        const overlapY = leftFootprint.halfHeight + rightFootprint.halfHeight + minY - Math.abs(dy)
+        if (overlapX <= 0 || overlapY <= 0)
+        { continue }
+
+        const pushOnX = overlapX < overlapY
+        const direction = pushOnX ? Math.sign(dx || 1) : Math.sign(dy || 1)
+        const push = Math.min(pushOnX ? overlapX : overlapY, extraDense ? 2.4 : dense ? 2.1 : 1.8) * cooling * 0.56
+        const leftFixed = left.id === centerNodeId
+        const rightFixed = right.id === centerNodeId
+        const leftShare = leftFixed ? 0 : rightFixed ? 1 : 0.5
+        const rightShare = rightFixed ? 0 : leftFixed ? 1 : 0.5
+
+        if (pushOnX) {
+          leftPosition.x -= direction * push * leftShare
+          rightPosition.x += direction * push * rightShare
+        }
+        else {
+          leftPosition.y -= direction * push * leftShare
+          rightPosition.y += direction * push * rightShare
+        }
+      }
+    }
+
+    nodes.forEach((node) => {
+      const position = positions.get(node.id)!
+      if (node.id === centerNodeId) {
+        position.x = 50
+        position.y = 50
+        return
+      }
+      const anchor = anchors.get(node.id)!
+      position.x += (anchor.x - position.x) * anchorPull * cooling
+      position.y += (anchor.y - position.y) * anchorPull * cooling
+      position.x = clamp(position.x, edgePadding, 100 - edgePadding)
+      position.y = clamp(position.y, edgePadding + 1.5, 100 - edgePadding - 1.5)
+    })
+  }
+
+  return nodes.map((node) => {
+    const position = positions.get(node.id)
+    if (!position)
+    { return node }
+    return {
+      ...node,
+      x: roundPosition(position.x),
+      y: roundPosition(position.y),
+    }
+  })
+}
+
 export const layoutGraphSlice = (graph: UserKnowledgeGraph, centerNodeId: string): UserKnowledgeGraph => {
   const center = graph.nodes.find(node => node.id === centerNodeId) || graph.nodes[0]
   if (!center)
@@ -366,7 +479,7 @@ export const layoutGraphSlice = (graph: UserKnowledgeGraph, centerNodeId: string
     }
   })
 
-  return { nodes, edges: graph.edges }
+  return { nodes: relaxNodeCollisions(nodes, center.id, dense, extraDense), edges: graph.edges }
 }
 
 export const sliceGraphAround = ({

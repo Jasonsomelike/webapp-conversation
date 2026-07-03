@@ -2,7 +2,7 @@
 import type { AnchorHTMLAttributes, ImgHTMLAttributes, ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { Streamdown } from 'streamdown'
-import { ArrowDownTrayIcon, DocumentTextIcon } from '@heroicons/react/24/outline'
+import { ArrowDownTrayIcon, DocumentTextIcon, PlayCircleIcon } from '@heroicons/react/24/outline'
 import 'katex/dist/katex.min.css'
 import ImagePreview from '@/app/components/base/image-uploader/image-preview'
 import {
@@ -315,6 +315,104 @@ const childText = (children: ReactNode) => Array.isArray(children)
   ? children.map(child => String(child)).join('').trim()
   : String(children || '').trim()
 
+interface BilibiliMetadata {
+  title: string
+  owner: string
+  pic: string
+  durationText: string
+  views: number
+  url: string
+}
+
+const bilibiliMetadataCache = new Map<string, BilibiliMetadata>()
+
+const extractBilibiliBvid = (href = '') => {
+  try {
+    const parsed = new URL(href, 'https://www.bilibili.com')
+    if (!/(^|\.)bilibili\.com$/i.test(parsed.hostname))
+    { return '' }
+    const matched = parsed.pathname.match(/\/video\/(BV[0-9A-Za-z]{10,16})/i)
+    return matched?.[1] || parsed.searchParams.get('bvid') || ''
+  }
+  catch {
+    return href.match(/BV[0-9A-Za-z]{10,16}/i)?.[0] || ''
+  }
+}
+
+const formatBilibiliCount = (value: number) => {
+  if (!Number.isFinite(value) || value <= 0)
+  { return '' }
+  if (value >= 10000)
+  { return `${Number((value / 10000).toFixed(value >= 100000 ? 0 : 1))} 万播放` }
+  return `${Math.round(value)} 播放`
+}
+
+interface BilibiliVideoCardProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
+  bvid: string
+}
+
+const BilibiliVideoCard = ({
+  bvid,
+  href = '',
+  children,
+  ...props
+}: BilibiliVideoCardProps) => {
+  const [metadata, setMetadata] = useState<BilibiliMetadata | null>(() => bilibiliMetadataCache.get(bvid) || null)
+  const [failed, setFailed] = useState(false)
+  const target = metadata?.url || href || `https://www.bilibili.com/video/${bvid}`
+  const fallbackTitle = childText(children).replace(/^https?:\/\/\S+$/i, '') || 'B 站视频推荐'
+
+  useEffect(() => {
+    if (metadata || failed)
+    { return }
+    let cancelled = false
+    const loadMetadata = async () => {
+      const response = await fetch(`/api/bilibili/video?bvid=${encodeURIComponent(bvid)}`, {
+        credentials: 'same-origin',
+      }).catch(() => null)
+      if (cancelled)
+      { return }
+      if (!response?.ok) {
+        setFailed(true)
+        return
+      }
+      const data = await response.json().catch(() => null)
+      if (!data?.title) {
+        setFailed(true)
+        return
+      }
+      bilibiliMetadataCache.set(bvid, data)
+      setMetadata(data)
+    }
+    void loadMetadata()
+    return () => {
+      cancelled = true
+    }
+  }, [bvid, failed, metadata])
+
+  return (
+    <a {...props} href={target} target='_blank' rel='noreferrer' className='markdown-bilibili-card'>
+      <span className='markdown-bilibili-cover'>
+        {metadata?.pic
+          ? <img src={metadata.pic} alt={metadata.title} loading='lazy' decoding='async' />
+          : <span className='markdown-bilibili-cover-fallback'><PlayCircleIcon /></span>}
+        {metadata?.durationText && <span className='markdown-bilibili-duration'>{metadata.durationText}</span>}
+        <span className='markdown-bilibili-play'><PlayCircleIcon /></span>
+      </span>
+      <span className='markdown-bilibili-info'>
+        <span className='markdown-bilibili-title'>{metadata?.title || fallbackTitle}</span>
+        <span className='markdown-bilibili-meta'>
+          bilibili
+          {metadata?.owner ? ` · ${metadata.owner}` : ''}
+        </span>
+        <span className='markdown-bilibili-stats'>
+          {metadata?.views ? formatBilibiliCount(metadata.views) : failed ? '点击打开 B 站视频' : '正在获取视频预览…'}
+        </span>
+      </span>
+    </a>
+  )
+}
+
 interface MarkdownLinkProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
   shareToken?: string
 }
@@ -325,6 +423,10 @@ const MarkdownLink = ({
   shareToken,
   ...props
 }: MarkdownLinkProps) => {
+  const bilibiliBvid = extractBilibiliBvid(href)
+  if (bilibiliBvid)
+  { return <BilibiliVideoCard {...props} href={href} bvid={bilibiliBvid}>{children}</BilibiliVideoCard> }
+
   const downloadable = isDownloadableAsset(href)
   const filename = (() => {
     const label = childText(children)

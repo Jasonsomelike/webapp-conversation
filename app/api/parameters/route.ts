@@ -8,6 +8,7 @@ const appParameters = {
     '最长前缀匹配到底怎么判断？',
     '给我出 3 道 CIDR 练习题',
     '根据我的学习记录建议下一步',
+    '给我推荐一个讲解OSI的B站视频',
   ],
   user_input_form: [],
   file_upload: {

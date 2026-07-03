@@ -103,6 +103,7 @@ const Chat: FC<IChatProps> = ({
   const { t } = useTranslation()
   const { notify } = Toast
   const isUseInputMethod = useRef(false)
+  const lastCompositionEndAt = useRef(0)
   const composerRef = useRef<HTMLDivElement>(null)
 
   const [query, setQuery] = React.useState('')
@@ -330,10 +331,24 @@ const Chat: FC<IChatProps> = ({
     setIsSending(false)
   }
 
+  const isInputMethodEvent = (event: any) => {
+    const nativeEvent = event?.nativeEvent || event
+    const isEnterKey = event?.code === 'Enter' || event?.key === 'Enter'
+    const justEndedComposition = isEnterKey && Date.now() - lastCompositionEndAt.current < 260
+    return Boolean(
+      nativeEvent?.isComposing
+      || event?.isComposing
+      || nativeEvent?.keyCode === 229
+      || event?.keyCode === 229
+      || isUseInputMethod.current
+      || justEndedComposition,
+    )
+  }
+
   const handleKeyUp = (e: any) => {
-    if (e.nativeEvent.isComposing || isUseInputMethod.current)
+    if (isInputMethodEvent(e))
     { return }
-    if (e.code === 'Enter') {
+    if (e.code === 'Enter' || e.key === 'Enter') {
       e.preventDefault()
       // prevent send message when using input method enter
       if (!e.shiftKey) { void handleSend() }
@@ -341,10 +356,12 @@ const Chat: FC<IChatProps> = ({
   }
 
   const handleKeyDown = (e: any) => {
-    isUseInputMethod.current = e.nativeEvent.isComposing
-    if (e.nativeEvent.isComposing)
+    const nativeComposing = Boolean(e.nativeEvent?.isComposing || e.isComposing || e.nativeEvent?.keyCode === 229 || e.keyCode === 229)
+    if (nativeComposing)
+    { isUseInputMethod.current = true }
+    if (isInputMethodEvent(e))
     { return }
-    if (e.code === 'Enter' && !e.shiftKey) {
+    if ((e.code === 'Enter' || e.key === 'Enter') && !e.shiftKey) {
       const result = getDraftValue().replace(/\n$/, '')
       syncDraftValue(result)
       e.preventDefault()
@@ -506,6 +523,7 @@ const Chat: FC<IChatProps> = ({
                     queryRef.current = event.currentTarget.value
                   }}
                   onCompositionEnd={(event: any) => {
+                    lastCompositionEndAt.current = Date.now()
                     isUseInputMethod.current = false
                     syncDraftValue(event.currentTarget.value)
                   }}
