@@ -73,10 +73,20 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   const renderedImageUrl = refreshedSourceImageUrl || (!useProxyImage && directImageUrl ? directImageUrl : imageUrl)
 
   const isPdfPageImage = /\/page-images\/[^/]+\/page_(\d+)\.(?:jpe?g|png|webp)(?:[?#].*)?$/i.test(absoluteSourceUrl || sourceUrl)
+  const isReferencePageImageApi = /\/api\/sources\/[0-9a-f-]+\/page-image(?:[?#].*)?$/i.test(sourceUrl)
   const isInlineKnowledgeIllustration = Boolean((absoluteSourceUrl || sourceUrl).includes('/page-images/') && !isPdfPageImage)
-  const pageNumber = sourceInfo?.pageNumber || Number(sourceUrl.match(/\/page-images\/[^/]+\/page_(\d+)\./i)?.[1] || 0) || undefined
+  const pageNumber = sourceInfo?.pageNumber
+    || Number(sourceUrl.match(/\/page-images\/[^/]+\/page_(\d+)\./i)?.[1] || 0)
+    || (() => {
+      try {
+        return Number(new URL(sourceUrl, 'https://www.jasonsome.cn').searchParams.get('page') || 0) || undefined
+      }
+      catch {
+        return undefined
+      }
+    })()
   const sourceFilename = sourceInfo?.documentName || String(alt).match(/([^\n|]+?\.(?:pdf|docx?|pptx?))/i)?.[1]?.replace(/^[\s\-–—*#>|![\]()"'“”‘’]+/, '').trim()
-  const isKnowledgeSource = Boolean(isPdfPageImage && (pageNumber || sourceInfo?.previewUrl || sourceUrl.includes('/page-images/')))
+  const isKnowledgeSource = Boolean((isPdfPageImage || isReferencePageImageApi) && (pageNumber || sourceInfo?.previewUrl || sourceUrl.includes('/page-images/') || isReferencePageImageApi))
   const isGeneratedImage = sourceUrl.includes('/files/tools/') || sourceUrl.includes('/api/generated-files/')
   const sourceLabel = isKnowledgeSource
     ? `来源：${sourceFilename || '课程知识库原页'}${pageNumber ? ` · 第 ${pageNumber} 页` : ''}`
@@ -159,12 +169,20 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   }, [sourceInfo?.imageUrl, sourceUrl, shareToken])
 
   useEffect(() => {
-    if (!isPdfPageImage)
+    if (!isPdfPageImage && !isReferencePageImageApi)
     { return }
     let cancelled = false
     const timers: ReturnType<typeof setTimeout>[] = []
     const loadSourceInfo = async (attempt = 0) => {
-      const response = await fetch(`/api/sources/image-info?url=${encodeURIComponent(absoluteSourceUrl)}`, {
+      const endpoint = (() => {
+        if (isReferencePageImageApi) {
+          const apiUrl = new URL(sourceUrl, window.location.origin)
+          apiUrl.searchParams.set('json', '1')
+          return `${apiUrl.pathname}${apiUrl.search}`
+        }
+        return `/api/sources/image-info?url=${encodeURIComponent(absoluteSourceUrl)}`
+      })()
+      const response = await fetch(endpoint, {
         credentials: 'include',
       }).catch(() => null)
       if (cancelled)
@@ -181,7 +199,7 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
       cancelled = true
       timers.forEach(timer => clearTimeout(timer))
     }
-  }, [absoluteSourceUrl, isPdfPageImage])
+  }, [absoluteSourceUrl, isPdfPageImage, isReferencePageImageApi, sourceUrl])
 
   if (!renderedImageUrl)
   { return null }

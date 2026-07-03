@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { db, withDatabaseRetry } from '@/lib/db'
 import { findKnowledgeDocumentByName, getKnowledgeDocumentPageImages } from '@/lib/dify-dataset'
-import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
+import { toDifyAssetProxyUrl, toDirectDifyAssetUrl } from '@/lib/dify-assets'
 import { cleanReferenceDocumentName } from '@/lib/reference-extractor'
 import { getSessionFromRequest } from '@/lib/session'
 
@@ -52,7 +52,7 @@ export async function GET(
     const pageImages = await getKnowledgeDocumentPageImages(documentId).catch(() => [])
     const image = pageImages.find(item => item.page === page)
     if (image) {
-      const target = toDifyAssetProxyUrl(image.url)
+      const target = toDirectDifyAssetUrl(image.url) || toDifyAssetProxyUrl(image.url)
       if (request.nextUrl.searchParams.get('json') === '1') {
         return Response.json({
           page,
@@ -69,7 +69,7 @@ export async function GET(
   }
 
   if (reference.pageImageUrl) {
-    const target = toDifyAssetProxyUrl(reference.pageImageUrl)
+    const target = toDirectDifyAssetUrl(reference.pageImageUrl) || toDifyAssetProxyUrl(reference.pageImageUrl)
     if (request.nextUrl.searchParams.get('json') === '1')
     { return Response.json({ page, imageUrl: target }, { headers: { 'Cache-Control': 'private, max-age=60' } }) }
     return NextResponse.redirect(target)

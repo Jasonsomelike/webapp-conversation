@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ArrowDownTrayIcon,
@@ -15,8 +15,7 @@ import {
 import PageCard from '@/app/components/workspace/page-card'
 import type { KnowledgeReference } from '@/lib/learning-types'
 import ImagePreview from '@/app/components/base/image-uploader/image-preview'
-import { ResizableSplitHandle, useResizableSplit } from '@/app/components/base/resizable-split'
-import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
+import { toDirectDifyAssetUrl } from '@/lib/dify-assets'
 import { getStaticCourseware, getStaticCoursewareDownloadUrl } from '@/lib/static-courseware'
 
 const inferPageFromImageUrl = (value?: string | null) =>
@@ -156,28 +155,22 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
   const [previewImageUrl, setPreviewImageUrl] = useState('')
   const [showLoadError, setShowLoadError] = useState(Boolean(loadError))
-  const detailRootRef = useRef<HTMLElement>(null)
-  const sourcesSplit = useResizableSplit({
-    storageKey: 'network-study-sources-list-width',
-    cssVariable: '--sources-list-width',
-    defaultSize: 380,
-    minSize: 300,
-    maxSize: 620,
-    minTrailingSize: 620,
-    label: '调整引用列表宽度',
-  })
+  const [detailImageUrl, setDetailImageUrl] = useState('')
+  const [detailImageLoading, setDetailImageLoading] = useState(false)
 
   const [imageError, setImageError] = useState(false)
   const filtered = useMemo(() => mergedReferences.filter(item =>
     `${item.documentName} ${item.topic} ${item.quote} ${item.mergedQuotes.join(' ')}`.toLowerCase().includes(query.toLowerCase()),
   ), [query, mergedReferences])
   const selected = mergedReferences.find(item => item.id === selectedId) || filtered[0]
+  const selectedReferenceId = selected?.id
+  const selectedPageImageUrl = selected?.pageImageUrl
   const documentCount = new Set(safeReferences.map(item => item.documentName)).size
   const selectedPreviewPage = selected
     ? selected.mergedPageNumbers[0] || inferPageFromImageUrl(selected.pageImageUrl) || selected.pageNumber || selected.originalPageNumber || 1
     : 1
   const originalPageNumber = inferOriginalPdfPageFromQuote(selected?.quote)
-  const selectedHasPdfPageImage = isPdfPageImageUrl(selected?.pageImageUrl)
+  const selectedHasPdfDocument = /\.pdf(?:[?#].*)?$/i.test(selected?.documentName || '')
   const selectedStaticCourseware = selected ? getStaticCourseware(selected.documentId, selected.documentName) : undefined
   const documentPreviewUrl = selected
     ? `/sources/preview/${selected.id}?page=${selectedPreviewPage}&filename=${encodeURIComponent(selected.documentName)}&returnTo=${encodeURIComponent('/sources')}`
@@ -185,16 +178,57 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
   const documentDownloadUrl = selected
     ? getStaticCoursewareDownloadUrl(selected.documentId, selected.documentName) || `/api/sources/${selected.id}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`
     : ''
-  const pageImageHref = selectedHasPdfPageImage && selected?.pageImageUrl
-    ? toDifyAssetProxyUrl(selected.pageImageUrl)
-    : ''
-  const pageImageRawHref = selectedHasPdfPageImage && selected?.pageImageUrl
-    ? toDifyAssetProxyUrl(selected.pageImageUrl)
-    : ''
+  const storedDirectPageImageUrl = selected?.pageImageUrl ? toDirectDifyAssetUrl(selected.pageImageUrl) : ''
+  const pageImageHref = detailImageUrl || storedDirectPageImageUrl
+  const pageImageRawHref = pageImageHref
 
   useEffect(() => {
     setImageError(false)
-  }, [selected?.id])
+  }, [selectedReferenceId])
+  useEffect(() => {
+    if (!mobileDetailOpen || !selectedReferenceId)
+    { return }
+    const shouldResolvePageImage = selectedHasPdfDocument || Boolean(selectedPageImageUrl)
+    if (!shouldResolvePageImage) {
+      setDetailImageUrl('')
+      setDetailImageLoading(false)
+      return
+    }
+
+    let disposed = false
+    const fallbackUrl = selectedPageImageUrl ? toDirectDifyAssetUrl(selectedPageImageUrl) : ''
+    setImageError(false)
+    setDetailImageUrl(fallbackUrl)
+    setDetailImageLoading(!fallbackUrl)
+    fetch(`/api/sources/${encodeURIComponent(selectedReferenceId)}/page-image?page=${selectedPreviewPage}&json=1`, {
+      credentials: 'include',
+    })
+      .then(async (response) => {
+        if (!response.ok)
+        { throw new Error(`PAGE_IMAGE_${response.status}`) }
+        return await response.json() as { imageUrl?: string }
+      })
+      .then((payload) => {
+        if (disposed)
+        { return }
+        setDetailImageUrl(toDirectDifyAssetUrl(payload.imageUrl || '') || payload.imageUrl || '')
+      })
+      .catch(() => {
+        if (disposed)
+        { return }
+        if (fallbackUrl)
+        { setDetailImageUrl(fallbackUrl) }
+        else
+        { setImageError(true) }
+      })
+      .finally(() => {
+        if (!disposed)
+        { setDetailImageLoading(false) }
+      })
+    return () => {
+      disposed = true
+    }
+  }, [mobileDetailOpen, selectedPageImageUrl, selectedHasPdfDocument, selectedPreviewPage, selectedReferenceId])
   useEffect(() => {
     setShowLoadError(Boolean(loadError))
   }, [loadError])
@@ -220,23 +254,6 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
       window.NetworkStudyApp?.setShellState('/sources', '我的文档引用', '可追溯学习')
     }
   }, [mobileDetailOpen])
-  const ensureDesktopDetailVisible = useCallback(() => {
-    if (globalThis.matchMedia('(max-width: 1023px)').matches)
-    { return }
-    requestAnimationFrame(() => {
-      const element = detailRootRef.current
-      if (!element)
-      { return }
-      const rect = element.getBoundingClientRect()
-      const targetTop = 92
-      if (rect.top < targetTop || rect.top > globalThis.innerHeight - 220) {
-        globalThis.scrollBy({
-          top: rect.top - targetTop,
-          behavior: 'smooth',
-        })
-      }
-    })
-  }, [])
   const exportReferences = () => {
     const rows = [
       ['文档名', '分卷页码', '原 PDF 页码', '相关度', '引用片段'],
@@ -306,10 +323,21 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
     if (!selected)
     { return null }
 
-    const sourcePreview = pageImageHref && !imageError
-      ? (
+    let sourcePreview = null
+    if (detailImageLoading) {
+      sourcePreview = (
+        <div className="mt-5 grid min-h-[180px] place-items-center rounded-2xl border border-dashed border-black/10 bg-black/[0.025] px-5 py-10 text-center">
+          <div>
+            <span className="mx-auto block h-5 w-5 animate-spin rounded-full border-2 border-black/15 border-t-[var(--studio-accent-strong)]" />
+            <div className="mt-3 text-xs font-semibold text-[var(--studio-muted)]">正在加载来源页图片…</div>
+          </div>
+        </div>
+      )
+    }
+    else if (pageImageHref && !imageError) {
+      sourcePreview = (
         <div
-          className={`group mt-5 inline-block max-w-full overflow-hidden rounded-2xl border border-black/10 bg-black/[0.025] p-2 text-left shadow-sm ${mobile ? 'w-full' : 'sm:max-w-[50%]'}`}
+          className={`group mt-5 inline-block max-w-full overflow-hidden rounded-2xl border border-black/10 bg-black/[0.025] p-2 text-left shadow-sm ${mobile ? 'w-full' : 'w-full max-w-[380px]'}`}
         >
           <button
             type="button"
@@ -337,15 +365,16 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
           </div>
         </div>
       )
-      : imageError
-        ? (
-          <div className="mt-5 rounded-2xl border border-dashed border-black/10 bg-black/[0.025] px-5 py-10 text-center">
-            <DocumentMagnifyingGlassIcon className="mx-auto h-7 w-7 text-[var(--studio-muted)]" />
-            <div className="mt-2 text-xs font-semibold">来源页图片加载失败</div>
-            <div className="mt-1 text-[10px] text-[var(--studio-muted)]">可尝试打开或下载对应文档。</div>
-          </div>
-        )
-        : null
+    }
+    else if (imageError) {
+      sourcePreview = (
+        <div className="mt-5 rounded-2xl border border-dashed border-black/10 bg-black/[0.025] px-5 py-10 text-center">
+          <DocumentMagnifyingGlassIcon className="mx-auto h-7 w-7 text-[var(--studio-muted)]" />
+          <div className="mt-2 text-xs font-semibold">来源页图片加载失败</div>
+          <div className="mt-1 text-[10px] text-[var(--studio-muted)]">可尝试打开或下载对应文档。</div>
+        </div>
+      )
+    }
 
     return (
       <>
@@ -463,23 +492,16 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
             </div>
           )
           : (
-            <div
-              ref={sourcesSplit.containerRef}
-              style={sourcesSplit.containerStyle}
-              className="grid min-h-[580px] min-w-0 lg:grid-cols-[var(--sources-list-width)_8px_minmax(0,1fr)]"
-            >
-              <aside className="flex min-h-0 min-w-0 flex-col border-b border-black/[0.07] bg-black/[0.018] p-3 lg:border-b-0 lg:border-r">
+            <div className="min-h-[580px] min-w-0 bg-black/[0.018] p-3">
+              <section className="flex min-h-0 min-w-0 flex-col">
                 <div className="shrink-0 px-2 py-2 text-[10px] font-bold uppercase tracking-[0.18em] text-black/40">当前账号引用 · {filtered.length}</div>
-                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                <div className="grid min-h-0 flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                   {filtered.map(item => (
                     <button
                       key={item.id}
                       onClick={() => {
                         setSelectedId(item.id)
-                        if (globalThis.matchMedia('(max-width: 1023px)').matches)
-                        { setMobileDetailOpen(true) }
-                        else
-                        { ensureDesktopDetailVisible() }
+                        setMobileDetailOpen(true)
                       }}
                       className={`min-w-0 w-full overflow-hidden rounded-2xl border p-4 text-left transition [contain-intrinsic-size:132px] [content-visibility:auto] ${
                         selected?.id === item.id
@@ -496,15 +518,6 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
                     </button>
                   ))}
                 </div>
-              </aside>
-
-              <ResizableSplitHandle
-                separatorProps={sourcesSplit.separatorProps}
-                className="border-r border-black/[0.06] bg-black/[0.018] hover:bg-[var(--studio-accent)]/20"
-              />
-
-              <section ref={detailRootRef} className="hidden min-w-0 p-6 sm:p-8 lg:block">
-                {renderSelectedDetails()}
               </section>
             </div>
           )}
@@ -512,26 +525,28 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
 
       {mobileDetailOpen && selected && typeof document !== 'undefined'
         ? createPortal((
-          <div className="fixed inset-0 z-[1000] flex h-[100dvh] w-screen flex-col overflow-hidden bg-[var(--studio-paper)] lg:hidden">
-            <div className="flex min-h-16 shrink-0 items-center justify-between border-b border-black/[0.08] bg-[var(--studio-surface)]/95 px-4 py-2 backdrop-blur-xl">
-              <div className="min-w-0">
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--studio-muted)]">引用详情</div>
-                <div className="mt-0.5 truncate text-sm font-semibold">{selected.documentName}</div>
+          <div className="fixed inset-0 z-[1000] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-black/35 p-3 backdrop-blur-sm sm:p-5">
+            <div className="flex max-h-[min(90dvh,900px)] w-full max-w-[920px] flex-col overflow-hidden rounded-[28px] bg-[var(--studio-surface)] shadow-[0_30px_90px_rgba(17,24,39,.28)]">
+              <div className="flex min-h-16 shrink-0 items-center justify-between border-b border-black/[0.08] bg-[var(--studio-surface)]/95 px-4 py-3 backdrop-blur-xl sm:px-6">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--studio-muted)]">引用详情</div>
+                  <div className="mt-0.5 truncate text-sm font-semibold sm:text-base">{selected.documentName}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMobileDetailOpen(false)}
+                  className="ml-3 grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-black/10 bg-[var(--studio-surface)]"
+                  aria-label="关闭引用详情"
+                >
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setMobileDetailOpen(false)}
-                className="ml-3 grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-black/10 bg-[var(--studio-surface)]"
-                aria-label="关闭引用详情"
-              >
-                <XMarkIcon className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6 pt-5">
-              {renderSelectedDetails(true)}
-            </div>
-            <div className="shrink-0 border-t border-black/[0.08] bg-[var(--studio-surface)]/95 px-3 pb-[calc(10px+env(safe-area-inset-bottom))] pt-2.5 backdrop-blur-xl">
-              {renderActions(true)}
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6 pt-5 sm:px-6">
+                {renderSelectedDetails(true)}
+              </div>
+              <div className="shrink-0 border-t border-black/[0.08] bg-[var(--studio-surface)]/95 px-3 pb-[calc(10px+env(safe-area-inset-bottom))] pt-2.5 backdrop-blur-xl sm:px-5">
+                {renderActions(true)}
+              </div>
             </div>
           </div>
         ), document.body,
