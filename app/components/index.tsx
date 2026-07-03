@@ -546,11 +546,12 @@ const Main: FC<IMainProps> = () => {
   }, [])
 
   useEffect(() => {
-    const handleChatEntered = () => {
+    const handleChatEntered = (event: Event) => {
       if (targetMessageId)
       { return }
+      const force = Boolean((event as CustomEvent<{ force?: boolean }>).detail?.force)
       const currentKey = currConversationId || '-1'
-      if (nativeChatEnteredScrollKeyRef.current === currentKey)
+      if (!force && nativeChatEnteredScrollKeyRef.current === currentKey)
       { return }
       nativeChatEnteredScrollKeyRef.current = currentKey
       pendingScrollToBottomRef.current = false

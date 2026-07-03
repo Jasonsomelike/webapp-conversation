@@ -121,6 +121,12 @@ const compareDocumentPart = (left: DifyKnowledgeDocument, right: DifyKnowledgeDo
   return left.name.localeCompare(right.name, 'zh-CN')
 }
 
+const isHealthyDocumentStatus = (status: string) =>
+  ['completed', 'available'].includes(status)
+
+const isBlockingDocumentError = (status: string) =>
+  status === 'error'
+
 const buildDocumentGroups = (documents: DifyKnowledgeDocument[]): DocumentBookGroup[] => {
   const groups = new Map<string, DocumentBookGroup>()
 
@@ -146,9 +152,9 @@ const buildDocumentGroups = (documents: DifyKnowledgeDocument[]): DocumentBookGr
     group.totalTokens += document.tokens || 0
     group.totalHits += document.hit_count || 0
     group.latestCreatedAt = Math.max(group.latestCreatedAt || 0, document.created_at || 0) || undefined
-    if (['completed', 'available'].includes(currentStatus))
+    if (isHealthyDocumentStatus(currentStatus))
     { group.healthyCount += 1 }
-    if (currentStatus === 'error' || document.error)
+    if (isBlockingDocumentError(currentStatus))
     { group.errorCount += 1 }
     if (document.data_source_type && !group.sourceTypes.includes(document.data_source_type))
     { group.sourceTypes.push(document.data_source_type) }
@@ -166,7 +172,7 @@ const buildDocumentGroups = (documents: DifyKnowledgeDocument[]): DocumentBookGr
     else {
       group.primaryStatus = group.documents.find((document) => {
         const status = document.indexing_status || document.display_status || ''
-        return !['completed', 'available'].includes(status)
+        return !isHealthyDocumentStatus(status)
       })?.indexing_status || group.documents[0]?.indexing_status || group.documents[0]?.display_status || 'waiting'
     }
     return group
@@ -332,7 +338,7 @@ export default function DocumentLibrary({
     [documentGroups, groupPageStart],
   )
   const hasMoreGroupPages = groupPageStart + groupsPerPage < documentGroups.length
-  const completed = result.data.filter(item => ['completed', 'available'].includes(item.indexing_status || item.display_status || '')).length
+  const completed = result.data.filter(item => isHealthyDocumentStatus(item.indexing_status || item.display_status || '')).length
   const totalWords = result.data.reduce((sum, item) => sum + (item.word_count || 0), 0)
   const groupedCount = documentGroups.length
   const refreshInProgress = refreshPending || refreshNotice?.tone === 'info'
@@ -570,7 +576,8 @@ export default function DocumentLibrary({
                             <div className="divide-y divide-black/[0.055]">
                               {group.documents.map((document) => {
                                 const currentStatus = document.indexing_status || document.display_status || 'waiting'
-                                const partHealthy = ['completed', 'available'].includes(currentStatus)
+                                const partHealthy = isHealthyDocumentStatus(currentStatus)
+                                const showDocumentError = isBlockingDocumentError(currentStatus) && Boolean(document.error)
                                 return (
                                   <div key={document.id} className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_100px_95px_130px_140px] md:items-center">
                                     <div className="min-w-0">
@@ -580,7 +587,7 @@ export default function DocumentLibrary({
                                         <span>{document.doc_form || '文本分段'}</span>
                                         <span>命中 {document.hit_count || 0} 次</span>
                                       </div>
-                                      {document.error && <div className="mt-1 text-[10px] text-red-600">{document.error}</div>}
+                                      {showDocumentError && <div className="mt-1 text-[10px] text-red-600">{document.error}</div>}
                                     </div>
                                     <div>
                                       <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${partHealthy ? 'bg-emerald-50 text-emerald-700' : currentStatus === 'error' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>

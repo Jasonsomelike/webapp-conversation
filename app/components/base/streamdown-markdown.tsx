@@ -55,6 +55,7 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   const [preview, setPreview] = useState(false)
   const [failed, setFailed] = useState(false)
   const [useProxyImage, setUseProxyImage] = useState(false)
+  const [useRefreshedSourceImage, setUseRefreshedSourceImage] = useState(false)
   const [skipRefreshedSourceImage, setSkipRefreshedSourceImage] = useState(false)
   const [sourceInfo, setSourceInfo] = useState<{
     referenceId?: string
@@ -69,12 +70,14 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   const directImageUrl = !shareToken
     ? toBrowserImageFallbackUrl(sourceUrl) || toDirectDifyAssetUrl(sourceUrl)
     : ''
-  const refreshedSourceImageUrl = !shareToken && !skipRefreshedSourceImage && sourceInfo?.imageUrl ? sourceInfo.imageUrl : ''
+  const refreshedSourceImageUrl = !shareToken && useRefreshedSourceImage && !skipRefreshedSourceImage && sourceInfo?.imageUrl ? sourceInfo.imageUrl : ''
   const renderedImageUrl = refreshedSourceImageUrl || (!useProxyImage && directImageUrl ? directImageUrl : imageUrl)
 
   const isPdfPageImage = /\/page-images\/[^/]+\/page_(\d+)\.(?:jpe?g|png|webp)(?:[?#].*)?$/i.test(absoluteSourceUrl || sourceUrl)
   const isReferencePageImageApi = /\/api\/sources\/[0-9a-f-]+\/page-image(?:[?#].*)?$/i.test(sourceUrl)
   const isInlineKnowledgeIllustration = Boolean((absoluteSourceUrl || sourceUrl).includes('/page-images/') && !isPdfPageImage)
+  const hintedFilename = String(alt).match(/([^\n|]+?\.(?:pdf|docx?|pptx?))/i)?.[1]?.replace(/^[\s\-–—*#>|![\]()"'“”‘’]+/, '').trim()
+  const hintedPageNumber = Number(String(alt).match(/(?:第\s*(\d{1,5})\s*页|page\s*(\d{1,5}))/i)?.slice(1).find(Boolean) || 0) || undefined
   const pageNumber = sourceInfo?.pageNumber
     || Number(sourceUrl.match(/\/page-images\/[^/]+\/page_(\d+)\./i)?.[1] || 0)
     || (() => {
@@ -85,7 +88,16 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
         return undefined
       }
     })()
-  const sourceFilename = sourceInfo?.documentName || String(alt).match(/([^\n|]+?\.(?:pdf|docx?|pptx?))/i)?.[1]?.replace(/^[\s\-–—*#>|![\]()"'“”‘’]+/, '').trim()
+    || hintedPageNumber
+  const sourceFilename = sourceInfo?.documentName || hintedFilename
+  const sourceInfoHref = (() => {
+    const params = new URLSearchParams({ url: absoluteSourceUrl })
+    if (sourceFilename)
+    { params.set('filename', sourceFilename) }
+    if (pageNumber)
+    { params.set('page', String(pageNumber)) }
+    return `/api/sources/image-info?${params}`
+  })()
   const isKnowledgeSource = Boolean((isPdfPageImage || isReferencePageImageApi) && (pageNumber || sourceInfo?.previewUrl || sourceUrl.includes('/page-images/') || isReferencePageImageApi))
   const isGeneratedImage = sourceUrl.includes('/files/tools/') || sourceUrl.includes('/api/generated-files/')
   const sourceLabel = isKnowledgeSource
@@ -98,7 +110,7 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   const originalLabel = isKnowledgeSource ? '查看来源' : '查看原图'
   const showOriginalLink = !isGeneratedImage
   const sourceHref = isKnowledgeSource
-    ? sourceInfo?.previewUrl || `/api/sources/image-info?redirect=1&url=${encodeURIComponent(absoluteSourceUrl)}`
+    ? sourceInfo?.previewUrl || `${sourceInfoHref}&redirect=1`
     : directImageUrl || imageUrl
   const disableNativeGeneratedPreview = isGeneratedImage && isNetworkStudyApp()
   const openPreview = () => {
@@ -165,8 +177,17 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   useEffect(() => {
     setFailed(false)
     setUseProxyImage(false)
+    setUseRefreshedSourceImage(false)
     setSkipRefreshedSourceImage(false)
-  }, [sourceInfo?.imageUrl, sourceUrl, shareToken])
+  }, [sourceUrl, shareToken])
+
+  useEffect(() => {
+    if (!failed || !sourceInfo?.imageUrl || useRefreshedSourceImage)
+    { return }
+    setFailed(false)
+    setUseProxyImage(false)
+    setUseRefreshedSourceImage(true)
+  }, [failed, sourceInfo?.imageUrl, useRefreshedSourceImage])
 
   useEffect(() => {
     if (!isPdfPageImage && !isReferencePageImageApi)
@@ -180,7 +201,7 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
           apiUrl.searchParams.set('json', '1')
           return `${apiUrl.pathname}${apiUrl.search}`
         }
-        return `/api/sources/image-info?url=${encodeURIComponent(absoluteSourceUrl)}`
+        return sourceInfoHref
       })()
       const response = await fetch(endpoint, {
         credentials: 'include',
@@ -199,7 +220,7 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
       cancelled = true
       timers.forEach(timer => clearTimeout(timer))
     }
-  }, [absoluteSourceUrl, isPdfPageImage, isReferencePageImageApi, sourceUrl])
+  }, [absoluteSourceUrl, isPdfPageImage, isReferencePageImageApi, sourceInfoHref, sourceUrl])
 
   if (!renderedImageUrl)
   { return null }
@@ -245,6 +266,11 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
             onError={() => {
               if (refreshedSourceImageUrl) {
                 setSkipRefreshedSourceImage(true)
+                return
+              }
+              if (!useRefreshedSourceImage && sourceInfo?.imageUrl) {
+                setUseProxyImage(false)
+                setUseRefreshedSourceImage(true)
                 return
               }
               if (!useProxyImage && imageUrl && imageUrl !== renderedImageUrl) {

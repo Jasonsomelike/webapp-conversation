@@ -495,7 +495,7 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
             <div className="min-h-[580px] min-w-0 bg-black/[0.018] p-3">
               <section className="flex min-h-0 min-w-0 flex-col">
                 <div className="shrink-0 px-2 py-2 text-[10px] font-bold uppercase tracking-[0.18em] text-black/40">当前账号引用 · {filtered.length}</div>
-                <div className="grid min-h-0 flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                <div className="grid min-h-0 flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {filtered.map(item => (
                     <button
                       key={item.id}
@@ -525,7 +525,13 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
 
       {mobileDetailOpen && selected && typeof document !== 'undefined'
         ? createPortal((
-          <div className="fixed inset-0 z-[1000] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-black/35 p-3 backdrop-blur-sm sm:p-5">
+          <div
+            className="fixed inset-0 z-[1000] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-black/35 p-3 backdrop-blur-sm sm:p-5"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget)
+              { setMobileDetailOpen(false) }
+            }}
+          >
             <div className="flex max-h-[min(90dvh,900px)] w-full max-w-[920px] flex-col overflow-hidden rounded-[28px] bg-[var(--studio-surface)] shadow-[0_30px_90px_rgba(17,24,39,.28)]">
               <div className="flex min-h-16 shrink-0 items-center justify-between border-b border-black/[0.08] bg-[var(--studio-surface)]/95 px-4 py-3 backdrop-blur-xl sm:px-6">
                 <div className="min-w-0">

@@ -123,6 +123,7 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
   const initialTheme = isThemeId(session.theme) ? session.theme : 'forest'
   const [theme, setTheme] = useState<ThemeId>(initialTheme)
   const shellRef = useRef<HTMLDivElement>(null)
+  const previousPathnameRef = useRef(pathname)
   const chatResponding = useChatRuntime(state => state.isResponding)
   const current = routeMeta[pathname] || routeMeta['/chat']
   const sidebarNavItems = isAdminSession(session) ? [...navItems, adminNavItem] : navItems
@@ -261,6 +262,15 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
 
   useEffect(() => {
     setPendingHref('')
+    const previousPathname = previousPathnameRef.current
+    previousPathnameRef.current = pathname
+    if (pathname === '/chat' && previousPathname !== '/chat') {
+      globalThis.setTimeout(() => {
+        globalThis.dispatchEvent(new CustomEvent('network-study-chat-entered', {
+          detail: { force: true },
+        }))
+      }, 0)
+    }
     if (pathname !== '/chat')
     { setChatDetail(false) }
   }, [pathname])
