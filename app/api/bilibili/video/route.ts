@@ -13,6 +13,10 @@ const normalizeImageUrl = (value?: string) => {
   return value
 }
 
+const toCoverProxyUrl = (value: string) => value
+  ? `/api/bilibili/cover?url=${encodeURIComponent(value)}`
+  : ''
+
 const formatDuration = (seconds: number) => {
   if (!Number.isFinite(seconds) || seconds <= 0)
   { return '' }
@@ -46,11 +50,13 @@ export async function GET(request: NextRequest) {
   }
 
   const data = payload.data
+  const rawPic = normalizeImageUrl(String(data.pic || ''))
   return NextResponse.json({
     bvid,
     title: String(data.title || bvid),
     owner: String(data.owner?.name || 'bilibili'),
-    pic: normalizeImageUrl(String(data.pic || '')),
+    pic: toCoverProxyUrl(rawPic),
+    rawPic,
     duration: Number(data.duration || 0),
     durationText: formatDuration(Number(data.duration || 0)),
     views: Number(data.stat?.view || 0),

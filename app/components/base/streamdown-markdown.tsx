@@ -319,6 +319,7 @@ interface BilibiliMetadata {
   title: string
   owner: string
   pic: string
+  rawPic?: string
   durationText: string
   views: number
   url: string
@@ -347,6 +348,25 @@ const formatBilibiliCount = (value: number) => {
   return `${Math.round(value)} 播放`
 }
 
+const toBilibiliCoverProxy = (value = '') => {
+  if (!value)
+  { return '' }
+  if (value.startsWith('/api/bilibili/cover'))
+  { return value }
+  try {
+    const parsed = new URL(value, 'https://www.jasonsome.cn')
+    const host = parsed.hostname.toLowerCase()
+    const isBilibiliCover = (host === 'hdslb.com' || host.endsWith('.hdslb.com') || host === 'biliimg.com' || host.endsWith('.biliimg.com'))
+      && parsed.pathname.startsWith('/bfs/')
+    if (!isBilibiliCover)
+    { return value }
+    return `/api/bilibili/cover?url=${encodeURIComponent(parsed.toString())}`
+  }
+  catch {
+    return value
+  }
+}
+
 interface BilibiliVideoCardProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
   bvid: string
 }
@@ -359,8 +379,10 @@ const BilibiliVideoCard = ({
 }: BilibiliVideoCardProps) => {
   const [metadata, setMetadata] = useState<BilibiliMetadata | null>(() => bilibiliMetadataCache.get(bvid) || null)
   const [failed, setFailed] = useState(false)
+  const [coverFailed, setCoverFailed] = useState(false)
   const target = metadata?.url || href || `https://www.bilibili.com/video/${bvid}`
   const fallbackTitle = childText(children).replace(/^https?:\/\/\S+$/i, '') || 'B 站视频推荐'
+  const coverUrl = !coverFailed ? toBilibiliCoverProxy(metadata?.pic || metadata?.rawPic || '') : ''
 
   useEffect(() => {
     if (metadata || failed)
@@ -393,8 +415,8 @@ const BilibiliVideoCard = ({
   return (
     <a {...props} href={target} target='_blank' rel='noreferrer' className='markdown-bilibili-card'>
       <span className='markdown-bilibili-cover'>
-        {metadata?.pic
-          ? <img src={metadata.pic} alt={metadata.title} loading='lazy' decoding='async' />
+        {coverUrl
+          ? <img src={coverUrl} alt={metadata?.title || fallbackTitle} loading='lazy' decoding='async' onError={() => setCoverFailed(true)} />
           : <span className='markdown-bilibili-cover-fallback'><PlayCircleIcon /></span>}
         {metadata?.durationText && <span className='markdown-bilibili-duration'>{metadata.durationText}</span>}
         <span className='markdown-bilibili-play'><PlayCircleIcon /></span>
