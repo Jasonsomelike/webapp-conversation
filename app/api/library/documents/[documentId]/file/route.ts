@@ -8,6 +8,7 @@ import {
 } from '@/lib/dify-dataset'
 import { buildKnowledgeDocumentPdf } from '@/lib/knowledge-document-pdf'
 import { getSessionFromRequest } from '@/lib/session'
+import { getStaticCourseware } from '@/lib/static-courseware'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -312,6 +313,21 @@ export async function GET(
   const matchedDocument = await findKnowledgeDocumentByName(filename, documentId).catch(() => null)
   const resolvedDocumentId = matchedDocument?.id || documentId
   const requestRange = request.headers.get('range')
+  const staticCourseware = getStaticCourseware(resolvedDocumentId, filename)
+  if (staticCourseware) {
+    const redirectUrl = new URL(staticCourseware.url, request.url)
+    if (page && disposition === 'inline')
+    { redirectUrl.hash = `page=${page}` }
+    return new Response(null, {
+      status: 307,
+      headers: {
+        'Location': redirectUrl.toString(),
+        'Cache-Control': 'private, max-age=300',
+        'X-Request-Id': requestId,
+        'X-Library-File-Source': 'static-courseware',
+      },
+    })
+  }
 
   if (request.nextUrl.searchParams.get('direct') === '1') {
     const directRedirect = signedLibraryFileRedirect({

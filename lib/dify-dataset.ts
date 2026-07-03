@@ -628,7 +628,76 @@ export interface KnowledgeDocumentPageImage {
 
 const pageImageUrlPattern = /(?:https:\/\/(?:dify\.jasonsome\.cn(?::22380)?|www\.jasonsome\.cn|jasonsome\.cn))?\/page-images\/[^\s<>"')\]]+?\/page_(\d+)\.(?:jpe?g|png|webp)(?:[?#][^\s<>"')\]]*)?/gi
 
+const normalizePageImages = (value: unknown): KnowledgeDocumentPageImage[] => {
+  if (!Array.isArray(value))
+  { return [] }
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item))
+      { return null }
+      const record = item as Record<string, unknown>
+      const page = Number(record.page)
+      const url = typeof record.url === 'string' ? record.url : ''
+      if (!Number.isFinite(page) || page <= 0 || !url)
+      { return null }
+      return { page, url }
+    })
+    .filter((item): item is KnowledgeDocumentPageImage => Boolean(item))
+    .sort((left, right) => left.page - right.page)
+}
+
+const getKnowledgeDocumentPageImagesFromService = async (documentId: string) => {
+  const serviceToken = process.env.LIBRARY_FILE_SERVICE_TOKEN
+  const serviceUrls = serviceToken ? libraryCatalogServiceUrls() : []
+  if (!serviceToken || !serviceUrls.length)
+  { return [] }
+
+  const errors: string[] = []
+  for (const serviceUrl of serviceUrls) {
+    const controller = new AbortController()
+    const timeout = setTimeout(
+      () => controller.abort(new Error('LIBRARY_PAGE_IMAGES_SERVICE_TIMEOUT')),
+      8_000,
+    )
+    try {
+      const response = await fetch(`${serviceUrl}/library/documents/${encodeURIComponent(documentId)}/page-images`, {
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: { 'X-Internal-Token': serviceToken },
+      })
+      if (response.ok) {
+        const result = await response.json() as { data?: unknown }
+        const images = normalizePageImages(result.data)
+        if (images.length)
+        { return images }
+      }
+      else {
+        const detail = await response.text().catch(() => '')
+        errors.push(`${new URL(serviceUrl).host}:${response.status}:${detail.slice(0, 120)}`)
+      }
+    }
+    catch (error) {
+      errors.push(`${serviceUrl}:${describeErrorWithCause(error)}`)
+    }
+    finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  if (errors.length) {
+    console.warn('[library-page-images] local page image manifest unavailable, using Dify API fallback', {
+      documentId,
+      errors,
+    })
+  }
+  return []
+}
+
 export const getKnowledgeDocumentPageImages = async (documentId: string) => {
+  const serviceImages = await getKnowledgeDocumentPageImagesFromService(documentId)
+  if (serviceImages.length)
+  { return serviceImages }
+
   const apiKey = process.env.DIFY_DATASET_API_KEY
   const datasetId = process.env.DIFY_DATASET_ID
   if (!apiKey || !datasetId)

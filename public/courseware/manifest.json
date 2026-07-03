@@ -1,0 +1,616 @@
+{
+  "generatedAt": "2026-07-03T04:09:24.2231304Z",
+  "source": "D:\\Desktop\\计网课件",
+  "count": 87,
+  "files": [
+    {
+      "id": "43cd5bda-20d9-40e8-bdea-dcaac093a925",
+      "name": "数据通信与网络原书第四版_part19_p721-729.pdf",
+      "url": "/courseware/43cd5bda-20d9-40e8-bdea-dcaac093a925.pdf",
+      "size": 672361,
+      "sha256": "16771fb12743102c7a009428660b3c7d6598cb3a3fc1e41868db5ad25212b2d8"
+    },
+    {
+      "id": "c071cc3b-9d93-493f-8644-c4fc94b62271",
+      "name": "数据通信与网络原书第四版_part18_p681-720.pdf",
+      "url": "/courseware/c071cc3b-9d93-493f-8644-c4fc94b62271.pdf",
+      "size": 2597780,
+      "sha256": "a7cbbda91d7d968f7dff8fba567f7a87994b2788862ac5fc9c02cfd39898f0d8"
+    },
+    {
+      "id": "fa84ccec-6080-466d-8a7a-3492ebafd2cb",
+      "name": "数据通信与网络原书第四版_part17_p641-680.pdf",
+      "url": "/courseware/fa84ccec-6080-466d-8a7a-3492ebafd2cb.pdf",
+      "size": 2271253,
+      "sha256": "4b2418dd2311f56315b031162b1c6456f37ba95c6762afb772f213829d2ba4ef"
+    },
+    {
+      "id": "6afd0da0-a981-41fc-99a9-93f03e08c97f",
+      "name": "数据通信与网络原书第四版_part16_p601-640.pdf",
+      "url": "/courseware/6afd0da0-a981-41fc-99a9-93f03e08c97f.pdf",
+      "size": 2176149,
+      "sha256": "62aca82484a740f8951965936afe3d2812e1773e5f13f06a4704f6515e5b091a"
+    },
+    {
+      "id": "4c930ab3-c91c-4ca6-9aa7-26e671201d71",
+      "name": "数据通信与网络原书第四版_part15_p561-600.pdf",
+      "url": "/courseware/4c930ab3-c91c-4ca6-9aa7-26e671201d71.pdf",
+      "size": 2298828,
+      "sha256": "91390ff7850a03e93063363341106b51281729facab32edf28c698dae3d3310e"
+    },
+    {
+      "id": "ea2d64a4-5978-40b3-b8ec-01459711c798",
+      "name": "数据通信与网络原书第四版_part14_p521-560.pdf",
+      "url": "/courseware/ea2d64a4-5978-40b3-b8ec-01459711c798.pdf",
+      "size": 2383915,
+      "sha256": "4c11c90e4fc4802bb5ff4f8c84a960ccf0aefb81a6fc0fe3415ebb56cbba60ae"
+    },
+    {
+      "id": "bf389da3-b223-4729-b1e8-39342bfc7842",
+      "name": "数据通信与网络原书第四版_part13_p481-520.pdf",
+      "url": "/courseware/bf389da3-b223-4729-b1e8-39342bfc7842.pdf",
+      "size": 2522005,
+      "sha256": "43cbcabdd2c3f01aba9208c24a6f46f0ecd794007582bb970865fbf6d1d68aff"
+    },
+    {
+      "id": "8938d03b-c520-4363-b48d-a0a5c4886edb",
+      "name": "数据通信与网络原书第四版_part12_p441-480.pdf",
+      "url": "/courseware/8938d03b-c520-4363-b48d-a0a5c4886edb.pdf",
+      "size": 2538037,
+      "sha256": "422d3bf2f9808d0ac37830358ffe37926014b4a5a67203cef30b7ffb9e0640c0"
+    },
+    {
+      "id": "54867043-7855-49c8-b86f-4b75431f5892",
+      "name": "数据通信与网络原书第四版_part11_p401-440.pdf",
+      "url": "/courseware/54867043-7855-49c8-b86f-4b75431f5892.pdf",
+      "size": 2558133,
+      "sha256": "ec6a10cf87c56d7e1f8e0748342b2346e62a4798be94b213d2350176baeb4fab"
+    },
+    {
+      "id": "4aeae3b8-920b-4df5-8c2a-7afa43f83ba8",
+      "name": "数据通信与网络原书第四版_part10_p361-400.pdf",
+      "url": "/courseware/4aeae3b8-920b-4df5-8c2a-7afa43f83ba8.pdf",
+      "size": 2385276,
+      "sha256": "f1dfea89e3a9869f46b02e899862ee1f301765ced924009b593a0f9caadd3f10"
+    },
+    {
+      "id": "2f7eca1b-37a7-4d86-8b23-6bab5327802b",
+      "name": "数据通信与网络原书第四版_part9_p321-360.pdf",
+      "url": "/courseware/2f7eca1b-37a7-4d86-8b23-6bab5327802b.pdf",
+      "size": 2499498,
+      "sha256": "4da30b30ec096f1401bf3c9ef02ce3c9e923f1376c2034fa652b36190787b0e9"
+    },
+    {
+      "id": "de450cd7-c456-44d1-bbfa-f88ab7efa4b5",
+      "name": "数据通信与网络原书第四版_part8_p281-320.pdf",
+      "url": "/courseware/de450cd7-c456-44d1-bbfa-f88ab7efa4b5.pdf",
+      "size": 2328426,
+      "sha256": "474e6f7f9942af4feda9907cd2e8e596888d13a11f25f5fa79b6feb21a1e7cba"
+    },
+    {
+      "id": "e9921501-c10e-48cc-b683-f8e9e3fae605",
+      "name": "数据通信与网络原书第四版_part7_p241-280.pdf",
+      "url": "/courseware/e9921501-c10e-48cc-b683-f8e9e3fae605.pdf",
+      "size": 2301718,
+      "sha256": "3b8e948eb281ff330a2ab2bcac1002c9a75c024ec4173e27f029504b61556405"
+    },
+    {
+      "id": "9f5d31cb-a6d1-42a3-a1b0-5f757c06f25a",
+      "name": "数据通信与网络原书第四版_part6_p201-240.pdf",
+      "url": "/courseware/9f5d31cb-a6d1-42a3-a1b0-5f757c06f25a.pdf",
+      "size": 2300649,
+      "sha256": "173f7059c6620870ef4157fcd3841f3c2a510929bc8ea2d3130941b163dd0f5a"
+    },
+    {
+      "id": "5763705f-11b0-4e7f-be2c-73024cdba791",
+      "name": "数据通信与网络原书第四版_part5_p161-200.pdf",
+      "url": "/courseware/5763705f-11b0-4e7f-be2c-73024cdba791.pdf",
+      "size": 2402270,
+      "sha256": "39b8306502b9d531e9ca2de6a971165e17b325a8fb10405f4743304182141044"
+    },
+    {
+      "id": "7804ea51-c0ad-4d88-aa56-8079c55b415f",
+      "name": "数据通信与网络原书第四版_part4_p121-160.pdf",
+      "url": "/courseware/7804ea51-c0ad-4d88-aa56-8079c55b415f.pdf",
+      "size": 2390626,
+      "sha256": "2d3949ced55ab7819609dd0db9245d2ac73fcd9806dcb289ccf69a79b82b3d18"
+    },
+    {
+      "id": "13a636a5-4ba3-48b7-9566-e5b9d4e7a490",
+      "name": "数据通信与网络原书第四版_part3_p81-120.pdf",
+      "url": "/courseware/13a636a5-4ba3-48b7-9566-e5b9d4e7a490.pdf",
+      "size": 2309166,
+      "sha256": "1626c9d2dd08c5289f86e40e83d758f3075e8707503335ae33dbc874ba2c25c7"
+    },
+    {
+      "id": "d792ccde-0426-4ea6-8f18-919a9305ec92",
+      "name": "数据通信与网络原书第四版_part2_p41-80.pdf",
+      "url": "/courseware/d792ccde-0426-4ea6-8f18-919a9305ec92.pdf",
+      "size": 2185219,
+      "sha256": "de26b0bfc583254feb1e30cd2e7da9bb4abcc497bc080057cbd8fc5d32c7ff68"
+    },
+    {
+      "id": "55da9c9f-3bef-4020-bdd5-e95ee0213026",
+      "name": "数据通信与网络原书第四版_part1_p1-40.pdf",
+      "url": "/courseware/55da9c9f-3bef-4020-bdd5-e95ee0213026.pdf",
+      "size": 2633122,
+      "sha256": "59b3974ec69762837589b66f928ed155d7ed8e7b1e38685382c844ba7a228afe"
+    },
+    {
+      "id": "aa3507c4-caab-4fd6-9fda-f43d2730f796",
+      "name": "计算机网络：自顶向下方法原书第6版_part15_p561-570.pdf",
+      "url": "/courseware/aa3507c4-caab-4fd6-9fda-f43d2730f796.pdf",
+      "size": 919544,
+      "sha256": "d92526c12cc90dafeeed88f1d69ef0bcea93b5683fb2681578c31da6a1ddab04"
+    },
+    {
+      "id": "40330b0f-6e66-4b6f-b4eb-8263cde64e12",
+      "name": "计算机网络：自顶向下方法原书第6版_part14_p521-560.pdf",
+      "url": "/courseware/40330b0f-6e66-4b6f-b4eb-8263cde64e12.pdf",
+      "size": 3782536,
+      "sha256": "331f57b2a6a1c2465af60e8bc82c247a301aaa0bd897983b1b52e31172878acd"
+    },
+    {
+      "id": "6097e462-91ba-4d90-9fd5-3d3c36053389",
+      "name": "计算机网络：自顶向下方法原书第6版_part13_p481-520.pdf",
+      "url": "/courseware/6097e462-91ba-4d90-9fd5-3d3c36053389.pdf",
+      "size": 4159536,
+      "sha256": "730257c9e06f30b6e42cf3a6fcf332fa5e4ad2817c1bca499fcc0a305d2195a2"
+    },
+    {
+      "id": "353c7a4d-b633-48f1-afa0-8c8f295874b7",
+      "name": "计算机网络：自顶向下方法原书第6版_part12_p441-480.pdf",
+      "url": "/courseware/353c7a4d-b633-48f1-afa0-8c8f295874b7.pdf",
+      "size": 4033553,
+      "sha256": "badf8dce804fbbb2f493f10924340a08344a7f2a69a973ba37fc0e7c09163a38"
+    },
+    {
+      "id": "9db7b152-ebc8-44d3-aaa9-19179a63ef06",
+      "name": "计算机网络：自顶向下方法原书第6版_part11_p401-440.pdf",
+      "url": "/courseware/9db7b152-ebc8-44d3-aaa9-19179a63ef06.pdf",
+      "size": 4425761,
+      "sha256": "d89278936460977c65a642d8e5ec021dbbfa53c7c96a198490252a12912a114c"
+    },
+    {
+      "id": "401a0c69-7f63-45aa-81e3-e526768acf66",
+      "name": "计算机网络：自顶向下方法原书第6版_part10_p361-400.pdf",
+      "url": "/courseware/401a0c69-7f63-45aa-81e3-e526768acf66.pdf",
+      "size": 4374196,
+      "sha256": "e995a843f9b0be2d6c69120aa39e1348e8a40a969d9fff534a01322934461158"
+    },
+    {
+      "id": "749ddd7a-2096-458c-bdce-dd4a387c7d8b",
+      "name": "计算机网络：自顶向下方法原书第6版_part9_p321-360.pdf",
+      "url": "/courseware/749ddd7a-2096-458c-bdce-dd4a387c7d8b.pdf",
+      "size": 4678606,
+      "sha256": "50794bdb10a05e7e45ad3a47d3d4e096802083582736c525c1481d76ceb77d72"
+    },
+    {
+      "id": "7b40a6e6-7979-4499-a71d-10a0a81dbd73",
+      "name": "计算机网络：自顶向下方法原书第6版_part8_p281-320.pdf",
+      "url": "/courseware/7b40a6e6-7979-4499-a71d-10a0a81dbd73.pdf",
+      "size": 4493025,
+      "sha256": "5fb16a3bcf9f802485534cbc54525a4b512e892a880bdda109879e1ef6a5762a"
+    },
+    {
+      "id": "1ef1de24-345e-465b-b771-f5f9872f2163",
+      "name": "计算机网络：自顶向下方法原书第6版_part7_p241-280.pdf",
+      "url": "/courseware/1ef1de24-345e-465b-b771-f5f9872f2163.pdf",
+      "size": 4631462,
+      "sha256": "e34fb1e16b2b94cb722b5e77c8c49828f3fc2052b7d875bd9a80ef9292402239"
+    },
+    {
+      "id": "3964d93b-ba47-4db5-b776-cd6291b006df",
+      "name": "计算机网络：自顶向下方法原书第6版_part6_p201-240.pdf",
+      "url": "/courseware/3964d93b-ba47-4db5-b776-cd6291b006df.pdf",
+      "size": 4527220,
+      "sha256": "3b9e8eae1c208d480871d710791b50022733ed619701cab08d1463ce991f6123"
+    },
+    {
+      "id": "fe1344dd-08a3-413a-8762-49078cfef688",
+      "name": "计算机网络：自顶向下方法原书第6版_part5_p161-200.pdf",
+      "url": "/courseware/fe1344dd-08a3-413a-8762-49078cfef688.pdf",
+      "size": 4070747,
+      "sha256": "890edc00d65250d6988c2e5ddc3fddc64d174b0cd039c2ff2ee841c1036f2a05"
+    },
+    {
+      "id": "39e4d057-a5be-42d4-8d24-5c8f33b825da",
+      "name": "计算机网络：自顶向下方法原书第6版_part4_p121-160.pdf",
+      "url": "/courseware/39e4d057-a5be-42d4-8d24-5c8f33b825da.pdf",
+      "size": 4481669,
+      "sha256": "771b0e1c5e8c59d4fa67e5b092031aa9eae158f6a76a3c7e778e6cdd8f21940c"
+    },
+    {
+      "id": "3049d1b1-3da7-49b3-9ab1-4d93c22bf3c3",
+      "name": "计算机网络：自顶向下方法原书第6版_part3_p81-120.pdf",
+      "url": "/courseware/3049d1b1-3da7-49b3-9ab1-4d93c22bf3c3.pdf",
+      "size": 4542179,
+      "sha256": "9f5ec7e26872c2ec4c0bf7e7ef6c8a4e307d20231a3770ed17966030eaf187a2"
+    },
+    {
+      "id": "438918cf-47f3-4dca-b330-3f37c5ddabd6",
+      "name": "计算机网络：自顶向下方法原书第6版_part2_p41-80.pdf",
+      "url": "/courseware/438918cf-47f3-4dca-b330-3f37c5ddabd6.pdf",
+      "size": 4764053,
+      "sha256": "90086a890289c5898c6ca528fb8f33e387cd1ac9f2601b2041036b37e563dc5f"
+    },
+    {
+      "id": "7fac6d81-2c9e-41ef-8659-3e3b13738799",
+      "name": "计算机网络：自顶向下方法原书第6版_part1_p1-40.pdf",
+      "url": "/courseware/7fac6d81-2c9e-41ef-8659-3e3b13738799.pdf",
+      "size": 4550217,
+      "sha256": "10e0d6add63f15fa1ca018f1ea8a6ee96fac0224e0f27eb2adbee9c42da2f519"
+    },
+    {
+      "id": "d3fee5fb-9386-46c8-86f1-162fe3da2661",
+      "name": "计算机网络(Tanenbaum) 第5版_part19_p721-753.pdf",
+      "url": "/courseware/d3fee5fb-9386-46c8-86f1-162fe3da2661.pdf",
+      "size": 1402308,
+      "sha256": "2604fced6057e92397a9db6397263028e999885dafad537855bd8f588c170fc3"
+    },
+    {
+      "id": "0781d32f-5a50-468a-a9e2-ceb8eb7829c1",
+      "name": "计算机网络(Tanenbaum) 第5版_part18_p681-720.pdf",
+      "url": "/courseware/0781d32f-5a50-468a-a9e2-ceb8eb7829c1.pdf",
+      "size": 2312592,
+      "sha256": "ef05cea221ee6428ee160b6babc525f3a5125ca870b9c586d96196804c1630f3"
+    },
+    {
+      "id": "d7bb1e21-7dc6-4e4e-9546-91f8e6a984ad",
+      "name": "计算机网络(Tanenbaum) 第5版_part17_p641-680.pdf",
+      "url": "/courseware/d7bb1e21-7dc6-4e4e-9546-91f8e6a984ad.pdf",
+      "size": 2555798,
+      "sha256": "6f034f5731c797ebb32b414e346892d6e9da0755d60b0d1fb163714544c3cde1"
+    },
+    {
+      "id": "3e4f6b37-7431-49e5-a9ae-59eab7ad86ed",
+      "name": "计算机网络(Tanenbaum) 第5版_part16_p601-640.pdf",
+      "url": "/courseware/3e4f6b37-7431-49e5-a9ae-59eab7ad86ed.pdf",
+      "size": 2479113,
+      "sha256": "67efcfa2152709d1c1032a3cf33d0d6b444254e8d376e6ca20711920f82f58fe"
+    },
+    {
+      "id": "d5951ea7-d78d-42e2-a5d7-6319ee249c14",
+      "name": "计算机网络(Tanenbaum) 第5版_part15_p561-600.pdf",
+      "url": "/courseware/d5951ea7-d78d-42e2-a5d7-6319ee249c14.pdf",
+      "size": 2822119,
+      "sha256": "42f98dedac67b71155f2d9723713dc6a85f3ebc22d05ed6179e4229423bc112e"
+    },
+    {
+      "id": "72206c43-e6b0-4559-8643-d3d204faa046",
+      "name": "计算机网络(Tanenbaum) 第5版_part14_p521-560.pdf",
+      "url": "/courseware/72206c43-e6b0-4559-8643-d3d204faa046.pdf",
+      "size": 2639956,
+      "sha256": "3bcff9a021189dd574dc3b7136e13c7fdf40d648fa2bb588ad5b17117167aaf0"
+    },
+    {
+      "id": "075408e9-971f-4e63-9fd7-f4c3d8aa7662",
+      "name": "计算机网络(Tanenbaum) 第5版_part13_p481-520.pdf",
+      "url": "/courseware/075408e9-971f-4e63-9fd7-f4c3d8aa7662.pdf",
+      "size": 2428474,
+      "sha256": "40c000711cc0b0c8ec77bed52faeaeac205fd0115d2ddf67925b0441e488ab6d"
+    },
+    {
+      "id": "7e1d051c-70c3-4a09-af11-9cde2cf6f85d",
+      "name": "计算机网络(Tanenbaum) 第5版_part12_p441-480.pdf",
+      "url": "/courseware/7e1d051c-70c3-4a09-af11-9cde2cf6f85d.pdf",
+      "size": 2690004,
+      "sha256": "47bbfb4f597dc78d05ba88f3d5c7a6d6c315b25994e1e15939b31debdca8ffef"
+    },
+    {
+      "id": "5f98c660-4d30-4cf8-aa22-8d5867019215",
+      "name": "计算机网络(Tanenbaum) 第5版_part11_p401-440.pdf",
+      "url": "/courseware/5f98c660-4d30-4cf8-aa22-8d5867019215.pdf",
+      "size": 2494746,
+      "sha256": "6bf203d21760980699e573310fa2da937d04a81b90a22f2092627e527a7cb5c7"
+    },
+    {
+      "id": "0b4e06ac-837e-44c8-b344-c0994adbee44",
+      "name": "计算机网络(Tanenbaum) 第5版_part10_p361-400.pdf",
+      "url": "/courseware/0b4e06ac-837e-44c8-b344-c0994adbee44.pdf",
+      "size": 2348019,
+      "sha256": "19e63334c9987d1e828a56b25accaf7a7e2fb4e0d4dfd008336efa1ef3abb190"
+    },
+    {
+      "id": "d3637a5e-eba9-4f43-9e5a-1c3644a068a7",
+      "name": "计算机网络(Tanenbaum) 第5版_part9_p321-360.pdf",
+      "url": "/courseware/d3637a5e-eba9-4f43-9e5a-1c3644a068a7.pdf",
+      "size": 2723060,
+      "sha256": "12ff6284564d6f7de5e53d62c10dd0a95b66ca271d3e7b885f5d0a27f297b6da"
+    },
+    {
+      "id": "597638fc-7ebf-4891-856e-62e8493f912e",
+      "name": "计算机网络(Tanenbaum) 第5版_part8_p281-320.pdf",
+      "url": "/courseware/597638fc-7ebf-4891-856e-62e8493f912e.pdf",
+      "size": 2548971,
+      "sha256": "01dc65efd15524dfe49c71e7b74b4e5802ada69f8d097226d0c0269b62f94fcc"
+    },
+    {
+      "id": "46dcab2c-179f-4ca8-b48d-6c7fe57c718f",
+      "name": "计算机网络(Tanenbaum) 第5版_part7_p241-280.pdf",
+      "url": "/courseware/46dcab2c-179f-4ca8-b48d-6c7fe57c718f.pdf",
+      "size": 2455443,
+      "sha256": "4e4999f4d77e26efa2140b33c5f6080f46556b6b3a3e1c133935a4358fc8149d"
+    },
+    {
+      "id": "9799d68b-2140-4cdf-9108-f7f3a4b53d68",
+      "name": "计算机网络(Tanenbaum) 第5版_part6_p201-240.pdf",
+      "url": "/courseware/9799d68b-2140-4cdf-9108-f7f3a4b53d68.pdf",
+      "size": 2621263,
+      "sha256": "f0d8b01b620402f8e118f1a7420b6d356997c5ce481016002edf65495ae1a750"
+    },
+    {
+      "id": "eb77323f-9671-4ca0-b064-48c8058fb1f1",
+      "name": "计算机网络(Tanenbaum) 第5版_part5_p161-200.pdf",
+      "url": "/courseware/eb77323f-9671-4ca0-b064-48c8058fb1f1.pdf",
+      "size": 2504051,
+      "sha256": "4c2a8a2833ced0689966788584f1a0a60c028a56f8806c88347f7ba562bb9e63"
+    },
+    {
+      "id": "4a8d9720-bbdc-48bf-9667-957daa50f601",
+      "name": "计算机网络(Tanenbaum) 第5版_part4_p121-160.pdf",
+      "url": "/courseware/4a8d9720-bbdc-48bf-9667-957daa50f601.pdf",
+      "size": 2492305,
+      "sha256": "7733f2f637eaf89c6a67cfbc0f63af048bfaab4b920ba5eacd79d6f743d01d45"
+    },
+    {
+      "id": "8b4a14e4-e7f4-4c1f-a21f-8f6c3fff08d5",
+      "name": "计算机网络(Tanenbaum) 第5版_part3_p81-120.pdf",
+      "url": "/courseware/8b4a14e4-e7f4-4c1f-a21f-8f6c3fff08d5.pdf",
+      "size": 2715890,
+      "sha256": "4af171a325b42d3294d27ca3bf6f3a74d463d4522fa049f8be97a50ef3bd42a5"
+    },
+    {
+      "id": "4185f99c-8a21-4939-a64f-4499b9282748",
+      "name": "计算机网络(Tanenbaum) 第5版_part2_p41-80.pdf",
+      "url": "/courseware/4185f99c-8a21-4939-a64f-4499b9282748.pdf",
+      "size": 2741405,
+      "sha256": "ffe210b5d2fc4f584d052b98e35233b63041f836f537f60f259b7910c0f0e0b1"
+    },
+    {
+      "id": "d83a1242-7e2d-4c97-b871-a7c7f439988a",
+      "name": "计算机网络(Tanenbaum) 第5版_part1_p1-40.pdf",
+      "url": "/courseware/d83a1242-7e2d-4c97-b871-a7c7f439988a.pdf",
+      "size": 2356978,
+      "sha256": "c1f72f17d0f2d3942b6aaea059c7ad047cbf8365b359db2790463366b14714d3"
+    },
+    {
+      "id": "921a3660-fb8f-4345-909a-b48b7bdb9c7b",
+      "name": "计算机网络（第8版）_谢希仁_part13_p481-485.pdf",
+      "url": "/courseware/921a3660-fb8f-4345-909a-b48b7bdb9c7b.pdf",
+      "size": 587912,
+      "sha256": "50e122eb51e4948d686704aeea508aa90cc41fbdc061bfe0295d6c8297857be4"
+    },
+    {
+      "id": "f401a512-fb16-4dd9-8b57-8f640d56baa4",
+      "name": "计算机网络（第8版）_谢希仁_part12_p441-480.pdf",
+      "url": "/courseware/f401a512-fb16-4dd9-8b57-8f640d56baa4.pdf",
+      "size": 5624502,
+      "sha256": "8ea78c128ddc6a59ea061d6cda07307f03931004ac61a6c1c9d60ffcbca8aace"
+    },
+    {
+      "id": "47ab4aef-30e4-4355-9352-249b9549873e",
+      "name": "计算机网络（第8版）_谢希仁_part11_p401-440.pdf",
+      "url": "/courseware/47ab4aef-30e4-4355-9352-249b9549873e.pdf",
+      "size": 6833395,
+      "sha256": "6f7ba5610702098f3618561fe167d83150b2c90f00a85f573c627dd6cfaf5639"
+    },
+    {
+      "id": "c1eed1f4-1e1b-458f-93c0-2a6a692f9047",
+      "name": "计算机网络（第8版）_谢希仁_part10_p361-400.pdf",
+      "url": "/courseware/c1eed1f4-1e1b-458f-93c0-2a6a692f9047.pdf",
+      "size": 7026546,
+      "sha256": "b9c5bd1a1e8e698cfc1c8a88a2980ac42e6530b35686f91b025a7cfbe85e3b03"
+    },
+    {
+      "id": "45012dfd-4cc8-441d-92c0-db2eac045aec",
+      "name": "计算机网络（第8版）_谢希仁_part9_p321-360.pdf",
+      "url": "/courseware/45012dfd-4cc8-441d-92c0-db2eac045aec.pdf",
+      "size": 6771132,
+      "sha256": "61c9b655f77fc45b834704ebebea13f463398cb35ff1928463e06c0be7009356"
+    },
+    {
+      "id": "ad737f8f-53d0-449d-8e9e-a2d740dec91c",
+      "name": "计算机网络（第8版）_谢希仁_part8_p281-320.pdf",
+      "url": "/courseware/ad737f8f-53d0-449d-8e9e-a2d740dec91c.pdf",
+      "size": 7700070,
+      "sha256": "390dff8238beeed29edf443b63dc7529eccc4f522f62ae3779086327381109cc"
+    },
+    {
+      "id": "48f73c08-1739-40f9-a46a-dd96aba8faeb",
+      "name": "计算机网络（第8版）_谢希仁_part7_p241-280.pdf",
+      "url": "/courseware/48f73c08-1739-40f9-a46a-dd96aba8faeb.pdf",
+      "size": 7275522,
+      "sha256": "54357041c199eb29398d798772e6b334ddac2705885a38ccfbcd373dbd30183a"
+    },
+    {
+      "id": "8e61e723-cda4-49ff-ae00-382a1ad8fcac",
+      "name": "计算机网络（第8版）_谢希仁_part6_p201-240.pdf",
+      "url": "/courseware/8e61e723-cda4-49ff-ae00-382a1ad8fcac.pdf",
+      "size": 6780978,
+      "sha256": "08bfc376587c90f6e47a0c3d15a15f932a932f9f70251b1f68eb8261bb53cf5b"
+    },
+    {
+      "id": "445aa775-c039-413c-a3c3-18b2e71b2b87",
+      "name": "计算机网络（第8版）_谢希仁_part5_p161-200.pdf",
+      "url": "/courseware/445aa775-c039-413c-a3c3-18b2e71b2b87.pdf",
+      "size": 7281432,
+      "sha256": "0c72e7d3ede1feb0d146362b328d7daec480be955a20f49da995b876c3d4fbb6"
+    },
+    {
+      "id": "43df860e-98b4-4e58-bb72-c7797aaf8af0",
+      "name": "计算机网络（第8版）_谢希仁_part4_p121-160.pdf",
+      "url": "/courseware/43df860e-98b4-4e58-bb72-c7797aaf8af0.pdf",
+      "size": 7130579,
+      "sha256": "fb39088906d3e3b804cf36e83d7746f5e4bf3fcbd3a5b73907ff1a0a75801c88"
+    },
+    {
+      "id": "750edafa-c42e-4dcd-9d27-f828c44e0253",
+      "name": "计算机网络（第8版）_谢希仁_part3_p81-120.pdf",
+      "url": "/courseware/750edafa-c42e-4dcd-9d27-f828c44e0253.pdf",
+      "size": 7643217,
+      "sha256": "06e4b23aa390a8eae86daa6300ce0f6ae367fc90da35adaa03ce96492deeaea1"
+    },
+    {
+      "id": "5391d693-83a3-48bb-b754-5e283bcfef01",
+      "name": "计算机网络（第8版）_谢希仁_part2_p41-80.pdf",
+      "url": "/courseware/5391d693-83a3-48bb-b754-5e283bcfef01.pdf",
+      "size": 7340678,
+      "sha256": "c1edbe566ca9289737b9c00ef76c545f34d06d3037de7affe5345dc4f08d037d"
+    },
+    {
+      "id": "cd67dbfe-e733-4a53-b6c3-3ab2121c9dce",
+      "name": "计算机网络（第8版）_谢希仁_part1_p1-40.pdf",
+      "url": "/courseware/cd67dbfe-e733-4a53-b6c3-3ab2121c9dce.pdf",
+      "size": 7039961,
+      "sha256": "d623d5bb71bb7181edc94704d6403f409dab05af6cc42429133ae2f6b43910a9"
+    },
+    {
+      "id": "85754bd6-24fc-48fe-9c4e-4d18bd6e5ea2",
+      "name": "第5章 运输层-4.pdf",
+      "url": "/courseware/85754bd6-24fc-48fe-9c4e-4d18bd6e5ea2.pdf",
+      "size": 2420434,
+      "sha256": "0a2879cd207d95e3f005bef0adf8ee3d18db52e01bfb663808d0eabe52fe2dd6"
+    },
+    {
+      "id": "f6bf8cb6-2f0a-4d3b-80f0-4cc9fed6a035",
+      "name": "第5章 运输层-3.pdf",
+      "url": "/courseware/f6bf8cb6-2f0a-4d3b-80f0-4cc9fed6a035.pdf",
+      "size": 2095673,
+      "sha256": "6674abafbf8fe8eaedc62346604aa59e0fe750abbee28fab2311cf0c878d9663"
+    },
+    {
+      "id": "d082e7ae-aa7e-4bc2-a698-9bdbcd150acd",
+      "name": "第5章 运输层-2.pdf",
+      "url": "/courseware/d082e7ae-aa7e-4bc2-a698-9bdbcd150acd.pdf",
+      "size": 2118361,
+      "sha256": "d8b4dcd32dbe586f474cd069a0dd83dfffcce56ad07767426c7a48bc62fbdeaa"
+    },
+    {
+      "id": "6a2b85a0-31dc-4f89-a223-7023d6212d2e",
+      "name": "第5章 运输层-1.pdf",
+      "url": "/courseware/6a2b85a0-31dc-4f89-a223-7023d6212d2e.pdf",
+      "size": 1820783,
+      "sha256": "d08796d69a873d4f53db5625da1ee52522b1079190702d755682b0720672dd3e"
+    },
+    {
+      "id": "d00dce74-860a-4edf-8002-8685070ba276",
+      "name": "第4章 网络层-6.pdf",
+      "url": "/courseware/d00dce74-860a-4edf-8002-8685070ba276.pdf",
+      "size": 3926108,
+      "sha256": "c92c3db3aa13e15abc6eb4e93fc1237f9ec76692115041309fcaf996a3771d83"
+    },
+    {
+      "id": "2b4787d8-d4dd-48e5-81a4-d85451c06073",
+      "name": "第4章 网络层-5.pdf",
+      "url": "/courseware/2b4787d8-d4dd-48e5-81a4-d85451c06073.pdf",
+      "size": 2224058,
+      "sha256": "062a3300cb391ff8e178b1c1143e3f6f74689e3fe3b42be1278cb76ac37b1e43"
+    },
+    {
+      "id": "b9b25641-80c9-4d91-94b4-f03dd1da91df",
+      "name": "第4章 网络层-4.pdf",
+      "url": "/courseware/b9b25641-80c9-4d91-94b4-f03dd1da91df.pdf",
+      "size": 2238513,
+      "sha256": "da30ad726e96290b58ed0c630be2ee295c9daa7e65bffad57832902ae439c5d9"
+    },
+    {
+      "id": "9e166ba5-9185-4d3b-b5f9-20d11cb96abd",
+      "name": "第4章 网络层-3.pdf",
+      "url": "/courseware/9e166ba5-9185-4d3b-b5f9-20d11cb96abd.pdf",
+      "size": 1807495,
+      "sha256": "54359a2ed6b621ea9ed93697a3aa71133f0b98991e5d22191f16bf3abb2b5342"
+    },
+    {
+      "id": "3e348edd-2c78-484d-a42f-04bc22e3428c",
+      "name": "第4章 网络层-2.pdf",
+      "url": "/courseware/3e348edd-2c78-484d-a42f-04bc22e3428c.pdf",
+      "size": 2425065,
+      "sha256": "150b4a730aa365cf135c36870a5d9e28846de3783711a57bb2494f35bf6b45a1"
+    },
+    {
+      "id": "e66389ab-f75c-41db-bdb9-ffd024681130",
+      "name": "第4章 网络层-1.pdf",
+      "url": "/courseware/e66389ab-f75c-41db-bdb9-ffd024681130.pdf",
+      "size": 2307177,
+      "sha256": "d4b3eb1545b8ab0d8cb8d9ea2e84bd4031c68bfc825e8693f8cd9f6db3d41618"
+    },
+    {
+      "id": "88856139-0d07-4e82-ad28-a32bc23febb7",
+      "name": "第3章 数据链路层-5.pdf",
+      "url": "/courseware/88856139-0d07-4e82-ad28-a32bc23febb7.pdf",
+      "size": 1510326,
+      "sha256": "d8639c4b76a8f7dc2e070fe8618b5978e26952fb7c1d48c25adea25a1fb7fb85"
+    },
+    {
+      "id": "fde0e881-e412-4006-8dc9-2741740b09dd",
+      "name": "第3章 数据链路层-4.pdf",
+      "url": "/courseware/fde0e881-e412-4006-8dc9-2741740b09dd.pdf",
+      "size": 1607248,
+      "sha256": "f0222a5610d88c0b096b0e6d02e7bdc3ad7042955d9f6fdc7fe2e0cd0138b087"
+    },
+    {
+      "id": "c4b885fc-251e-4673-b731-3f0e34d0bf34",
+      "name": "第3章 数据链路层-3.pdf",
+      "url": "/courseware/c4b885fc-251e-4673-b731-3f0e34d0bf34.pdf",
+      "size": 2568121,
+      "sha256": "5c39cb1f27884f4b68c81de44e20c6cd9bad6f051e911db68dac59b3a7a965f8"
+    },
+    {
+      "id": "7af06c74-226a-4922-b9c4-8686a116a5e7",
+      "name": "第3章 数据链路层-2.pdf",
+      "url": "/courseware/7af06c74-226a-4922-b9c4-8686a116a5e7.pdf",
+      "size": 2714953,
+      "sha256": "6dac481614b8d6b382e8c6f9a9ee3913e9d2e49b656a3dd1c3cffa664c9e22f4"
+    },
+    {
+      "id": "8cffed58-9422-453e-80a4-4ba045ef6f14",
+      "name": "第3章 数据链路层-1.pdf",
+      "url": "/courseware/8cffed58-9422-453e-80a4-4ba045ef6f14.pdf",
+      "size": 1756035,
+      "sha256": "b61f8986817e3b764993ed975bc14e01ad6834eb7189b760b1e7dacff8b04579"
+    },
+    {
+      "id": "38128105-b232-41de-a903-70cca5d6e31b",
+      "name": "第2章 物理层-2.pdf",
+      "url": "/courseware/38128105-b232-41de-a903-70cca5d6e31b.pdf",
+      "size": 2401523,
+      "sha256": "b551a08b2d31cd8f6d9fa2375bea9daff611f751bf9080e9571e11c5ccb3c558"
+    },
+    {
+      "id": "eff110dc-1fb7-496e-94ca-fe340ed72e2e",
+      "name": "第2章 物理层-1.pdf",
+      "url": "/courseware/eff110dc-1fb7-496e-94ca-fe340ed72e2e.pdf",
+      "size": 2041889,
+      "sha256": "c9fb934852f46c7757128a4fd393514825f5f21e26f24b3d4b8689906825a002"
+    },
+    {
+      "id": "19acbc61-63b2-465b-afa3-4749d1d66ee9",
+      "name": "第1章 概述-3.pdf",
+      "url": "/courseware/19acbc61-63b2-465b-afa3-4749d1d66ee9.pdf",
+      "size": 1642007,
+      "sha256": "14b545fdc6392fbc36d35e2cc448cd0075a6257a8f7a653f00e544627aa20945"
+    },
+    {
+      "id": "e9e98902-9d0e-46e4-9254-4a9e4e64224a",
+      "name": "第1章 概述-2.pdf",
+      "url": "/courseware/e9e98902-9d0e-46e4-9254-4a9e4e64224a.pdf",
+      "size": 3455483,
+      "sha256": "9c018c9136dbaa57cf2cef9fd833c02ed4077a42645bfc6aa079432a8c27a78f"
+    },
+    {
+      "id": "10e8aeb7-9884-424c-9dd4-aaaf250faeb9",
+      "name": "第1章 概述-1.pdf",
+      "url": "/courseware/10e8aeb7-9884-424c-9dd4-aaaf250faeb9.pdf",
+      "size": 4115184,
+      "sha256": "70c60680e602077c19a323cc834ecb96b05ef7c7145a34500a5d40feb6fe5f50"
+    },
+    {
+      "id": "c67f844f-3e45-4db5-a0a9-fb07d1000b19",
+      "name": "第0章 课程介绍（2421、2422）.pdf",
+      "url": "/courseware/c67f844f-3e45-4db5-a0a9-fb07d1000b19.pdf",
+      "size": 2346225,
+      "sha256": "5c34a3b32997082ad83e394702f638fce9dca5cb3b3bf98584dbff1ff0a47668"
+    }
+  ]
+}

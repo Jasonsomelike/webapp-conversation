@@ -3,6 +3,7 @@ import PdfReferenceViewer from '@/app/components/sources/pdf-reference-viewer'
 import { findKnowledgeDocumentByName, getKnowledgeDocumentPageImages } from '@/lib/dify-dataset'
 import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
 import { getSession } from '@/lib/session'
+import { getStaticCourseware } from '@/lib/static-courseware'
 
 export default async function LibraryPdfPreviewPage({
   params,
@@ -23,7 +24,8 @@ export default async function LibraryPdfPreviewPage({
   const resolvedDocumentId = currentDocument?.id || documentId
   const encodedId = encodeURIComponent(resolvedDocumentId)
   const encodedFilename = encodeURIComponent(filename)
-  const pageImages = /\.pdf(?:[?#].*)?$/i.test(filename)
+  const staticCourseware = getStaticCourseware(resolvedDocumentId, filename)
+  const pageImages = !staticCourseware && /\.pdf(?:[?#].*)?$/i.test(filename)
     ? await getKnowledgeDocumentPageImages(resolvedDocumentId).catch(() => [])
     : []
   const pageImage = pageImages.find(item => item.page === page) || pageImages[0]
@@ -32,8 +34,8 @@ export default async function LibraryPdfPreviewPage({
     <PdfReferenceViewer
       filename={filename}
       initialPage={page}
-      sourceUrl={`/api/library/documents/${encodedId}/file?disposition=inline&page=${page}&filename=${encodedFilename}`}
-      downloadUrl={`/api/library/documents/${encodedId}/file?disposition=attachment&filename=${encodedFilename}`}
+      sourceUrl={staticCourseware?.url || `/api/library/documents/${encodedId}/file?disposition=inline&page=${page}&filename=${encodedFilename}`}
+      downloadUrl={staticCourseware?.url || `/api/library/documents/${encodedId}/file?disposition=attachment&filename=${encodedFilename}`}
       pageImageUrl={pageImage ? toDifyAssetProxyUrl(pageImage.url) : undefined}
       pageImageCount={pageImageCount || undefined}
       backHref={query.returnTo?.startsWith('/') ? query.returnTo : '/library'}

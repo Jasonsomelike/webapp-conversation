@@ -16,6 +16,8 @@ import PageCard from '@/app/components/workspace/page-card'
 import type { KnowledgeReference } from '@/lib/learning-types'
 import ImagePreview from '@/app/components/base/image-uploader/image-preview'
 import { ResizableSplitHandle, useResizableSplit } from '@/app/components/base/resizable-split'
+import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
+import { getStaticCourseware } from '@/lib/static-courseware'
 
 const inferPageFromImageUrl = (value?: string | null) =>
   Number(String(value || '').match(/\/page_(\d+)\./i)?.[1] || 0) || undefined
@@ -175,17 +177,18 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
     : 1
   const originalPageNumber = inferOriginalPdfPageFromQuote(selected?.quote)
   const selectedHasPdfPageImage = isPdfPageImageUrl(selected?.pageImageUrl)
+  const selectedStaticCourseware = selected ? getStaticCourseware(selected.documentId, selected.documentName) : undefined
   const documentPreviewUrl = selected
     ? `/sources/preview/${selected.id}?page=${selectedPreviewPage}&filename=${encodeURIComponent(selected.documentName)}&returnTo=${encodeURIComponent('/sources')}`
     : ''
   const documentDownloadUrl = selected
-    ? `/api/sources/${selected.id}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`
+    ? selectedStaticCourseware?.url || `/api/sources/${selected.id}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`
     : ''
   const pageImageHref = selectedHasPdfPageImage && selected?.pageImageUrl
-    ? `/api/sources/${encodeURIComponent(selected.id)}/page-image?page=${selectedPreviewPage}`
+    ? toDifyAssetProxyUrl(selected.pageImageUrl)
     : ''
   const pageImageRawHref = selectedHasPdfPageImage && selected?.pageImageUrl
-    ? pageImageHref
+    ? toDifyAssetProxyUrl(selected.pageImageUrl)
     : ''
 
   useEffect(() => {
@@ -272,6 +275,7 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
         </a>
         <a
           href={documentDownloadUrl}
+          download={selectedStaticCourseware ? selected.documentName : undefined}
           className={`inline-flex items-center justify-center gap-1.5 bg-[var(--studio-accent)] font-semibold text-[var(--studio-deep)] ${mobile ? 'h-11 rounded-2xl px-2 text-[11px]' : 'rounded-xl px-4 py-2.5 text-xs'}`}
         >
           下载 <ArrowDownTrayIcon className="h-3.5 w-3.5" />

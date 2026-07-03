@@ -16,6 +16,7 @@ import {
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
 import type { DifyDocumentList, DifyKnowledgeDocument } from '@/lib/dify-dataset'
+import { getStaticCourseware } from '@/lib/static-courseware'
 
 const statusLabel: Record<string, string> = {
   completed: '索引完成',
@@ -362,6 +363,16 @@ export default function DocumentLibrary({
     return `/library?${params}`
   }
 
+  const previewHref = (document: DifyKnowledgeDocument) =>
+    `/library/preview/${document.id}?filename=${encodeURIComponent(document.name)}`
+
+  const downloadHref = (document: DifyKnowledgeDocument) =>
+    getStaticCourseware(document.id, document.name)?.url
+    || `/api/library/documents/${document.id}/file?disposition=attachment&filename=${encodeURIComponent(document.name)}`
+
+  const downloadName = (document: DifyKnowledgeDocument) =>
+    getStaticCourseware(document.id, document.name) ? document.name : undefined
+
   const toggleGroup = (key: string) => {
     setExpandedGroups(current => ({
       ...current,
@@ -521,7 +532,7 @@ export default function DocumentLibrary({
                             {group.documents.length === 1 && (
                               <>
                                 <a
-                                  href={`/library/preview/${group.documents[0].id}?filename=${encodeURIComponent(group.documents[0].name)}`}
+                                  href={previewHref(group.documents[0])}
                                   target="_blank"
                                   rel="noreferrer"
                                   className={`${documentActionClass} border border-black/10 bg-white text-[var(--studio-ink)]`}
@@ -529,7 +540,8 @@ export default function DocumentLibrary({
                                   <EyeIcon className="h-4 w-4" />预览
                                 </a>
                                 <a
-                                  href={`/api/library/documents/${group.documents[0].id}/file?disposition=attachment&filename=${encodeURIComponent(group.documents[0].name)}`}
+                                  href={downloadHref(group.documents[0])}
+                                  download={downloadName(group.documents[0])}
                                   className={`${documentActionClass} bg-[var(--studio-deep)] text-white`}
                                 >
                                   <ArrowDownTrayIcon className="h-4 w-4" />下载
@@ -591,7 +603,7 @@ export default function DocumentLibrary({
                                     </div>
                                     <div className="flex flex-wrap items-center justify-end gap-2">
                                       <a
-                                        href={`/library/preview/${document.id}?filename=${encodeURIComponent(document.name)}`}
+                                        href={previewHref(document)}
                                         target="_blank"
                                         rel="noreferrer"
                                         className={`${documentActionClass} border border-black/10 bg-white text-[var(--studio-ink)]`}
@@ -599,7 +611,8 @@ export default function DocumentLibrary({
                                         <EyeIcon className="h-4 w-4" />预览
                                       </a>
                                       <a
-                                        href={`/api/library/documents/${document.id}/file?disposition=attachment&filename=${encodeURIComponent(document.name)}`}
+                                        href={downloadHref(document)}
+                                        download={downloadName(document)}
                                         className={`${documentActionClass} bg-[var(--studio-deep)] text-white`}
                                       >
                                         <ArrowDownTrayIcon className="h-4 w-4" />下载

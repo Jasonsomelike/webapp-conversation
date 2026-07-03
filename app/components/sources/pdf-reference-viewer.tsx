@@ -374,7 +374,7 @@ export default function PdfReferenceViewer({
           <div className="truncate text-sm font-semibold">{filename}</div>
           <div className="mt-0.5 text-[10px] text-black/45">已定位到第 {page} 页{pageCount ? ` / 共 ${pageCount} 页` : ''}</div>
         </div>
-        <a href={downloadUrl} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#17342b] text-white shadow-[0_9px_20px_rgba(23,52,43,.18)]" aria-label="下载文档">
+        <a href={downloadUrl} download={filename} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#17342b] text-white shadow-[0_9px_20px_rgba(23,52,43,.18)]" aria-label="下载文档">
           <ArrowDownTrayIcon className="h-5 w-5" />
         </a>
       </header>

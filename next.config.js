@@ -27,6 +27,19 @@ const nextConfig = {
           },
         ],
       },
+      {
+        source: '/courseware/:path*.pdf',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/pdf',
+          },
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
     ]
   },
   poweredByHeader: false,

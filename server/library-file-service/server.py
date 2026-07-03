@@ -353,6 +353,16 @@ def document_page_images(document_id: uuid.UUID) -> list[tuple[int, Path]]:
     return sorted(images.items(), key=lambda item: item[0])
 
 
+def page_image_public_url(path: Path) -> str:
+    for root in PAGE_IMAGES_ROOTS:
+        try:
+            relative = path.resolve().relative_to(root)
+        except ValueError:
+            continue
+        return f"https://dify.jasonsome.cn:22380/page-images/{quote(str(relative).replace(os.sep, '/'), safe='/')}"
+    return ""
+
+
 def jpeg_dimensions_and_colorspace(path: Path) -> tuple[int, int, int]:
     data = path.read_bytes()
     if len(data) < 4 or data[0:2] != b"\xff\xd8":
@@ -552,6 +562,27 @@ def page_images_pdf_response(
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/library/documents/<uuid:document_id>/page-images")
+def document_page_images_manifest(document_id: uuid.UUID):
+    request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+    if not header_token_is_valid():
+        return error_response("Unauthorized", 401, request_id)
+
+    images = [
+        {
+            "page": page,
+            "url": page_image_public_url(path),
+        }
+        for page, path in document_page_images(document_id)
+    ]
+    images = [image for image in images if image["url"]]
+    return {
+        "data": images,
+        "total": len(images),
+        "requestId": request_id,
+    }
 
 
 def header_token_is_valid() -> bool:

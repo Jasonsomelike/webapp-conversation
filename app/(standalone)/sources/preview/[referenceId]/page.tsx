@@ -5,6 +5,7 @@ import { findKnowledgeDocumentByName, getKnowledgeDocumentPageImages } from '@/l
 import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
 import { cleanReferenceDocumentName } from '@/lib/reference-extractor'
 import { getSession } from '@/lib/session'
+import { getStaticCourseware } from '@/lib/static-courseware'
 
 export default async function SourcePdfPreviewPage({
   params,
@@ -30,18 +31,19 @@ export default async function SourcePdfPreviewPage({
   const filename = query.filename || cleanReferenceDocumentName(reference?.documentName || '') || '知识库来源.pdf'
   const resolvedDocument = await findKnowledgeDocumentByName(filename, hintedDocumentId).catch(() => null)
   const resolvedDocumentId = resolvedDocument?.id || hintedDocumentId
+  const staticCourseware = getStaticCourseware(resolvedDocumentId, filename)
   const pageImageUrl = reference?.pageImageUrl && /\/page_\d+\.(?:jpe?g|png|webp)(?:[?#].*)?$/i.test(reference.pageImageUrl)
     ? reference.pageImageUrl
     : ''
   const isPdfSource = /\.pdf(?:[?#].*)?$/i.test(filename)
-  const pageImages = resolvedDocumentId && isPdfSource
+  const pageImages = !staticCourseware && resolvedDocumentId && isPdfSource
     ? await getKnowledgeDocumentPageImages(resolvedDocumentId).catch(() => [])
     : []
   const freshPageImage = pageImages.find(item => item.page === page)
     || pageImages[0]
     || (pageImageUrl ? { page, url: pageImageUrl } : undefined)
   const pageImageCount = pageImages.reduce((max, item) => Math.max(max, item.page), 0)
-  const shouldUsePageImageFallback = Boolean(freshPageImage && (isPdfSource || !resolvedDocumentId))
+  const shouldUsePageImageFallback = Boolean(!staticCourseware && freshPageImage && (isPdfSource || !resolvedDocumentId))
   const encodedFilename = encodeURIComponent(filename)
   const sourceUrl = resolvedDocumentId
     ? `/api/library/documents/${encodeURIComponent(resolvedDocumentId)}/file?disposition=inline&page=${page}&filename=${encodedFilename}`
@@ -54,8 +56,8 @@ export default async function SourcePdfPreviewPage({
       referenceId={referenceId}
       filename={filename}
       initialPage={page}
-      sourceUrl={sourceUrl}
-      downloadUrl={downloadUrl}
+      sourceUrl={staticCourseware?.url || sourceUrl}
+      downloadUrl={staticCourseware?.url || downloadUrl}
       pageImageUrl={shouldUsePageImageFallback && freshPageImage ? toDifyAssetProxyUrl(freshPageImage.url) : undefined}
       pageImageCount={pageImageCount || undefined}
       backHref={query.returnTo?.startsWith('/') ? query.returnTo : '/sources'}
