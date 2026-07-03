@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ArrowDownTrayIcon,
@@ -17,7 +17,7 @@ import type { KnowledgeReference } from '@/lib/learning-types'
 import ImagePreview from '@/app/components/base/image-uploader/image-preview'
 import { ResizableSplitHandle, useResizableSplit } from '@/app/components/base/resizable-split'
 import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
-import { getStaticCourseware } from '@/lib/static-courseware'
+import { getStaticCourseware, getStaticCoursewareDownloadUrl } from '@/lib/static-courseware'
 
 const inferPageFromImageUrl = (value?: string | null) =>
   Number(String(value || '').match(/\/page_(\d+)\./i)?.[1] || 0) || undefined
@@ -156,6 +156,7 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
   const [previewImageUrl, setPreviewImageUrl] = useState('')
   const [showLoadError, setShowLoadError] = useState(Boolean(loadError))
+  const detailRootRef = useRef<HTMLElement>(null)
   const sourcesSplit = useResizableSplit({
     storageKey: 'network-study-sources-list-width',
     cssVariable: '--sources-list-width',
@@ -182,7 +183,7 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
     ? `/sources/preview/${selected.id}?page=${selectedPreviewPage}&filename=${encodeURIComponent(selected.documentName)}&returnTo=${encodeURIComponent('/sources')}`
     : ''
   const documentDownloadUrl = selected
-    ? selectedStaticCourseware?.url || `/api/sources/${selected.id}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`
+    ? getStaticCoursewareDownloadUrl(selected.documentId, selected.documentName) || `/api/sources/${selected.id}/file?disposition=attachment&filename=${encodeURIComponent(selected.documentName)}`
     : ''
   const pageImageHref = selectedHasPdfPageImage && selected?.pageImageUrl
     ? toDifyAssetProxyUrl(selected.pageImageUrl)
@@ -219,6 +220,23 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
       window.NetworkStudyApp?.setShellState('/sources', '我的文档引用', '可追溯学习')
     }
   }, [mobileDetailOpen])
+  const ensureDesktopDetailVisible = useCallback(() => {
+    if (globalThis.matchMedia('(max-width: 1023px)').matches)
+    { return }
+    requestAnimationFrame(() => {
+      const element = detailRootRef.current
+      if (!element)
+      { return }
+      const rect = element.getBoundingClientRect()
+      const targetTop = 92
+      if (rect.top < targetTop || rect.top > globalThis.innerHeight - 220) {
+        globalThis.scrollBy({
+          top: rect.top - targetTop,
+          behavior: 'smooth',
+        })
+      }
+    })
+  }, [])
   const exportReferences = () => {
     const rows = [
       ['文档名', '分卷页码', '原 PDF 页码', '相关度', '引用片段'],
@@ -460,6 +478,8 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
                         setSelectedId(item.id)
                         if (globalThis.matchMedia('(max-width: 1023px)').matches)
                         { setMobileDetailOpen(true) }
+                        else
+                        { ensureDesktopDetailVisible() }
                       }}
                       className={`min-w-0 w-full overflow-hidden rounded-2xl border p-4 text-left transition [contain-intrinsic-size:132px] [content-visibility:auto] ${
                         selected?.id === item.id
@@ -483,7 +503,7 @@ export default function SourcesView({ initialReferences, loadError = '' }: Sourc
                 className="border-r border-black/[0.06] bg-black/[0.018] hover:bg-[var(--studio-accent)]/20"
               />
 
-              <section className="hidden min-w-0 p-6 sm:p-8 lg:block">
+              <section ref={detailRootRef} className="hidden min-w-0 p-6 sm:p-8 lg:block">
                 {renderSelectedDetails()}
               </section>
             </div>

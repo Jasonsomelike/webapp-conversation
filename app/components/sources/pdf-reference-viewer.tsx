@@ -142,6 +142,15 @@ export default function PdfReferenceViewer({
   // fragile and was the source of intermittent 502/failed-fetch previews.
   const sourceUrl = explicitSourceUrl || `/api/sources/${encodeURIComponent(referenceId || '')}/file?disposition=inline&filename=${encodeURIComponent(filename)}`
   const downloadUrl = explicitDownloadUrl || `/api/sources/${encodeURIComponent(referenceId || '')}/file?disposition=attachment&filename=${encodeURIComponent(filename)}`
+  const isStaticCoursewareSource = useMemo(() => {
+    try {
+      const parsed = new URL(sourceUrl, globalThis.location.origin)
+      return parsed.origin === globalThis.location.origin && parsed.pathname.startsWith('/courseware/')
+    }
+    catch {
+      return sourceUrl.startsWith('/courseware/')
+    }
+  }, [sourceUrl])
   const sourceUrlWithPage = (() => {
     try {
       const isRelative = sourceUrl.startsWith('/')
@@ -189,15 +198,16 @@ export default function PdfReferenceViewer({
         }
         const pdfjs = await loadPdfJs()
         const loadDocument = async (url: string) => {
+          const staticSource = isStaticCoursewareSource && url === sourceUrl
           loadingTask = pdfjs.getDocument({
             url,
-            withCredentials: true,
-            rangeChunkSize: 512 * 1024,
-            disableAutoFetch: true,
+            withCredentials: !staticSource,
+            rangeChunkSize: staticSource ? 1024 * 1024 : 512 * 1024,
+            disableAutoFetch: !staticSource,
             // Keep previews responsive behind the same-origin proxy. The first
             // non-range full PDF fetch can be slow or fail on mobile networks,
             // while range requests are fast and enough for page-by-page viewing.
-            disableStream: true,
+            disableStream: !staticSource,
           })
           return await loadingTask.promise
         }
@@ -239,7 +249,7 @@ export default function PdfReferenceViewer({
       renderTaskRef.current?.cancel()
       void loadingTask?.destroy()
     }
-  }, [retryKey, sourceUrl, pageImageUrl])
+  }, [isStaticCoursewareSource, retryKey, sourceUrl, pageImageUrl])
 
   const renderPage = useCallback(async () => {
     const canvas = canvasRef.current

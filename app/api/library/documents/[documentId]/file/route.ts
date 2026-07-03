@@ -8,7 +8,7 @@ import {
 } from '@/lib/dify-dataset'
 import { buildKnowledgeDocumentPdf } from '@/lib/knowledge-document-pdf'
 import { getSessionFromRequest } from '@/lib/session'
-import { getStaticCourseware } from '@/lib/static-courseware'
+import { getStaticCourseware, getStaticCoursewareDownloadUrl } from '@/lib/static-courseware'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -315,7 +315,10 @@ export async function GET(
   const requestRange = request.headers.get('range')
   const staticCourseware = getStaticCourseware(resolvedDocumentId, filename)
   if (staticCourseware) {
-    const redirectUrl = new URL(staticCourseware.url, request.url)
+    const staticDownloadUrl = getStaticCoursewareDownloadUrl(resolvedDocumentId, filename, disposition)
+    const redirectUrl = disposition === 'attachment'
+      ? new URL(staticDownloadUrl || staticCourseware.url, request.url)
+      : new URL(staticCourseware.url, request.url)
     if (page && disposition === 'inline')
     { redirectUrl.hash = `page=${page}` }
     return new Response(null, {

@@ -507,6 +507,23 @@ const Main: FC<IMainProps> = () => {
     return null
   }
 
+  const scheduleScrollToChatBottom = (behavior: ScrollBehavior = 'auto') => {
+    const scheduledForConversation = currConversationId
+    ;[0, 80, 220, 520, 1000].forEach((delay, index) => {
+      globalThis.setTimeout(() => {
+        if (
+          targetMessageId
+          || scheduledForConversation !== currConversationId
+          || Date.now() < userScrollIntentUntilRef.current
+          || userPausedFollowRef.current
+          || hardPausedFollowRef.current
+        )
+        { return }
+        scrollToChatBottom(index === 0 ? behavior : 'auto')
+      }, delay)
+    })
+  }
+
   useEffect(() => {
     const handleNativeBack = (event: Event) => {
       const action = (event as CustomEvent<{ action?: string }>).detail?.action
@@ -541,7 +558,7 @@ const Main: FC<IMainProps> = () => {
       hardPausedFollowRef.current = false
       followOutputRef.current = true
       setShowJumpToBottom(false)
-      scrollToChatBottom('auto')
+      scheduleScrollToChatBottom('auto')
     }
     globalThis.addEventListener('network-study-chat-entered', handleChatEntered)
     return () => globalThis.removeEventListener('network-study-chat-entered', handleChatEntered)
@@ -701,21 +718,19 @@ const Main: FC<IMainProps> = () => {
 
       highlightedElement = element
       highlightedMessageRef.current = targetMessageId
-      const alignMessage = (behavior: ScrollBehavior = 'auto') => {
+      const alignMessage = () => {
         const parentRect = scrollParent.getBoundingClientRect()
         const elementRect = element.getBoundingClientRect()
         const topPadding = 14
         const nextTop = scrollParent.scrollTop + elementRect.top - parentRect.top - topPadding
         scrollParent.scrollTo({
           top: Math.max(0, nextTop),
-          behavior,
+          behavior: 'auto',
         })
         lastScrollTopRef.current = Math.max(0, nextTop)
       }
-      alignMessage('smooth')
-      ;[240, 700, 1400].forEach(delay => settleTimers.push(globalThis.setTimeout(() => alignMessage(), delay)))
-      resizeObserver = new ResizeObserver(() => alignMessage())
-      resizeObserver.observe(element)
+      alignMessage()
+      ;[120, 420].forEach(delay => settleTimers.push(globalThis.setTimeout(() => alignMessage(), delay)))
       element.classList.add('message-highlight')
       highlightTimer = globalThis.setTimeout(() => {
         resizeObserver?.disconnect()
@@ -772,20 +787,13 @@ const Main: FC<IMainProps> = () => {
     if (state.messageId) {
       targetConversationIdRef.current = currConversationId
       setTargetMessageId(state.messageId)
+      const cleanupTimer = globalThis.setTimeout(() => {
+        sessionStorage.removeItem('network-study-source-return')
+      }, 1200)
+      return () => globalThis.clearTimeout(cleanupTimer)
     }
     const restore = () => {
-      const targetElement = state.messageId
-        ? document.getElementById(`message-${state.messageId}`)
-        : null
-      if (targetElement && typeof state.anchorDelta === 'number') {
-        const parentRect = scrollParent.getBoundingClientRect()
-        const elementRect = targetElement.getBoundingClientRect()
-        const nextTop = scrollParent.scrollTop + elementRect.top - parentRect.top - state.anchorDelta
-        scrollParent.scrollTo({ top: Math.max(0, nextTop), behavior: 'auto' })
-      }
-      else {
-        scrollParent.scrollTo({ top: Math.max(0, Number(state.y || 0)), behavior: 'auto' })
-      }
+      scrollParent.scrollTo({ top: Math.max(0, Number(state.y || 0)), behavior: 'auto' })
       lastScrollTopRef.current = scrollParent.scrollTop
       lastDistanceToBottomRef.current = scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight
     }
@@ -804,7 +812,7 @@ const Main: FC<IMainProps> = () => {
     if (!pendingScrollToBottomRef.current || targetMessageId)
     { return }
     pendingScrollToBottomRef.current = false
-    scrollToChatBottom('auto')
+    scheduleScrollToChatBottom('auto')
   }, [chatList, currConversationId, targetMessageId])
   // user can not edit inputs if user had send message
   const canEditInputs = !chatList.some(item => item.isAnswer === false) && isNewConversation
@@ -1475,6 +1483,18 @@ const Main: FC<IMainProps> = () => {
         })
       },
       async onCompleted(hasError?: boolean) {
+        setRespondingFalse()
+        window.NetworkStudyApp?.setChatGenerationActive?.(false, '')
+        if (!hasError && tempNewConversationId) {
+          const completedPreview = toMessageText(responseItem.content).trim().slice(0, 60) || '刚刚完成 · 点击查看回复'
+          setConversationList(produce(conversationList, (draft) => {
+            const existing = draft.find(item => item.id === tempNewConversationId)
+            if (existing) {
+              existing.preview = completedPreview
+              existing.updatedAt = new Date().toISOString()
+            }
+          }))
+        }
         try {
           if (!hasError) {
             clearPendingGenerationState()
@@ -1509,7 +1529,6 @@ const Main: FC<IMainProps> = () => {
           if (tempNewConversationId) {
             setCurrConversationId(tempNewConversationId, APP_ID, true)
           }
-          setRespondingFalse()
         }
       },
       onFile(file) {

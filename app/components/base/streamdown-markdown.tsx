@@ -10,6 +10,7 @@ import {
   normalizeAssistantMarkdown,
   toAbsoluteDifyAssetUrl,
   toBrowserImageFallbackUrl,
+  toDirectDifyAssetUrl,
   toDifyAssetProxyUrl,
 } from '@/lib/dify-assets'
 import { isNetworkStudyApp } from '@/lib/native-app'
@@ -53,7 +54,7 @@ interface MarkdownImageProps extends ImgHTMLAttributes<HTMLImageElement> {
 const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) => {
   const [preview, setPreview] = useState(false)
   const [failed, setFailed] = useState(false)
-  const [useDirectImage, setUseDirectImage] = useState(false)
+  const [useProxyImage, setUseProxyImage] = useState(false)
   const [skipRefreshedSourceImage, setSkipRefreshedSourceImage] = useState(false)
   const [sourceInfo, setSourceInfo] = useState<{
     referenceId?: string
@@ -65,9 +66,11 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
   const sourceUrl = String(src)
   const absoluteSourceUrl = toAbsoluteDifyAssetUrl(sourceUrl)
   const imageUrl = toSharedAssetProxyUrl(sourceUrl, shareToken)
-  const directImageUrl = toBrowserImageFallbackUrl(sourceUrl)
+  const directImageUrl = !shareToken
+    ? toBrowserImageFallbackUrl(sourceUrl) || toDirectDifyAssetUrl(sourceUrl)
+    : ''
   const refreshedSourceImageUrl = !shareToken && !skipRefreshedSourceImage && sourceInfo?.imageUrl ? sourceInfo.imageUrl : ''
-  const renderedImageUrl = refreshedSourceImageUrl || (useDirectImage && directImageUrl ? directImageUrl : imageUrl)
+  const renderedImageUrl = refreshedSourceImageUrl || (!useProxyImage && directImageUrl ? directImageUrl : imageUrl)
 
   const isPdfPageImage = /\/page-images\/[^/]+\/page_(\d+)\.(?:jpe?g|png|webp)(?:[?#].*)?$/i.test(absoluteSourceUrl || sourceUrl)
   const isInlineKnowledgeIllustration = Boolean((absoluteSourceUrl || sourceUrl).includes('/page-images/') && !isPdfPageImage)
@@ -151,7 +154,7 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
 
   useEffect(() => {
     setFailed(false)
-    setUseDirectImage(false)
+    setUseProxyImage(false)
     setSkipRefreshedSourceImage(false)
   }, [sourceInfo?.imageUrl, sourceUrl, shareToken])
 
@@ -189,7 +192,7 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
         <span>{sourceLabel} · 图片加载失败</span>
         <button type='button' onClick={() => {
           setFailed(false)
-          setUseDirectImage(false)
+          setUseProxyImage(false)
         }}>重试</button>
         {showOriginalLink && !isInlineKnowledgeIllustration && (
           <a href={sourceHrefWithReturn()} onClick={(event) => {
@@ -220,13 +223,14 @@ const MarkdownImage = ({ src = '', alt = '', shareToken }: MarkdownImageProps) =
             src={renderedImageUrl}
             alt={alt}
             loading='lazy'
+            decoding='async'
             onError={() => {
               if (refreshedSourceImageUrl) {
                 setSkipRefreshedSourceImage(true)
                 return
               }
-              if (!useDirectImage && directImageUrl && directImageUrl !== renderedImageUrl) {
-                setUseDirectImage(true)
+              if (!useProxyImage && imageUrl && imageUrl !== renderedImageUrl) {
+                setUseProxyImage(true)
                 return
               }
               setFailed(true)

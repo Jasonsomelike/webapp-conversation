@@ -5,7 +5,7 @@ import { findKnowledgeDocumentByName, getKnowledgeDocumentPageImages } from '@/l
 import { toDifyAssetProxyUrl } from '@/lib/dify-assets'
 import { cleanReferenceDocumentName } from '@/lib/reference-extractor'
 import { getSession } from '@/lib/session'
-import { getStaticCourseware } from '@/lib/static-courseware'
+import { getStaticCourseware, getStaticCoursewareDownloadUrl } from '@/lib/static-courseware'
 
 export default async function SourcePdfPreviewPage({
   params,
@@ -32,6 +32,7 @@ export default async function SourcePdfPreviewPage({
   const resolvedDocument = await findKnowledgeDocumentByName(filename, hintedDocumentId).catch(() => null)
   const resolvedDocumentId = resolvedDocument?.id || hintedDocumentId
   const staticCourseware = getStaticCourseware(resolvedDocumentId, filename)
+  const staticDownloadUrl = getStaticCoursewareDownloadUrl(resolvedDocumentId, filename)
   const pageImageUrl = reference?.pageImageUrl && /\/page_\d+\.(?:jpe?g|png|webp)(?:[?#].*)?$/i.test(reference.pageImageUrl)
     ? reference.pageImageUrl
     : ''
@@ -57,7 +58,7 @@ export default async function SourcePdfPreviewPage({
       filename={filename}
       initialPage={page}
       sourceUrl={staticCourseware?.url || sourceUrl}
-      downloadUrl={staticCourseware?.url || downloadUrl}
+      downloadUrl={staticDownloadUrl || downloadUrl}
       pageImageUrl={shouldUsePageImageFallback && freshPageImage ? toDifyAssetProxyUrl(freshPageImage.url) : undefined}
       pageImageCount={pageImageCount || undefined}
       backHref={query.returnTo?.startsWith('/') ? query.returnTo : '/sources'}

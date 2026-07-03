@@ -16,7 +16,7 @@ import {
 } from '@heroicons/react/24/outline'
 import PageCard from '@/app/components/workspace/page-card'
 import type { DifyDocumentList, DifyKnowledgeDocument } from '@/lib/dify-dataset'
-import { getStaticCourseware } from '@/lib/static-courseware'
+import { getStaticCoursewareDownloadUrl } from '@/lib/static-courseware'
 
 const statusLabel: Record<string, string> = {
   completed: '索引完成',
@@ -367,11 +367,11 @@ export default function DocumentLibrary({
     `/library/preview/${document.id}?filename=${encodeURIComponent(document.name)}`
 
   const downloadHref = (document: DifyKnowledgeDocument) =>
-    getStaticCourseware(document.id, document.name)?.url
+    getStaticCoursewareDownloadUrl(document.id, document.name)
     || `/api/library/documents/${document.id}/file?disposition=attachment&filename=${encodeURIComponent(document.name)}`
 
   const downloadName = (document: DifyKnowledgeDocument) =>
-    getStaticCourseware(document.id, document.name) ? document.name : undefined
+    document.name
 
   const toggleGroup = (key: string) => {
     setExpandedGroups(current => ({

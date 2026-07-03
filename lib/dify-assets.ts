@@ -58,7 +58,7 @@ export const toDifyAssetProxyUrl = (value: string, download = false, filename = 
     // the browser load them directly instead of routing through a Vercel
     // function; server-side fetches to the custom Dify port can intermittently
     // fail from Vercel, while direct browser requests are fast and stable.
-    if (target.pathname.startsWith('/page-images/')) {
+    if (!download && (target.pathname.startsWith('/page-images/') || imageExtension.test(target.pathname))) {
       target.protocol = 'https:'
       return target.toString()
     }
@@ -90,6 +90,29 @@ const unwrapDifyAssetProxyUrl = (value: string) => {
 export const toBrowserImageFallbackUrl = (value: string) => {
   const url = toAbsoluteDifyAssetUrl(unwrapDifyAssetProxyUrl(value))
   if (!url || !imageExtension.test(url))
+  { return '' }
+
+  try {
+    const target = new URL(url)
+    if (
+      !['http:', 'https:'].includes(target.protocol)
+      || !difyAssetHosts.has(target.hostname)
+      || (target.hostname === 'dify.jasonsome.cn' && target.port && target.port !== '22380')
+      || (!target.pathname.startsWith('/files/') && !target.pathname.startsWith('/page-images/'))
+    )
+    { return '' }
+
+    target.protocol = 'https:'
+    return target.toString()
+  }
+  catch {
+    return ''
+  }
+}
+
+export const toDirectDifyAssetUrl = (value: string) => {
+  const url = toAbsoluteDifyAssetUrl(unwrapDifyAssetProxyUrl(value))
+  if (!url)
   { return '' }
 
   try {

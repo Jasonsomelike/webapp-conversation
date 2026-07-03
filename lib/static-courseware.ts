@@ -28,3 +28,18 @@ export const getStaticCoursewareByName = (name?: string | null) =>
 
 export const getStaticCourseware = (id?: string | null, name?: string | null) =>
   getStaticCoursewareById(id) || getStaticCoursewareByName(name)
+
+export const getStaticCoursewareDownloadUrl = (
+  id?: string | null,
+  name?: string | null,
+  disposition: 'inline' | 'attachment' = 'attachment',
+) => {
+  const file = getStaticCourseware(id, name)
+  if (!file)
+  { return '' }
+  const params = new URLSearchParams({
+    disposition,
+    filename: name || file.name,
+  })
+  return `/api/courseware/${encodeURIComponent(file.id)}?${params}`
+}
