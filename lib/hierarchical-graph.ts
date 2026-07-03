@@ -167,6 +167,96 @@ const distanceFromCenter = (
   return distance
 }
 
+const buildDirectedChildMap = (graph: UserKnowledgeGraph) => {
+  const children = new Map<string, Set<string>>()
+  graph.nodes.forEach(node => children.set(node.id, new Set()))
+  graph.edges.forEach(edge => children.get(edge.source)?.add(edge.target))
+  return children
+}
+
+const buildNeighborMap = (graph: UserKnowledgeGraph) => {
+  const neighbors = new Map<string, Set<string>>()
+  graph.nodes.forEach(node => neighbors.set(node.id, new Set()))
+  graph.edges.forEach((edge) => {
+    neighbors.get(edge.source)?.add(edge.target)
+    neighbors.get(edge.target)?.add(edge.source)
+  })
+  return neighbors
+}
+
+const roundPosition = (value: number) => Number(value.toFixed(2))
+
+const nodePoint = ({
+  angle,
+  radiusX,
+  radiusY,
+  minX,
+  maxX,
+  minY,
+  maxY,
+}: {
+  angle: number
+  radiusX: number
+  radiusY: number
+  minX: number
+  maxX: number
+  minY: number
+  maxY: number
+}) => ({
+  x: roundPosition(clamp(50 + Math.cos(angle) * radiusX, minX, maxX)),
+  y: roundPosition(clamp(50 + Math.sin(angle) * radiusY, minY, maxY)),
+})
+
+const distributeSecondRingByParent = ({
+  graph,
+  firstRing,
+  secondRing,
+}: {
+  graph: UserKnowledgeGraph
+  firstRing: UserKnowledgeGraph['nodes']
+  secondRing: UserKnowledgeGraph['nodes']
+}) => {
+  const directedChildren = buildDirectedChildMap(graph)
+  const neighbors = buildNeighborMap(graph)
+  const secondRingIds = new Set(secondRing.map(node => node.id))
+  const assigned = new Set<string>()
+  const groups = firstRing.map(node => ({ parent: node, children: [] as UserKnowledgeGraph['nodes'] }))
+
+  groups.forEach((group) => {
+    const directChildren = [...directedChildren.get(group.parent.id) || []]
+      .filter(id => secondRingIds.has(id))
+    directChildren.forEach((childId) => {
+      if (assigned.has(childId))
+      { return }
+      const child = secondRing.find(node => node.id === childId)
+      if (!child)
+      { return }
+      group.children.push(child)
+      assigned.add(childId)
+    })
+  })
+
+  secondRing.forEach((node) => {
+    if (assigned.has(node.id))
+    { return }
+    const connectedParentIndex = groups.findIndex(group => neighbors.get(node.id)?.has(group.parent.id))
+    const group = groups[connectedParentIndex >= 0 ? connectedParentIndex : assigned.size % Math.max(1, groups.length)]
+    if (!group)
+    { return }
+    group.children.push(node)
+    assigned.add(node.id)
+  })
+
+  if (!groups.length && secondRing.length) {
+    return [{
+      parent: undefined,
+      children: secondRing,
+    }]
+  }
+
+  return groups
+}
+
 export const layoutGraphSlice = (graph: UserKnowledgeGraph, centerNodeId: string): UserKnowledgeGraph => {
   const center = graph.nodes.find(node => node.id === centerNodeId) || graph.nodes[0]
   if (!center)
@@ -176,8 +266,65 @@ export const layoutGraphSlice = (graph: UserKnowledgeGraph, centerNodeId: string
   const firstRing = graph.nodes.filter(node => (distances.get(node.id) ?? 99) === 1)
   const secondRing = graph.nodes.filter(node => (distances.get(node.id) ?? 99) > 1)
   const dense = graph.nodes.length > 42
-  const secondRadiusX = dense ? 42 : 39
-  const secondRadiusY = dense ? 34 : 30
+  const extraDense = graph.nodes.length > 64
+  const parentGroups = distributeSecondRingByParent({ graph, firstRing, secondRing })
+  const groupWeights = parentGroups.map(group => Math.max(1.2, group.children.length || 1))
+  const totalGroupWeight = Math.max(1, groupWeights.reduce((sum, weight) => sum + weight, 0))
+  const groupAngles = new Map<string, { start: number, end: number, mid: number }>()
+  let angleCursor = -Math.PI / 2
+  parentGroups.forEach((group, index) => {
+    const span = Math.PI * 2 * groupWeights[index] / totalGroupWeight
+    const start = angleCursor
+    const end = angleCursor + span
+    const mid = start + span / 2
+    if (group.parent)
+    { groupAngles.set(group.parent.id, { start, end, mid }) }
+    angleCursor = end
+  })
+  const secondNodeLayout = new Map<string, { x: number, y: number, weight: number }>()
+
+  parentGroups.forEach((group, groupIndex) => {
+    const fallbackSpan = Math.PI * 2 / Math.max(1, parentGroups.length)
+    const sector = group.parent
+      ? groupAngles.get(group.parent.id)
+      : {
+        start: -Math.PI / 2 + fallbackSpan * groupIndex,
+        end: -Math.PI / 2 + fallbackSpan * (groupIndex + 1),
+        mid: -Math.PI / 2 + fallbackSpan * (groupIndex + 0.5),
+      }
+    if (!sector)
+    { return }
+    const gap = dense ? 0.1 : 0.16
+    const usableStart = sector.start + gap / 2
+    const usableEnd = sector.end - gap / 2
+    const usableSpan = Math.max(0.16, usableEnd - usableStart)
+    const maxPerTrack = extraDense ? 5 : dense ? 6 : 8
+    const tracks = Math.max(1, Math.ceil(group.children.length / maxPerTrack))
+    const perTrack = Math.max(1, Math.ceil(group.children.length / tracks))
+
+    group.children.forEach((node, index) => {
+      const track = Math.floor(index / perTrack)
+      const trackStart = track * perTrack
+      const countOnTrack = Math.max(1, Math.min(perTrack, group.children.length - trackStart))
+      const indexOnTrack = index - trackStart
+      const angle = usableStart + usableSpan * ((indexOnTrack + 0.5) / countOnTrack)
+      const radiusX = clamp((extraDense ? 31 : 32) + track * (extraDense ? 5.2 : 4.8), 29, 47.5)
+      const radiusY = clamp((extraDense ? 23 : 24) + track * (extraDense ? 4.6 : 4.2), 21, 41)
+      const point = nodePoint({
+        angle,
+        radiusX,
+        radiusY,
+        minX: 2.5,
+        maxX: 97.5,
+        minY: 4,
+        maxY: 96,
+      })
+      secondNodeLayout.set(node.id, {
+        ...point,
+        weight: Math.max(5.5, node.weight - (extraDense ? 2.2 : dense ? 1.8 : 1.1)),
+      })
+    })
+  })
 
   const nodes = graph.nodes.map((node) => {
     if (node.id === center.id) {
@@ -193,17 +340,29 @@ export const layoutGraphSlice = (graph: UserKnowledgeGraph, centerNodeId: string
 
     const depth = distances.get(node.id) ?? 99
     const isFirstRing = depth === 1
-    const siblings = isFirstRing ? firstRing : secondRing
-    const index = Math.max(0, siblings.findIndex(item => item.id === node.id))
-    const total = Math.max(1, siblings.length)
-    const angle = -Math.PI / 2 + (Math.PI * 2 * index) / total
-    const radiusX = isFirstRing ? 23 : secondRadiusX
-    const radiusY = isFirstRing ? 17 : secondRadiusY
+    const sector = groupAngles.get(node.id)
+    const firstRingIndex = Math.max(0, firstRing.findIndex(item => item.id === node.id))
+    const firstRingAngle = sector?.mid ?? -Math.PI / 2 + (Math.PI * 2 * firstRingIndex) / Math.max(1, firstRing.length)
+    const secondLayout = secondNodeLayout.get(node.id)
+    if (!isFirstRing && secondLayout) {
+      return {
+        ...node,
+        ...secondLayout,
+      }
+    }
+    const point = nodePoint({
+      angle: firstRingAngle,
+      radiusX: extraDense ? 19.5 : dense ? 21 : 23,
+      radiusY: extraDense ? 14.5 : dense ? 15.5 : 17,
+      minX: 14,
+      maxX: 86,
+      minY: 16,
+      maxY: 84,
+    })
     return {
       ...node,
-      x: Number(clamp(50 + Math.cos(angle) * radiusX, 6, 94).toFixed(2)),
-      y: Number(clamp(50 + Math.sin(angle) * radiusY, 7, 93).toFixed(2)),
-      weight: isFirstRing ? Math.max(node.weight, 9.2) : Math.max(6.2, node.weight - (dense ? 1.6 : 1)),
+      ...point,
+      weight: isFirstRing ? Math.max(node.weight, dense ? 8.8 : 9.2) : Math.max(6.2, node.weight - (dense ? 1.6 : 1)),
     }
   })
 

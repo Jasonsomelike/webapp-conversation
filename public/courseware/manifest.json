@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-07-03T04:09:24.2231304Z",
+  "generatedAt": "2026-07-03T13:05:00.0000000Z",
   "source": "D:\\Desktop\\计网课件",
-  "count": 87,
+  "count": 89,
   "files": [
     {
       "id": "43cd5bda-20d9-40e8-bdea-dcaac093a925",
@@ -464,6 +464,20 @@
       "url": "/courseware/cd67dbfe-e733-4a53-b6c3-3ab2121c9dce.pdf",
       "size": 7039961,
       "sha256": "d623d5bb71bb7181edc94704d6403f409dab05af6cc42429133ae2f6b43910a9"
+    },
+    {
+      "id": "95a4f4ee-23f5-4d37-a01a-456c2f1f63fd",
+      "name": "第6章 应用层-1.pdf",
+      "url": "/courseware/95a4f4ee-23f5-4d37-a01a-456c2f1f63fd.pdf",
+      "size": 2103565,
+      "sha256": "acaa3b0c238dd33d546779b407c352bffb4ce4c3d36b4c245636a51e7586843b"
+    },
+    {
+      "id": "0e958f87-b670-44f4-bacd-4de069039e22",
+      "name": "第6章 应用层-2.pdf",
+      "url": "/courseware/0e958f87-b670-44f4-bacd-4de069039e22.pdf",
+      "size": 4559859,
+      "sha256": "e672a211b782f4f0062f107f9e94cae7ca8a6c244880132e2abf50e3435364af"
     },
     {
       "id": "85754bd6-24fc-48fe-9c4e-4d18bd6e5ea2",

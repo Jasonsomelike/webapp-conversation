@@ -143,6 +143,8 @@ export default function KnowledgeGraphView({
   const related = useMemo(() => edges.filter(edge => edge.source === selected || edge.target === selected), [edges, selected])
   const relatedNodeIds = useMemo(() => new Set(related.flatMap(edge => [edge.source, edge.target])), [related])
   const rootNode = nodes.find(node => node.id === rootNodeId) || nodes[0]
+  const denseGraph = nodes.length > 42
+  const extraDenseGraph = nodes.length > 64
   const depthTone = (nodeId: string) => {
     const depth = graphDepth.get(nodeId) ?? 2
     if (depth <= 0)
@@ -167,10 +169,11 @@ export default function KnowledgeGraphView({
     setEdges(initialEdges)
     setSelected(initialNodes.find(node => node.id === preferredRootNodeId)?.id || initialNodes.find(node => node.type === 'weakness')?.id || initialNodes[0]?.id || '')
     const dense = initialNodes.length > 42
+    const extraDense = initialNodes.length > 64
     const mobile = globalThis.matchMedia?.('(max-width: 640px)').matches
     const nextZoom = mobile
-      ? dense ? 0.66 : initialNodes.length > 24 ? 0.78 : 0.9
-      : dense ? 0.9 : 1
+      ? extraDense ? 0.5 : dense ? 0.58 : initialNodes.length > 24 ? 0.74 : 0.9
+      : extraDense ? 0.74 : dense ? 0.82 : 1
     updateZoom(nextZoom)
     const viewport = viewportRef.current
     updatePan(viewport && nextZoom < 1
@@ -505,7 +508,7 @@ export default function KnowledgeGraphView({
   }
 
   const updateZoom = (nextZoom: number) => {
-    const clamped = Math.min(2.5, Math.max(0.45, nextZoom))
+    const clamped = Math.min(2.5, Math.max(0.38, nextZoom))
     zoomRef.current = clamped
     setZoom(clamped)
     return clamped
@@ -836,6 +839,16 @@ export default function KnowledgeGraphView({
               const relatedActive = !active && relatedNodeIds.has(node.id)
               const leafNode = leafNodeSet.has(node.id)
               const drillable = canDrillInto(node.id)
+              const denseNodeClass = extraDenseGraph
+                ? 'max-w-[84px] px-2 py-1.5 sm:max-w-[122px] sm:px-2.5 sm:py-2'
+                : denseGraph
+                  ? 'max-w-[96px] px-2 py-1.5 sm:max-w-[136px] sm:px-3 sm:py-2'
+                  : 'max-w-[108px] px-2.5 py-2 sm:max-w-[156px] sm:px-3.5 sm:py-2.5'
+              const nodeFontSize = extraDenseGraph
+                ? Math.min(11.6, 8.8 + node.weight * 0.24)
+                : denseGraph
+                  ? Math.min(12, 9.1 + node.weight * 0.26)
+                  : Math.min(12.5, 9.5 + node.weight * 0.28)
               return (
                 <button
                   key={node.id}
@@ -846,10 +859,10 @@ export default function KnowledgeGraphView({
                   onClick={event => openNode(node.id, event)}
                   onMouseEnter={() => setSelected(node.id)}
                   title={leafNode && node.id !== rootNodeId ? '叶子节点：点击仅查看详情' : drillable ? '电脑点击下钻；手机单击查看、双击下钻' : node.label}
-                  className={`absolute z-10 max-w-[108px] -translate-x-1/2 -translate-y-1/2 whitespace-normal rounded-2xl border px-2.5 py-2 text-center text-[10px] font-semibold leading-tight shadow-[0_10px_28px_rgba(34,55,46,.11)] transition-[filter,box-shadow,border-color] duration-200 hover:brightness-105 sm:max-w-[156px] sm:px-3.5 sm:py-2.5 ${
+                  className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 whitespace-normal rounded-2xl border text-center text-[10px] font-semibold leading-tight shadow-[0_10px_28px_rgba(34,55,46,.11)] transition-[filter,box-shadow,border-color] duration-200 hover:brightness-105 ${denseNodeClass} ${
                     nodeTone(node)
                   } ${active ? 'ring-4 ring-[#dff67a]/60' : ''} ${relatedActive ? 'ring-2 ring-[#8eb9a5]/45' : ''} ${leafNode && node.id !== rootNodeId ? 'cursor-default opacity-90' : ''}`}
-                  style={{ left: `${node.x}%`, top: `${node.y}%`, fontSize: `${Math.min(12.5, 9.5 + node.weight * 0.28)}px` }}
+                  style={{ left: `${node.x}%`, top: `${node.y}%`, fontSize: `${nodeFontSize}px` }}
                 >
                   {node.label}
                   {leafNode && node.id !== rootNodeId && <span className="ml-2 inline-block h-1.5 w-1.5 rounded-full bg-current opacity-35" />}
