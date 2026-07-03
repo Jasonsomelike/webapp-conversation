@@ -49,7 +49,7 @@ export async function GET(request: Request) {
     const safeRequestedName = sanitizeFilename(requestedName)
     if (/^network-study-android-v[\w.-]+\.apk$/i.test(safeRequestedName)) {
       return NextResponse.redirect(
-        new URL(`/downloads/${encodeURIComponent(safeRequestedName)}`, request.url),
+        new URL(`/${encodeURIComponent(safeRequestedName)}`, request.url),
         { status: 302 },
       )
     }

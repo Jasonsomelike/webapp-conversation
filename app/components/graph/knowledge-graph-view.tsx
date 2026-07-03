@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import gsap from 'gsap'
 import { useGSAP } from '@gsap/react'
@@ -43,6 +43,7 @@ export default function KnowledgeGraphView({
   colorByDepth = false,
   emptyTitle = '知识图谱还是空的',
   emptyDescription = '完成一次计算机网络学习对话后，系统会根据你的问题和知识库引用生成专属节点与关系。',
+  compactOuterPadding = false,
 }: {
   nodes: KnowledgeGraphNode[]
   edges: KnowledgeGraphEdge[]
@@ -55,6 +56,7 @@ export default function KnowledgeGraphView({
   colorByDepth?: boolean
   emptyTitle?: string
   emptyDescription?: string
+  compactOuterPadding?: boolean
 }) {
   const router = useRouter()
   const [nodes, setNodes] = useState(initialNodes)
@@ -66,6 +68,7 @@ export default function KnowledgeGraphView({
   const zoomRef = useRef(1)
   const panRef = useRef({ x: 0, y: 0 })
   const pointersRef = useRef(new Map<number, { x: number, y: number }>())
+  const lastNodeTapRef = useRef<{ nodeId: string, at: number } | null>(null)
   const gestureRef = useRef<{
     mode: 'idle' | 'drag' | 'pinch'
     startX: number
@@ -150,28 +153,57 @@ export default function KnowledgeGraphView({
   }
   const nodeTone = (node: KnowledgeGraphNode) => colorByDepth ? depthTone(node.id) : tones[node.type]
   const canDrillInto = (nodeId: string) => Boolean(nodeNavigationBasePath && nodeId !== rootNodeId && !leafNodeSet.has(nodeId))
+  const buildNodeHref = (nodeId?: string) => {
+    if (!nodeNavigationBasePath)
+    { return '' }
+    if (!nodeId)
+    { return nodeNavigationBasePath }
+    const separator = nodeNavigationBasePath.includes('?') ? '&' : '?'
+    return `${nodeNavigationBasePath}${separator}node=${encodeURIComponent(nodeId)}`
+  }
 
   useEffect(() => {
     setNodes(initialNodes)
     setEdges(initialEdges)
     setSelected(initialNodes.find(node => node.id === preferredRootNodeId)?.id || initialNodes.find(node => node.type === 'weakness')?.id || initialNodes[0]?.id || '')
-    updateZoom(1)
-    updatePan({ x: 0, y: 0 })
+    const dense = initialNodes.length > 42
+    const mobile = globalThis.matchMedia?.('(max-width: 640px)').matches
+    const nextZoom = mobile
+      ? dense ? 0.66 : initialNodes.length > 24 ? 0.78 : 0.9
+      : dense ? 0.9 : 1
+    updateZoom(nextZoom)
+    const viewport = viewportRef.current
+    updatePan(viewport && nextZoom < 1
+      ? {
+        x: viewport.clientWidth * (1 - nextZoom) / 2,
+        y: viewport.clientHeight * (1 - nextZoom) / 2,
+      }
+      : { x: 0, y: 0 })
   }, [initialEdges, initialNodes, preferredRootNodeId])
 
-  const openNode = (nodeId: string) => {
+  const openNode = (nodeId: string, event?: MouseEvent<HTMLElement>) => {
     setSelected(nodeId)
-    if (canDrillInto(nodeId))
-    { router.push(`${nodeNavigationBasePath}?node=${encodeURIComponent(nodeId)}`) }
+    if (!canDrillInto(nodeId))
+    { return }
+
+    const coarsePointer = globalThis.matchMedia?.('(pointer: coarse)').matches
+    if (coarsePointer) {
+      const now = Date.now()
+      const lastTap = lastNodeTapRef.current
+      lastNodeTapRef.current = { nodeId, at: now }
+      if (!lastTap || lastTap.nodeId !== nodeId || now - lastTap.at > 420)
+      { return }
+    }
+    else if (event?.detail === 0)
+    { return }
+
+    router.push(buildNodeHref(nodeId))
   }
 
   const goParentNode = () => {
     if (!nodeNavigationBasePath)
     { return }
-    const href = parentNodeId
-      ? `${nodeNavigationBasePath}?node=${encodeURIComponent(parentNodeId)}`
-      : nodeNavigationBasePath
-    router.push(href)
+    router.push(parentNodeId ? buildNodeHref(parentNodeId) : buildNodeHref())
   }
 
   useGSAP(() => {
@@ -651,7 +683,7 @@ export default function KnowledgeGraphView({
   }
 
   return (
-    <div ref={rootRef} className="mx-auto max-w-[1500px] p-4 sm:p-6">
+    <div ref={rootRef} className={compactOuterPadding ? 'mx-auto max-w-[1500px] pb-4 sm:pb-6' : 'mx-auto max-w-[1500px] p-4 sm:p-6'}>
       <div data-graph-toolbar className="mb-5 grid gap-4 md:grid-cols-[1fr_auto]">
         <div>
           {(isDemo || staticNotice) && (
@@ -720,7 +752,7 @@ export default function KnowledgeGraphView({
         >
           <div className="absolute left-5 top-5 z-20 rounded-xl border border-[#183129]/10 bg-white/90 px-3 py-2 text-[10px] text-[#728078] shadow-sm backdrop-blur">
             <CursorArrowRaysIcon className="mr-1.5 inline h-3.5 w-3.5" />
-            <span className="sm:hidden">单指拖动 · 双指缩放 · 点击节点</span>
+            <span className="sm:hidden">单指拖动 · 双指缩放 · 单击查看 · 双击下钻</span>
             <span className="hidden sm:inline">拖动画布 · 滚轮缩放 · 点击节点查看证据</span>
           </div>
           <div data-graph-control className="absolute bottom-5 right-5 z-20 flex overflow-hidden rounded-xl border border-[#183129]/10 bg-white shadow-sm">
@@ -748,6 +780,14 @@ export default function KnowledgeGraphView({
             }}
           >
             <svg className="absolute inset-0 h-full w-full" aria-hidden="true">
+              <defs>
+                <marker id="graph-arrow" markerWidth="6" markerHeight="6" refX="5.2" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M 0 0 L 6 3 L 0 6 z" fill="#aab5af" opacity="0.62" />
+                </marker>
+                <marker id="graph-arrow-active" markerWidth="6" markerHeight="6" refX="5.2" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M 0 0 L 6 3 L 0 6 z" fill="#547a67" opacity="0.9" />
+                </marker>
+              </defs>
               {edges.map((edge, index) => {
                 const source = nodes.find(node => node.id === edge.source)!
                 const target = nodes.find(node => node.id === edge.target)!
@@ -767,6 +807,7 @@ export default function KnowledgeGraphView({
                     stroke={highlighted ? '#547a67' : '#aab5af'}
                     strokeWidth={highlighted ? 2.2 : 1.2}
                     strokeDasharray={edge.type === 'recommended_next' ? '6 5' : undefined}
+                    markerEnd={`url(#${highlighted ? 'graph-arrow-active' : 'graph-arrow'})`}
                     opacity={highlighted ? 0.85 : 0.45}
                   />
                 )
@@ -802,13 +843,13 @@ export default function KnowledgeGraphView({
                   data-graph-node-id={node.id}
                   data-graph-depth={graphDepth.get(node.id) ?? 0}
                   data-graph-related-node={relatedActive ? 'true' : 'false'}
-                  onClick={() => openNode(node.id)}
+                  onClick={event => openNode(node.id, event)}
                   onMouseEnter={() => setSelected(node.id)}
-                  title={leafNode && node.id !== rootNodeId ? '叶子节点：点击仅查看详情' : drillable ? '点击进入该节点的两级子图' : node.label}
-                  className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-2xl border px-3.5 py-2.5 text-xs font-semibold shadow-[0_10px_28px_rgba(34,55,46,.11)] transition-[filter,box-shadow,border-color] duration-200 hover:brightness-105 ${
+                  title={leafNode && node.id !== rootNodeId ? '叶子节点：点击仅查看详情' : drillable ? '电脑点击下钻；手机单击查看、双击下钻' : node.label}
+                  className={`absolute z-10 max-w-[108px] -translate-x-1/2 -translate-y-1/2 whitespace-normal rounded-2xl border px-2.5 py-2 text-center text-[10px] font-semibold leading-tight shadow-[0_10px_28px_rgba(34,55,46,.11)] transition-[filter,box-shadow,border-color] duration-200 hover:brightness-105 sm:max-w-[156px] sm:px-3.5 sm:py-2.5 ${
                     nodeTone(node)
                   } ${active ? 'ring-4 ring-[#dff67a]/60' : ''} ${relatedActive ? 'ring-2 ring-[#8eb9a5]/45' : ''} ${leafNode && node.id !== rootNodeId ? 'cursor-default opacity-90' : ''}`}
-                  style={{ left: `${node.x}%`, top: `${node.y}%`, fontSize: `${Math.min(14, 10 + node.weight * 0.35)}px` }}
+                  style={{ left: `${node.x}%`, top: `${node.y}%`, fontSize: `${Math.min(12.5, 9.5 + node.weight * 0.28)}px` }}
                 >
                   {node.label}
                   {leafNode && node.id !== rootNodeId && <span className="ml-2 inline-block h-1.5 w-1.5 rounded-full bg-current opacity-35" />}
@@ -855,7 +896,7 @@ export default function KnowledgeGraphView({
                 const otherId = edge.source === selected ? edge.target : edge.source
                 const other = nodes.find(node => node.id === otherId)!
                 return (
-                  <button key={index} onClick={() => openNode(otherId)} className="flex w-full items-center gap-3 text-left">
+                  <button key={index} onClick={event => openNode(otherId, event)} className="flex w-full items-center gap-3 text-left">
                     <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-[#eef1ed] text-[#64736b]">
                       {other.type === 'document' ? <BookOpenIcon className="h-4 w-4" /> : <ChatBubbleLeftRightIcon className="h-4 w-4" />}
                     </div>

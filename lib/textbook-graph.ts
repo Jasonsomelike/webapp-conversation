@@ -560,6 +560,7 @@ export const getTextbookKnowledgeGraphAround = (
   depth = textbookGraphDefaultDepth,
 ): TextbookKnowledgeGraphSlice => {
   const centerNodeId = fullNodeMap.has(requestedCenterNodeId) ? requestedCenterNodeId : textbookGraphRootNodeId
+  const parentNodeId = findParentTowardRoot(centerNodeId)
   const visited = new Set<string>([centerNodeId])
   const queue: Array<{ id: string, distance: number }> = [{ id: centerNodeId, distance: 0 }]
 
@@ -568,7 +569,7 @@ export const getTextbookKnowledgeGraphAround = (
     if (current.distance >= depth)
     { continue }
     textbookAdjacency.get(current.id)?.forEach((nextId) => {
-      if (visited.has(nextId))
+      if (visited.has(nextId) || (parentNodeId && nextId === parentNodeId))
       { return }
       visited.add(nextId)
       queue.push({ id: nextId, distance: current.distance + 1 })
@@ -589,7 +590,7 @@ export const getTextbookKnowledgeGraphAround = (
   return {
     graph: layoutTextbookSubgraph({ nodes, edges }, centerNodeId),
     centerNodeId,
-    parentNodeId: findParentTowardRoot(centerNodeId),
+    parentNodeId,
     leafNodeIds: nodes.filter(node => isTextbookLeafNode(node.id)).map(node => node.id),
   }
 }

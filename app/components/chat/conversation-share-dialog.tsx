@@ -222,7 +222,7 @@ export default function ConversationShareDialog({
   return (
     <div className="fixed inset-0 z-[100] grid max-w-[100vw] place-items-end overflow-x-hidden bg-black/45 p-0 backdrop-blur-sm sm:place-items-center sm:p-4">
       <button className="absolute inset-0" aria-label="关闭分享" onClick={onClose} />
-      <GsapPresence variant="sheet-up" className="relative max-h-[calc(100dvh-env(safe-area-inset-bottom))] w-full min-w-0 overflow-y-auto overflow-x-hidden rounded-t-[28px] bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl sm:max-w-lg sm:rounded-[28px] sm:p-5">
+      <GsapPresence variant="sheet-up" className="relative max-h-[calc(100dvh-env(safe-area-inset-bottom))] w-full min-w-0 overflow-y-auto overflow-x-hidden rounded-t-[28px] bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl sm:max-w-2xl sm:rounded-[28px] sm:p-6 lg:max-w-3xl">
         <div className="flex min-w-0 items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold">分享本次对话</h2>
@@ -239,7 +239,7 @@ export default function ConversationShareDialog({
             <button type="button" onClick={() => setSelectedExchangeIds(exchanges.length ? [exchanges[exchanges.length - 1].id] : [])} className="rounded-lg bg-black/[0.04] px-2.5 py-1.5">仅最近</button>
           </div>
         </div>
-        <div className="mt-3 max-h-[min(42dvh,340px)] space-y-2 overflow-y-auto overscroll-contain pr-1">
+        <div className="mt-3 max-h-[min(56dvh,520px)] space-y-2 overflow-y-auto overscroll-contain pr-1">
           {exchanges.map((exchange, index) => {
             const checked = selectedIdSet.has(exchange.id)
             return (
@@ -259,7 +259,7 @@ export default function ConversationShareDialog({
                 <span className="min-w-0 flex-1">
                   <span className="block text-[10px] font-semibold text-black/35">第 {index + 1} 组</span>
                   <span className="mt-0.5 block break-words text-xs font-semibold">{exchange.question || '用户消息'}</span>
-                  {exchange.answer && <span className="mt-1 block line-clamp-2 text-[11px] leading-5 text-black/45">{exchange.answer}</span>}
+                  {exchange.answer && <span className="mt-1 block line-clamp-4 text-[11px] leading-5 text-black/45">{exchange.answer}</span>}
                 </span>
               </button>
             )

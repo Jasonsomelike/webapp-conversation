@@ -378,7 +378,7 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
           <div>
             <div className="text-xs font-semibold">专属学习数据空间</div>
             <div className="mt-1 text-[11px] leading-4 text-white/45">
-              {isGuest ? '游客可体验对话与文档，登录后解锁完整学习数据空间' : `对话、引用与分析均绑定账号 ${session.username}`}
+              {isGuest ? '游客可体验对话、文档与教材图谱；数据最后使用后 3 天自动清理' : `对话、引用与分析均绑定账号 ${session.username}`}
             </div>
           </div>
         </div>
@@ -539,7 +539,7 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
               </div>
               <h2 className="mt-4 text-lg font-semibold">登录后继续使用</h2>
               <p className="mt-2 text-sm leading-6 text-[var(--studio-muted)]">
-                游客模式可体验 AI 对话、知识库文档和教材知识图谱。引用、个人图谱、分析与画像需要登录后按账号保存。
+                游客模式可体验 AI 对话、知识库文档和教材知识图谱，游客数据会在最后一次使用后 3 天自动清理。引用、个人图谱、分析与画像需要登录后按账号保存。
               </p>
               <div className="mt-6 grid grid-cols-2 gap-3">
                 <button

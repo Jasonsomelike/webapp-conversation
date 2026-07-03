@@ -3,6 +3,7 @@ import 'server-only'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { cookies } from 'next/headers'
 import type { NextRequest, NextResponse } from 'next/server'
+import { validateAndTouchGuestSession } from '@/lib/guest-lifecycle'
 
 export const SESSION_COOKIE = 'network_study_session'
 
@@ -67,7 +68,8 @@ export const verifySessionToken = (token?: string | null): AppSession | null => 
 
 export const getSession = async () => {
   const store = await cookies()
-  return verifySessionToken(store.get(SESSION_COOKIE)?.value)
+  const session = verifySessionToken(store.get(SESSION_COOKIE)?.value)
+  return validateAndTouchGuestSession(session)
 }
 
 export const getSessionFromRequest = (request: NextRequest) =>

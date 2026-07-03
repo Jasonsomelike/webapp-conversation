@@ -4,10 +4,13 @@ import bcrypt from 'bcryptjs'
 import { db, isDatabaseConfigured } from '@/lib/db'
 import { deriveAccountDifyUserId } from '@/lib/auth'
 import { setSessionCookie } from '@/lib/session'
+import { pruneExpiredGuestAccounts } from '@/lib/guest-lifecycle'
 
 export async function POST() {
   if (!isDatabaseConfigured())
   { return NextResponse.json({ error: '游客模式需要数据库服务可用' }, { status: 503 }) }
+
+  void pruneExpiredGuestAccounts().catch(error => console.warn('[guest-auth] expired guest cleanup failed', error))
 
   const suffix = randomBytes(8).toString('hex')
   const username = `guest_${suffix}`

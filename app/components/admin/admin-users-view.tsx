@@ -6,6 +6,7 @@ import {
   ArrowPathIcon,
   ChatBubbleLeftRightIcon,
   CheckIcon,
+  ExclamationTriangleIcon,
   LockOpenIcon,
   MagnifyingGlassIcon,
   TrashIcon,
@@ -30,19 +31,47 @@ export interface AdminUserRow {
   _count: { conversations: number, messages: number, references: number }
 }
 
+interface BatchDeleteTarget {
+  mode: 'guests' | 'username_contains'
+  title: string
+  description: string
+  confirmText: 'DELETE_GUESTS' | 'DELETE_MATCHED_USERS'
+  include?: string
+  exclude?: string
+  users: AdminUserRow[]
+}
+
+const isGuestUser = (user: AdminUserRow) => user.username.startsWith('guest_') || user.displayName === '游客'
+
 export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUserRow[] }) {
   const [users, setUsers] = useState(initialUsers)
   const [query, setQuery] = useState('')
+  const [batchInclude, setBatchInclude] = useState('')
+  const [batchExclude, setBatchExclude] = useState('')
   const [savingId, setSavingId] = useState('')
   const [deletingId, setDeletingId] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<AdminUserRow>()
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [batchTarget, setBatchTarget] = useState<BatchDeleteTarget>()
+  const [batchConfirmText, setBatchConfirmText] = useState('')
+  const [batchDeleting, setBatchDeleting] = useState(false)
   const [conversationUser, setConversationUser] = useState<AdminUserRow>()
   const [portalReady, setPortalReady] = useState(false)
   const { notify } = Toast
   const filtered = useMemo(() => users.filter(user =>
     `${user.username} ${user.displayName} ${user.difyUserId}`.toLowerCase().includes(query.trim().toLowerCase()),
   ), [query, users])
+  const guestUsers = useMemo(() => users.filter(isGuestUser), [users])
+  const usernameBatchPreview = useMemo(() => {
+    const include = batchInclude.trim().toLowerCase()
+    const exclude = batchExclude.trim().toLowerCase()
+    if (!include)
+    { return [] }
+    return users.filter((user) => {
+      const username = user.username.toLowerCase()
+      return username.includes(include) && (!exclude || !username.includes(exclude))
+    })
+  }, [batchExclude, batchInclude, users])
 
   const patchLocal = (id: string, patch: Partial<AdminUserRow>) =>
     setUsers(current => current.map(user => user.id === id ? { ...user, ...patch } : user))
@@ -52,7 +81,7 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
   }, [])
 
   useEffect(() => {
-    if (!deleteTarget)
+    if (!deleteTarget && !batchTarget)
     { return }
 
     const html = document.documentElement
@@ -72,7 +101,7 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
       body.style.position = previousBodyPosition
       body.style.width = previousBodyWidth
     }
-  }, [deleteTarget])
+  }, [batchTarget, deleteTarget])
 
   const save = async (user: AdminUserRow, unlock = false) => {
     setSavingId(user.id)
@@ -130,6 +159,55 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
     }
   }
 
+  const openBatchDelete = (target: BatchDeleteTarget) => {
+    if (!target.users.length) {
+      notify({ type: 'error', message: '没有匹配到可删除账号' })
+      return
+    }
+    setBatchTarget(target)
+    setBatchConfirmText('')
+  }
+
+  const deleteBatchUsers = async (target: BatchDeleteTarget) => {
+    if (batchConfirmText !== target.confirmText) {
+      notify({ type: 'error', message: '请先输入确认文本' })
+      return
+    }
+
+    setBatchDeleting(true)
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: target.mode,
+          include: target.include,
+          exclude: target.exclude,
+          confirmText: target.confirmText,
+        }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok)
+      { throw new Error(result.error || '批量删除失败') }
+      const deletedIds = new Set((result.deleted || []).map((item: { id: string }) => item.id))
+      setUsers(current => current.filter(user => !deletedIds.has(user.id)))
+      setBatchTarget(undefined)
+      setBatchConfirmText('')
+      notify({
+        type: result.failed?.length ? 'error' : 'success',
+        message: result.failed?.length
+          ? `已删除 ${result.deleted?.length || 0} 个，${result.failed.length} 个失败`
+          : `已删除 ${result.deleted?.length || 0} 个账号及关联数据`,
+      })
+    }
+    catch (error) {
+      notify({ type: 'error', message: error instanceof Error ? error.message : '批量删除失败' })
+    }
+    finally {
+      setBatchDeleting(false)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1450px] p-4 pb-10 sm:p-6 sm:pb-12">
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
@@ -146,11 +224,61 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
       </div>
 
       <PageCard className="overflow-hidden">
-        <div className="flex items-center gap-3 border-b border-black/[0.07] p-4">
-          <UserGroupIcon className="h-5 w-5 text-[var(--studio-accent-strong)]" />
-          <div className="relative flex-1">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-black/35" />
-            <input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索账号、显示名称或 Dify 用户 ID" className="h-11 w-full rounded-xl border border-black/10 bg-black/[0.02] pl-10 pr-4 text-sm outline-none" />
+        <div className="border-b border-black/[0.07] p-4">
+          <div className="flex items-center gap-3">
+            <UserGroupIcon className="h-5 w-5 text-[var(--studio-accent-strong)]" />
+            <div className="relative flex-1">
+              <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-black/35" />
+              <input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索账号、显示名称或 Dify 用户 ID" className="h-11 w-full rounded-xl border border-black/10 bg-black/[0.02] pl-10 pr-4 text-sm outline-none" />
+            </div>
+          </div>
+          <div className="mt-3 grid gap-3 rounded-2xl border border-black/[0.06] bg-black/[0.018] p-3 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+            <button
+              type="button"
+              onClick={() => openBatchDelete({
+                mode: 'guests',
+                title: '批量删除游客账号',
+                description: `将删除当前数据库中 ${guestUsers.length} 个游客账号，以及它们的会话、消息、引用、画像、图谱、上传解析、分享记录等关联数据。`,
+                confirmText: 'DELETE_GUESTS',
+                users: guestUsers,
+              })}
+              disabled={!guestUsers.length || batchDeleting}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-4 text-xs font-semibold text-orange-700 disabled:opacity-45"
+            >
+              <TrashIcon className="h-4 w-4" />
+              批量删除游客（{guestUsers.length}）
+            </button>
+            <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+              <input
+                value={batchInclude}
+                onChange={event => setBatchInclude(event.target.value)}
+                placeholder="用户名包含，例如 test"
+                className="h-10 rounded-xl border border-black/10 bg-white px-3 text-xs outline-none"
+              />
+              <input
+                value={batchExclude}
+                onChange={event => setBatchExclude(event.target.value)}
+                placeholder="可选排除，例如 admin"
+                className="h-10 rounded-xl border border-black/10 bg-white px-3 text-xs outline-none"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => openBatchDelete({
+                mode: 'username_contains',
+                title: '按用户名匹配批量删除',
+                description: `将删除用户名包含“${batchInclude.trim()}”${batchExclude.trim() ? `且不包含“${batchExclude.trim()}”` : ''}的 ${usernameBatchPreview.length} 个账号，并同步清除全部关联数据。`,
+                confirmText: 'DELETE_MATCHED_USERS',
+                include: batchInclude.trim(),
+                exclude: batchExclude.trim(),
+                users: usernameBatchPreview,
+              })}
+              disabled={!batchInclude.trim() || !usernameBatchPreview.length || batchDeleting}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 text-xs font-semibold text-white disabled:opacity-45"
+            >
+              <ExclamationTriangleIcon className="h-4 w-4" />
+              删除匹配账号（{usernameBatchPreview.length}）
+            </button>
           </div>
         </div>
         <div className="divide-y divide-black/[0.06]">
@@ -297,6 +425,102 @@ export default function AdminUsersView({ initialUsers }: { initialUsers: AdminUs
                 className="h-11 rounded-xl bg-red-600 px-5 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(220,38,38,.18)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {deletingId === deleteTarget.id ? '正在注销…' : '确认注销并清除数据'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+      {portalReady && batchTarget && createPortal(
+        <div
+          role="presentation"
+          className="fixed inset-0 z-[9999] grid place-items-center overflow-hidden bg-black/55 px-3 py-[calc(16px+env(safe-area-inset-top))] backdrop-blur-[3px]"
+          onClick={() => batchDeleting ? undefined : setBatchTarget(undefined)}
+          onWheel={event => event.preventDefault()}
+          onTouchMove={event => event.preventDefault()}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-batch-delete-title"
+            className="max-h-[min(88dvh,720px)] w-full max-w-[620px] overflow-y-auto overscroll-contain rounded-[28px] border border-red-200 bg-[var(--studio-surface)] p-5 shadow-[0_30px_90px_rgba(0,0,0,.34)]"
+            onClick={event => event.stopPropagation()}
+            onWheel={event => event.stopPropagation()}
+            onTouchMove={event => event.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-600">
+                <ExclamationTriangleIcon className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 id="admin-batch-delete-title" className="text-base font-semibold text-red-700">{batchTarget.title}</h3>
+                <p className="mt-2 text-xs leading-6 text-black/55">{batchTarget.description}</p>
+              </div>
+              <button
+                type="button"
+                disabled={batchDeleting}
+                onClick={() => setBatchTarget(undefined)}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-black/[0.04] text-black/45 transition hover:bg-black/[0.08] disabled:opacity-50"
+                aria-label="关闭"
+              >
+                <XMarkIcon className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-5 rounded-2xl border border-red-100 bg-red-50/50 p-4">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label htmlFor="admin-batch-delete-confirm" className="text-xs font-semibold text-red-800">
+                  请输入确认文本 {batchTarget.confirmText}
+                </label>
+                <button
+                  type="button"
+                  disabled={batchDeleting}
+                  onClick={() => setBatchConfirmText(batchTarget.confirmText)}
+                  className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[10px] font-semibold text-red-600 shadow-sm transition hover:bg-red-100 disabled:opacity-50"
+                >
+                  一键输入确认文本
+                </button>
+              </div>
+              <input
+                id="admin-batch-delete-confirm"
+                value={batchConfirmText}
+                onChange={event => setBatchConfirmText(event.target.value)}
+                disabled={batchDeleting}
+                autoComplete="off"
+                className="h-11 w-full rounded-xl border border-red-100 bg-white px-3 text-sm outline-none focus:border-red-300"
+                placeholder={batchTarget.confirmText}
+              />
+            </div>
+            <div className="mt-4 max-h-40 overflow-y-auto rounded-2xl border border-black/[0.06] bg-black/[0.02] p-3">
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-black/35">
+                将删除 {batchTarget.users.length} 个账号
+              </div>
+              <div className="grid gap-1.5 sm:grid-cols-2">
+                {batchTarget.users.slice(0, 60).map(user => (
+                  <div key={user.id} className="truncate rounded-lg bg-white px-2.5 py-1.5 text-[11px] text-black/55">
+                    @{user.username}
+                  </div>
+                ))}
+              </div>
+              {batchTarget.users.length > 60 && (
+                <div className="mt-2 text-[11px] text-black/40">另有 {batchTarget.users.length - 60} 个账号未展开显示。</div>
+              )}
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={batchDeleting}
+                onClick={() => setBatchTarget(undefined)}
+                className="h-11 rounded-xl border border-black/10 px-5 text-xs font-semibold disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={batchDeleting || batchConfirmText !== batchTarget.confirmText}
+                onClick={() => void deleteBatchUsers(batchTarget)}
+                className="h-11 rounded-xl bg-red-600 px-5 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(220,38,38,.18)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {batchDeleting ? '正在批量删除…' : '确认批量删除并清除数据'}
               </button>
             </div>
           </div>

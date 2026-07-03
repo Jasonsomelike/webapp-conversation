@@ -540,7 +540,7 @@ export default function LoginPanel() {
                   onClick={() => void enterGuestMode()}
                   className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl border border-black/10 bg-white text-sm font-semibold text-[#526159] transition hover:bg-black/[0.025] disabled:opacity-55"
                 >
-                  先以游客模式体验
+                  先以游客模式体验（最后使用后 3 天有效）
                 </button>
               </div>
             )}

@@ -5,13 +5,14 @@ export const dynamic = 'force-dynamic'
 
 const owner = 'Jasonsomelike'
 const repo = 'network-study-android'
-const hostedApkBaseUrl = 'https://www.jasonsome.cn/downloads'
+const hostedApkBaseUrl = 'https://www.jasonsome.cn'
 const hostedApkSizes: Record<string, number> = {
   'network-study-android-v1.11.0.apk': 3752815,
   'network-study-android-v1.12.0.apk': 3752815,
   'network-study-android-v1.13.0.apk': 3753111,
   'network-study-android-v1.14.0.apk': 3753235,
   'network-study-android-v1.14.3.apk': 3756591,
+  'network-study-android-v1.14.4.apk': 3757563,
 }
 
 const versionFromTag = (tag: string) =>
