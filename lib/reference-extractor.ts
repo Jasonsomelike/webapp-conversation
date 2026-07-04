@@ -149,7 +149,7 @@ const referencesFromAnswer = (answer: string): ExtractedReference[] => {
     const nearestImage = imageMatches.find(image => (image.index || 0) >= (match.index || 0) && (image.index || 0) < (match.index || 0) + 900)
     const identity = `${documentName}|${originalPage?.[1] || page?.[1] || index}|`
     const content = window.split('\n').slice(0, 3).join(' ').slice(0, 800)
-    if (isSourceOnlyContent(content))
+    if (isSourceOnlyContent(content) && !nearestImage?.[0])
     { return }
     references.push({
       document_name: documentName,

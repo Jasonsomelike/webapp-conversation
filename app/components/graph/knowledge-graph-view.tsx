@@ -782,7 +782,7 @@ export default function KnowledgeGraphView({
               backgroundSize: '22px 22px',
             }}
           >
-            <svg className="absolute inset-0 h-full w-full" aria-hidden="true">
+            <svg className="absolute inset-0 h-full w-full overflow-visible" aria-hidden="true">
               <defs>
                 <marker id="graph-arrow" markerWidth="6" markerHeight="6" refX="5.2" refY="3" orient="auto" markerUnits="strokeWidth">
                   <path d="M 0 0 L 6 3 L 0 6 z" fill="#aab5af" opacity="0.62" />

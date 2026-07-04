@@ -71,6 +71,68 @@ const normalizePersistedFile = (file: Record<string, unknown>, belongsTo: 'user'
   }
 }
 
+const recoverReferencesFromStoredMessages = async (
+  appUserId: string,
+  activeConversationIds: string[],
+  referencedMessageIds: string[],
+) => {
+  const storedMessages = await db.chatMessage.findMany({
+    where: {
+      appUserId,
+      role: 'assistant',
+      difyMessageId: referencedMessageIds.length
+        ? { not: null, notIn: referencedMessageIds }
+        : { not: null },
+      difyConversationId: { in: activeConversationIds },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+    select: {
+      content: true,
+      createdAt: true,
+      difyConversationId: true,
+      difyMessageId: true,
+      rawPayload: true,
+    },
+  })
+
+  const recoveredReferences = storedMessages.flatMap((message) => {
+    const metadata = message.rawPayload && typeof message.rawPayload === 'object' && !Array.isArray(message.rawPayload)
+      ? message.rawPayload as Record<string, any>
+      : undefined
+    return extractKnowledgeReferences({
+      metadata,
+      agentLogs: [],
+      answer: message.content,
+    }).map((resource, index) => {
+      const documentName = resource.document_name || '未命名文档'
+      const pageNumber = resource.segment_position || resource.page || resource.page_number
+      return {
+        appUserId,
+        difyConversationId: message.difyConversationId,
+        difyMessageId: message.difyMessageId,
+        documentName,
+        datasetName: resource.dataset_name,
+        segmentId: resource.segment_id || `${message.difyMessageId || message.createdAt.getTime()}-recovered-${index}`,
+        pageNumber,
+        originalPageNumber: resource.original_page_number || pageFromDocumentName(documentName, pageNumber),
+        quote: resource.content,
+        score: resource.score,
+        pageImageUrl: resource.page_image_url,
+        sourceUrl: resource.url,
+        rawPayload: toJson(resource),
+        createdAt: message.createdAt,
+      }
+    })
+  })
+
+  if (!recoveredReferences.length)
+  { return 0 }
+
+  const result = await db.messageReference.createMany({ data: recoveredReferences, skipDuplicates: true })
+  return result.count
+}
+
 export const persistChatExchange = async ({
   appUserId,
   query,
@@ -235,66 +297,23 @@ const getUserReferencesOnce = async (appUserId: string): Promise<KnowledgeRefere
     take: 300,
   })
 
-  // Old conversations may predate reference persistence. Recover them only when
-  // the account has no saved references instead of rescanning on every visit.
-  if (!references.length) {
-    const storedMessages = await db.chatMessage.findMany({
+  // Old or relay-persisted conversations may contain page-image/document
+  // citations in the assistant markdown even when message_references was never
+  // populated. Incrementally recover recent assistant messages that do not yet
+  // have any stored reference so the "我的文档引用" page stays traceable.
+  const referencedMessageIds = [...new Set(references
+    .map(reference => reference.difyMessageId)
+    .filter((id): id is string => Boolean(id)))]
+  const recoveredCount = await recoverReferencesFromStoredMessages(appUserId, activeConversationIds, referencedMessageIds)
+  if (recoveredCount > 0) {
+    references = await db.messageReference.findMany({
       where: {
         appUserId,
-        role: 'assistant',
-        difyMessageId: { not: null },
         difyConversationId: { in: activeConversationIds },
       },
       orderBy: { createdAt: 'desc' },
-      take: 80,
-      select: {
-        content: true,
-        createdAt: true,
-        difyConversationId: true,
-        difyMessageId: true,
-        rawPayload: true,
-      },
+      take: 300,
     })
-    const recoveredReferences = storedMessages.flatMap((message) => {
-      const metadata = message.rawPayload && typeof message.rawPayload === 'object' && !Array.isArray(message.rawPayload)
-        ? message.rawPayload as Record<string, any>
-        : undefined
-      return extractKnowledgeReferences({
-        metadata,
-        agentLogs: [],
-        answer: message.content,
-      }).map((resource, index) => {
-        const documentName = resource.document_name || '未命名文档'
-        const pageNumber = resource.segment_position || resource.page || resource.page_number
-        return {
-          appUserId,
-          difyConversationId: message.difyConversationId,
-          difyMessageId: message.difyMessageId,
-          documentName,
-          datasetName: resource.dataset_name,
-          segmentId: resource.segment_id || `${message.difyMessageId || message.createdAt.getTime()}-recovered-${index}`,
-          pageNumber,
-          originalPageNumber: resource.original_page_number || pageFromDocumentName(documentName, pageNumber),
-          quote: resource.content,
-          score: resource.score,
-          pageImageUrl: resource.page_image_url,
-          sourceUrl: resource.url,
-          rawPayload: toJson(resource),
-          createdAt: message.createdAt,
-        }
-      })
-    })
-    if (recoveredReferences.length) {
-      await db.messageReference.createMany({ data: recoveredReferences, skipDuplicates: true })
-      references = await db.messageReference.findMany({
-        where: {
-          appUserId,
-          difyConversationId: { in: activeConversationIds },
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 300,
-      })
-    }
   }
 
   return references.map((reference) => {

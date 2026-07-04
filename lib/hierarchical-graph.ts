@@ -207,6 +207,31 @@ const nodePoint = ({
   y: roundPosition(clamp(50 + Math.sin(angle) * radiusY, minY, maxY)),
 })
 
+const graphBounds = (dense: boolean, extraDense: boolean) => {
+  if (extraDense) {
+    return {
+      minX: -12,
+      maxX: 112,
+      minY: -8,
+      maxY: 108,
+    }
+  }
+  if (dense) {
+    return {
+      minX: -8,
+      maxX: 108,
+      minY: -5,
+      maxY: 105,
+    }
+  }
+  return {
+    minX: 2.2,
+    maxX: 97.8,
+    minY: 3.6,
+    maxY: 96.4,
+  }
+}
+
 const distributeSecondRingByParent = ({
   graph,
   firstRing,
@@ -272,14 +297,14 @@ const nodeFootprint = (
 ) => {
   const labelLength = visualLength(node.label)
   const halfWidth = clamp(
-    2.8 + labelLength * (extraDense ? 0.42 : dense ? 0.48 : 0.56) + node.weight * 0.08,
-    extraDense ? 4.7 : dense ? 5.1 : 5.6,
-    extraDense ? 8.4 : dense ? 9.6 : 11.2,
+    3.15 + labelLength * (extraDense ? 0.48 : dense ? 0.53 : 0.58) + node.weight * 0.09,
+    extraDense ? 5.5 : dense ? 5.6 : 5.8,
+    extraDense ? 10.2 : dense ? 10.8 : 11.6,
   )
   const halfHeight = clamp(
-    2.6 + node.weight * 0.09,
-    extraDense ? 3.05 : dense ? 3.25 : 3.45,
-    extraDense ? 4.2 : dense ? 4.45 : 4.8,
+    2.85 + node.weight * 0.1,
+    extraDense ? 3.4 : dense ? 3.45 : 3.55,
+    extraDense ? 4.75 : dense ? 4.8 : 5,
   )
   return { halfWidth, halfHeight }
 }
@@ -296,11 +321,11 @@ const relaxNodeCollisions = (
   const positions = new Map(nodes.map(node => [node.id, { x: node.x, y: node.y }]))
   const anchors = new Map(nodes.map(node => [node.id, { x: node.x, y: node.y }]))
   const footprints = new Map(nodes.map(node => [node.id, nodeFootprint(node, dense, extraDense)]))
-  const iterations = extraDense ? 110 : dense ? 90 : 64
-  const minX = extraDense ? 2.8 : dense ? 3.2 : 3.7
-  const minY = extraDense ? 1.15 : dense ? 1.35 : 1.55
-  const anchorPull = extraDense ? 0.012 : dense ? 0.016 : 0.022
-  const edgePadding = extraDense ? 2.2 : 2.8
+  const iterations = extraDense ? 190 : dense ? 150 : 86
+  const minX = extraDense ? 4.2 : dense ? 3.9 : 3.7
+  const minY = extraDense ? 2.1 : dense ? 1.8 : 1.55
+  const anchorPull = extraDense ? 0.0045 : dense ? 0.008 : 0.018
+  const bounds = graphBounds(dense, extraDense)
 
   for (let tick = 0; tick < iterations; tick += 1) {
     const cooling = 1 - tick / iterations
@@ -326,7 +351,7 @@ const relaxNodeCollisions = (
 
         const pushOnX = overlapX < overlapY
         const direction = pushOnX ? Math.sign(dx || 1) : Math.sign(dy || 1)
-        const push = Math.min(pushOnX ? overlapX : overlapY, extraDense ? 2.4 : dense ? 2.1 : 1.8) * cooling * 0.56
+        const push = Math.min(pushOnX ? overlapX : overlapY, extraDense ? 3.8 : dense ? 3 : 2.1) * Math.max(0.22, cooling) * 0.62
         const leftFixed = left.id === centerNodeId
         const rightFixed = right.id === centerNodeId
         const leftShare = leftFixed ? 0 : rightFixed ? 1 : 0.5
@@ -353,8 +378,8 @@ const relaxNodeCollisions = (
       const anchor = anchors.get(node.id)!
       position.x += (anchor.x - position.x) * anchorPull * cooling
       position.y += (anchor.y - position.y) * anchorPull * cooling
-      position.x = clamp(position.x, edgePadding, 100 - edgePadding)
-      position.y = clamp(position.y, edgePadding + 1.5, 100 - edgePadding - 1.5)
+      position.x = clamp(position.x, bounds.minX, bounds.maxX)
+      position.y = clamp(position.y, bounds.minY, bounds.maxY)
     })
   }
 
@@ -380,6 +405,7 @@ export const layoutGraphSlice = (graph: UserKnowledgeGraph, centerNodeId: string
   const secondRing = graph.nodes.filter(node => (distances.get(node.id) ?? 99) > 1)
   const dense = graph.nodes.length > 42
   const extraDense = graph.nodes.length > 64
+  const bounds = graphBounds(dense, extraDense)
   const parentGroups = distributeSecondRingByParent({ graph, firstRing, secondRing })
   const groupWeights = parentGroups.map(group => Math.max(1.2, group.children.length || 1))
   const totalGroupWeight = Math.max(1, groupWeights.reduce((sum, weight) => sum + weight, 0))
@@ -411,7 +437,7 @@ export const layoutGraphSlice = (graph: UserKnowledgeGraph, centerNodeId: string
     const usableStart = sector.start + gap / 2
     const usableEnd = sector.end - gap / 2
     const usableSpan = Math.max(0.16, usableEnd - usableStart)
-    const maxPerTrack = extraDense ? 5 : dense ? 6 : 8
+    const maxPerTrack = extraDense ? 3 : dense ? 4 : 7
     const tracks = Math.max(1, Math.ceil(group.children.length / maxPerTrack))
     const perTrack = Math.max(1, Math.ceil(group.children.length / tracks))
 
@@ -421,16 +447,16 @@ export const layoutGraphSlice = (graph: UserKnowledgeGraph, centerNodeId: string
       const countOnTrack = Math.max(1, Math.min(perTrack, group.children.length - trackStart))
       const indexOnTrack = index - trackStart
       const angle = usableStart + usableSpan * ((indexOnTrack + 0.5) / countOnTrack)
-      const radiusX = clamp((extraDense ? 31 : 32) + track * (extraDense ? 5.2 : 4.8), 29, 47.5)
-      const radiusY = clamp((extraDense ? 23 : 24) + track * (extraDense ? 4.6 : 4.2), 21, 41)
+      const radiusX = clamp((extraDense ? 31 : 32) + track * (extraDense ? 8.2 : dense ? 7.1 : 5.4), 29, extraDense ? 62 : dense ? 58 : 49)
+      const radiusY = clamp((extraDense ? 23 : 24) + track * (extraDense ? 6.2 : dense ? 5.4 : 4.4), 21, extraDense ? 52 : dense ? 48 : 42)
       const point = nodePoint({
         angle,
         radiusX,
         radiusY,
-        minX: 2.5,
-        maxX: 97.5,
-        minY: 4,
-        maxY: 96,
+        minX: bounds.minX,
+        maxX: bounds.maxX,
+        minY: bounds.minY,
+        maxY: bounds.maxY,
       })
       secondNodeLayout.set(node.id, {
         ...point,
