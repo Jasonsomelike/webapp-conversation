@@ -1,6 +1,6 @@
 'use client'
 
-import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import gsap from 'gsap'
 import { useGSAP } from '@gsap/react'
@@ -140,6 +140,65 @@ export default function KnowledgeGraphView({
     [edges, nodes, rootNodeId],
   )
 
+  const updatePan = (nextPan: { x: number, y: number }) => {
+    panRef.current = nextPan
+    setPan(nextPan)
+  }
+
+  const updateZoom = (nextZoom: number) => {
+    const clamped = Math.min(2.5, Math.max(0.38, nextZoom))
+    zoomRef.current = clamped
+    setZoom(clamped)
+    return clamped
+  }
+
+  const fitGraphToViewport = useCallback(() => {
+    const viewport = viewportRef.current
+    const layer = graphLayerRef.current
+    if (!viewport || !layer)
+    { return }
+
+    const nodeElements = [...layer.querySelectorAll<HTMLElement>('[data-graph-node]')]
+    if (!nodeElements.length)
+    { return }
+
+    let minX = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    nodeElements.forEach((element) => {
+      const left = element.offsetLeft - element.offsetWidth / 2
+      const right = element.offsetLeft + element.offsetWidth / 2
+      const top = element.offsetTop - element.offsetHeight / 2
+      const bottom = element.offsetTop + element.offsetHeight / 2
+      minX = Math.min(minX, left)
+      maxX = Math.max(maxX, right)
+      minY = Math.min(minY, top)
+      maxY = Math.max(maxY, bottom)
+    })
+
+    if (![minX, maxX, minY, maxY].every(Number.isFinite))
+    { return }
+
+    const mobile = globalThis.matchMedia?.('(max-width: 640px)').matches
+    const margin = mobile ? 28 : 52
+    const contentWidth = Math.max(1, maxX - minX)
+    const contentHeight = Math.max(1, maxY - minY)
+    const fitZoom = Math.min(
+      1,
+      Math.max(0.38, (viewport.clientWidth - margin * 2) / contentWidth),
+      Math.max(0.38, (viewport.clientHeight - margin * 2) / contentHeight),
+    )
+    const contentCenterX = (minX + maxX) / 2
+    const contentCenterY = (minY + maxY) / 2
+
+    updateZoom(fitZoom)
+    updatePan({
+      x: viewport.clientWidth / 2 - contentCenterX * fitZoom,
+      y: viewport.clientHeight / 2 - contentCenterY * fitZoom,
+    })
+  }, [])
+
   const related = useMemo(() => edges.filter(edge => edge.source === selected || edge.target === selected), [edges, selected])
   const relatedNodeIds = useMemo(() => new Set(related.flatMap(edge => [edge.source, edge.target])), [related])
   const rootNode = nodes.find(node => node.id === rootNodeId) || nodes[0]
@@ -182,7 +241,11 @@ export default function KnowledgeGraphView({
         y: viewport.clientHeight * (1 - nextZoom) / 2,
       }
       : { x: 0, y: 0 })
-  }, [initialEdges, initialNodes, preferredRootNodeId])
+    const firstFrame = globalThis.requestAnimationFrame(() => {
+      globalThis.requestAnimationFrame(fitGraphToViewport)
+    })
+    return () => globalThis.cancelAnimationFrame(firstFrame)
+  }, [fitGraphToViewport, initialEdges, initialNodes, preferredRootNodeId])
 
   const openNode = (nodeId: string, event?: MouseEvent<HTMLElement>) => {
     setSelected(nodeId)
@@ -502,18 +565,6 @@ export default function KnowledgeGraphView({
     }
   }, [chatResponding, isDemo, staticNotice])
 
-  const updatePan = (nextPan: { x: number, y: number }) => {
-    panRef.current = nextPan
-    setPan(nextPan)
-  }
-
-  const updateZoom = (nextZoom: number) => {
-    const clamped = Math.min(2.5, Math.max(0.38, nextZoom))
-    zoomRef.current = clamped
-    setZoom(clamped)
-    return clamped
-  }
-
   const pointerPair = () => [...pointersRef.current.values()].slice(0, 2)
   const pointerDistance = (pair: Array<{ x: number, y: number }>) =>
     Math.hypot(pair[1].x - pair[0].x, pair[1].y - pair[0].y)
@@ -646,8 +697,7 @@ export default function KnowledgeGraphView({
   }, [])
 
   const resetViewport = () => {
-    updateZoom(1)
-    updatePan({ x: 0, y: 0 })
+    fitGraphToViewport()
   }
 
   const zoomFromCenter = (factor: number) => {
@@ -840,10 +890,10 @@ export default function KnowledgeGraphView({
               const leafNode = leafNodeSet.has(node.id)
               const drillable = canDrillInto(node.id)
               const denseNodeClass = extraDenseGraph
-                ? 'max-w-[84px] px-2 py-1.5 sm:max-w-[122px] sm:px-2.5 sm:py-2'
+                ? 'px-2.5 py-1.5 sm:px-3 sm:py-2'
                 : denseGraph
-                  ? 'max-w-[96px] px-2 py-1.5 sm:max-w-[136px] sm:px-3 sm:py-2'
-                  : 'max-w-[108px] px-2.5 py-2 sm:max-w-[156px] sm:px-3.5 sm:py-2.5'
+                  ? 'px-3 py-1.5 sm:px-3.5 sm:py-2'
+                  : 'px-3.5 py-2 sm:px-4 sm:py-2.5'
               const nodeFontSize = extraDenseGraph
                 ? Math.min(11.6, 8.8 + node.weight * 0.24)
                 : denseGraph
@@ -859,12 +909,12 @@ export default function KnowledgeGraphView({
                   onClick={event => openNode(node.id, event)}
                   onMouseEnter={() => setSelected(node.id)}
                   title={leafNode && node.id !== rootNodeId ? '叶子节点：点击仅查看详情' : drillable ? '电脑点击下钻；手机单击查看、双击下钻' : node.label}
-                  className={`absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-2xl border text-center text-[10px] font-semibold leading-tight shadow-[0_10px_28px_rgba(34,55,46,.11)] transition-[filter,box-shadow,border-color] duration-200 [overflow-wrap:normal] [word-break:keep-all] hover:brightness-105 ${denseNodeClass} ${
+                  className={`absolute z-10 inline-flex w-max max-w-none -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-1 whitespace-nowrap rounded-2xl border text-center text-[10px] font-semibold leading-tight shadow-[0_10px_28px_rgba(34,55,46,.11)] transition-[filter,box-shadow,border-color] duration-200 [overflow-wrap:normal] [word-break:keep-all] hover:brightness-105 ${denseNodeClass} ${
                     nodeTone(node)
                   } ${active ? 'ring-4 ring-[#dff67a]/60' : ''} ${relatedActive ? 'ring-2 ring-[#8eb9a5]/45' : ''} ${leafNode && node.id !== rootNodeId ? 'cursor-default opacity-90' : ''}`}
                   style={{ left: `${node.x}%`, top: `${node.y}%`, fontSize: `${nodeFontSize}px` }}
                 >
-                  <span className="block min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap [overflow-wrap:normal] [word-break:keep-all]">
+                  <span className="block shrink-0 whitespace-nowrap [overflow-wrap:normal] [word-break:keep-all]">
                     {node.label}
                   </span>
                   {leafNode && node.id !== rootNodeId && <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-35" />}

@@ -210,18 +210,18 @@ const nodePoint = ({
 const graphBounds = (dense: boolean, extraDense: boolean) => {
   if (extraDense) {
     return {
-      minX: -12,
-      maxX: 112,
-      minY: -8,
-      maxY: 108,
+      minX: -26,
+      maxX: 126,
+      minY: -14,
+      maxY: 114,
     }
   }
   if (dense) {
     return {
-      minX: -8,
-      maxX: 108,
-      minY: -5,
-      maxY: 105,
+      minX: -18,
+      maxX: 118,
+      minY: -10,
+      maxY: 110,
     }
   }
   return {
@@ -297,9 +297,9 @@ const nodeFootprint = (
 ) => {
   const labelLength = visualLength(node.label)
   const halfWidth = clamp(
-    3.15 + labelLength * (extraDense ? 0.48 : dense ? 0.53 : 0.58) + node.weight * 0.09,
-    extraDense ? 5.5 : dense ? 5.6 : 5.8,
-    extraDense ? 10.2 : dense ? 10.8 : 11.6,
+    2.8 + labelLength * (extraDense ? 0.54 : dense ? 0.57 : 0.6) + node.weight * 0.08,
+    extraDense ? 5.8 : dense ? 5.9 : 6.1,
+    extraDense ? 22 : dense ? 20 : 18,
   )
   const halfHeight = clamp(
     2.85 + node.weight * 0.1,
@@ -321,10 +321,10 @@ const relaxNodeCollisions = (
   const positions = new Map(nodes.map(node => [node.id, { x: node.x, y: node.y }]))
   const anchors = new Map(nodes.map(node => [node.id, { x: node.x, y: node.y }]))
   const footprints = new Map(nodes.map(node => [node.id, nodeFootprint(node, dense, extraDense)]))
-  const iterations = extraDense ? 190 : dense ? 150 : 86
-  const minX = extraDense ? 4.2 : dense ? 3.9 : 3.7
+  const iterations = extraDense ? 260 : dense ? 210 : 110
+  const minX = extraDense ? 2.6 : dense ? 2.45 : 2.25
   const minY = extraDense ? 2.1 : dense ? 1.8 : 1.55
-  const anchorPull = extraDense ? 0.0045 : dense ? 0.008 : 0.018
+  const anchorPull = extraDense ? 0.0028 : dense ? 0.0055 : 0.014
   const bounds = graphBounds(dense, extraDense)
 
   for (let tick = 0; tick < iterations; tick += 1) {
@@ -351,7 +351,7 @@ const relaxNodeCollisions = (
 
         const pushOnX = overlapX < overlapY
         const direction = pushOnX ? Math.sign(dx || 1) : Math.sign(dy || 1)
-        const push = Math.min(pushOnX ? overlapX : overlapY, extraDense ? 3.8 : dense ? 3 : 2.1) * Math.max(0.22, cooling) * 0.62
+        const push = Math.min(pushOnX ? overlapX : overlapY, extraDense ? 5.4 : dense ? 4.2 : 2.8) * Math.max(0.22, cooling) * 0.68
         const leftFixed = left.id === centerNodeId
         const rightFixed = right.id === centerNodeId
         const leftShare = leftFixed ? 0 : rightFixed ? 1 : 0.5
