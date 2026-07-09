@@ -859,13 +859,15 @@ export default function KnowledgeGraphView({
                   onClick={event => openNode(node.id, event)}
                   onMouseEnter={() => setSelected(node.id)}
                   title={leafNode && node.id !== rootNodeId ? '叶子节点：点击仅查看详情' : drillable ? '电脑点击下钻；手机单击查看、双击下钻' : node.label}
-                  className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 whitespace-normal rounded-2xl border text-center text-[10px] font-semibold leading-tight shadow-[0_10px_28px_rgba(34,55,46,.11)] transition-[filter,box-shadow,border-color] duration-200 hover:brightness-105 ${denseNodeClass} ${
+                  className={`absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-2xl border text-center text-[10px] font-semibold leading-tight shadow-[0_10px_28px_rgba(34,55,46,.11)] transition-[filter,box-shadow,border-color] duration-200 [overflow-wrap:normal] [word-break:keep-all] hover:brightness-105 ${denseNodeClass} ${
                     nodeTone(node)
                   } ${active ? 'ring-4 ring-[#dff67a]/60' : ''} ${relatedActive ? 'ring-2 ring-[#8eb9a5]/45' : ''} ${leafNode && node.id !== rootNodeId ? 'cursor-default opacity-90' : ''}`}
                   style={{ left: `${node.x}%`, top: `${node.y}%`, fontSize: `${nodeFontSize}px` }}
                 >
-                  {node.label}
-                  {leafNode && node.id !== rootNodeId && <span className="ml-2 inline-block h-1.5 w-1.5 rounded-full bg-current opacity-35" />}
+                  <span className="block min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap [overflow-wrap:normal] [word-break:keep-all]">
+                    {node.label}
+                  </span>
+                  {leafNode && node.id !== rootNodeId && <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-35" />}
                 </button>
               )
             })}
