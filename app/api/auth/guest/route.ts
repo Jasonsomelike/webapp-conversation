@@ -1,16 +1,13 @@
 import { randomBytes } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
-import { db, isDatabaseConfigured } from '@/lib/db'
+import { db, isDatabaseConfigured, withDatabaseRetry } from '@/lib/db'
 import { deriveAccountDifyUserId } from '@/lib/auth'
 import { setSessionCookie } from '@/lib/session'
-import { pruneExpiredGuestAccounts } from '@/lib/guest-lifecycle'
 
 export async function POST() {
   if (!isDatabaseConfigured())
   { return NextResponse.json({ error: '游客模式需要数据库服务可用' }, { status: 503 }) }
-
-  void pruneExpiredGuestAccounts().catch(error => console.warn('[guest-auth] expired guest cleanup failed', error))
 
   const suffix = randomBytes(8).toString('hex')
   const username = `guest_${suffix}`
@@ -18,7 +15,7 @@ export async function POST() {
     bcrypt.hash(randomBytes(32).toString('base64url'), 12),
     bcrypt.hash(randomBytes(24).toString('base64url'), 12),
   ])
-  const user = await db.appUser.create({
+  const user = await withDatabaseRetry(() => db.appUser.create({
     data: {
       username,
       displayName: '游客',
@@ -28,7 +25,7 @@ export async function POST() {
       difyUserId: deriveAccountDifyUserId(username),
       lastLoginAt: new Date(),
     },
-  })
+  }), 4)
 
   const response = NextResponse.json({ ok: true })
   setSessionCookie(response, {

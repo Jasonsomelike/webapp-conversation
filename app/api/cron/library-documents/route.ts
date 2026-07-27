@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { refreshKnowledgeDocuments } from '@/lib/dify-dataset'
+import { pruneExpiredGuestAccounts } from '@/lib/guest-lifecycle'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -19,6 +20,7 @@ export async function GET(request: Request) {
 
   try {
     const result = await refreshKnowledgeDocuments({ page: 1, limit: 1, recordFailure: true })
+    const guestCleanup = await pruneExpiredGuestAccounts()
     const usingCachedFallback = result.refresh_error_kind === 'cached-fallback'
     const ok = !result.stale || usingCachedFallback
     return NextResponse.json({
@@ -29,6 +31,7 @@ export async function GET(request: Request) {
       refreshed_at: result.refreshed_at,
       stale: result.stale || false,
       refresh_error: result.refresh_error,
+      guest_cleanup: guestCleanup,
     }, { status: ok ? 200 : 503 })
   }
   catch (error) {
