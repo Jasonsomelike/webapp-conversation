@@ -1,6 +1,6 @@
 'use client'
 import type { FC } from 'react'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import cn from 'classnames'
 import s from './style.module.css'
 import ImagePreview from '@/app/components/base/image-uploader/image-preview'
@@ -34,6 +34,13 @@ const ImageGallery: FC<Props> = ({
 }) => {
   const [imagePreviewUrl, setImagePreviewUrl] = useState('')
   const [failedUrls, setFailedUrls] = useState<Set<string>>(() => new Set())
+  const [retryUrls, setRetryUrls] = useState<Record<string, string>>({})
+  const retryCountsRef = useRef<Record<string, number>>({})
+  const retryTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+
+  useEffect(() => () => {
+    Object.values(retryTimersRef.current).forEach(timer => globalThis.clearTimeout(timer))
+  }, [])
 
   const validSrcs = srcs.filter(src => src && src.trim() !== '')
   const imgNum = validSrcs.length
@@ -59,11 +66,16 @@ const ImageGallery: FC<Props> = ({
               className={s.errorItem}
               style={imgStyle}
               onClick={() => {
+                retryCountsRef.current[src] = 0
                 setFailedUrls((previous) => {
                   const next = new Set(previous)
                   next.delete(src)
                   return next
                 })
+                setRetryUrls(previous => ({
+                  ...previous,
+                  [src]: `${src}${src.includes('?') ? '&' : '?'}imageRetry=${Date.now()}`,
+                }))
               }}
             >
               图片加载失败，点击重试
@@ -74,15 +86,36 @@ const ImageGallery: FC<Props> = ({
               key={`${src}-${index}`}
               className={s.item}
               style={imgStyle}
-              src={src}
+              src={retryUrls[src] || src}
               alt=''
               loading='lazy'
               decoding='async'
+              onLoad={() => {
+                retryCountsRef.current[src] = 0
+                const timer = retryTimersRef.current[src]
+                if (timer)
+                { globalThis.clearTimeout(timer) }
+                delete retryTimersRef.current[src]
+              }}
               onError={(event) => {
                 const fallbackSrc = toBrowserImageFallbackUrl(src)
                 if (fallbackSrc && event.currentTarget.src !== fallbackSrc) {
                   event.currentTarget.src = fallbackSrc
                   return
+                }
+                if (src.startsWith('/api/generated-files/')) {
+                  const attempt = (retryCountsRef.current[src] || 0) + 1
+                  retryCountsRef.current[src] = attempt
+                  if (attempt <= 4) {
+                    const delay = Math.min(12000, 1200 * 2 ** (attempt - 1))
+                    retryTimersRef.current[src] = globalThis.setTimeout(() => {
+                      setRetryUrls(previous => ({
+                        ...previous,
+                        [src]: `${src}${src.includes('?') ? '&' : '?'}imageRetry=${attempt}-${Date.now()}`,
+                      }))
+                    }, delay)
+                    return
+                  }
                 }
                 setFailedUrls((previous) => {
                   const next = new Set(previous)

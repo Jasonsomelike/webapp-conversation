@@ -16,7 +16,7 @@ let pdfJsPromise: Promise<typeof import('pdfjs-dist')> | undefined
 
 const loadPdfJs = () => {
   pdfJsPromise ||= import('pdfjs-dist').then((pdfjs) => {
-    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs?v=5.4.296'
     return pdfjs
   })
   return pdfJsPromise
@@ -103,6 +103,7 @@ export default function PdfReferenceViewer({
   const [viewerWidth, setViewerWidth] = useState(0)
   const [retryKey, setRetryKey] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadingProgress, setLoadingProgress] = useState(0)
   const [imageLoading, setImageLoading] = useState(Boolean(pageImageUrl))
   const [error, setError] = useState('')
   const [imageFallback, setImageFallback] = useState(false)
@@ -186,6 +187,7 @@ export default function PdfReferenceViewer({
     ;(async () => {
       try {
         setLoading(true)
+        setLoadingProgress(0)
         setError('')
         setImageFallback(false)
         setImageRawFallback(false)
@@ -202,13 +204,17 @@ export default function PdfReferenceViewer({
           loadingTask = pdfjs.getDocument({
             url,
             withCredentials: !staticSource,
-            rangeChunkSize: staticSource ? 1024 * 1024 : 512 * 1024,
-            disableAutoFetch: !staticSource,
-            // Keep previews responsive behind the same-origin proxy. The first
-            // non-range full PDF fetch can be slow or fail on mobile networks,
-            // while range requests are fast and enough for page-by-page viewing.
-            disableStream: !staticSource,
+            // Small range chunks make deep-page previews usable on slow mobile
+            // connections. Do not stream or prefetch the full PDF before the
+            // requested page has rendered.
+            rangeChunkSize: staticSource ? 128 * 1024 : 256 * 1024,
+            disableAutoFetch: true,
+            disableStream: true,
           })
+          loadingTask.onProgress = ({ loaded, total }: { loaded: number, total: number }) => {
+            if (!disposed && total > 0)
+            { setLoadingProgress(Math.min(99, Math.round((loaded / total) * 100))) }
+          }
           return await loadingTask.promise
         }
         let document
@@ -260,7 +266,7 @@ export default function PdfReferenceViewer({
     const availableWidth = Math.max(280, Math.min((viewerWidth || globalThis.innerWidth) - 24, 1100))
     const fitScale = availableWidth / baseViewport.width
     const viewport = pdfPage.getViewport({ scale: fitScale * scale })
-    const ratio = globalThis.devicePixelRatio || 1
+    const ratio = Math.min(globalThis.devicePixelRatio || 1, 2)
     canvas.width = Math.floor(viewport.width * ratio)
     canvas.height = Math.floor(viewport.height * ratio)
     canvas.style.width = `${viewport.width}px`
@@ -413,7 +419,10 @@ export default function PdfReferenceViewer({
           <div className="grid h-full place-items-center">
             <div className="flex items-center gap-3 rounded-2xl bg-white/80 px-5 py-3 text-sm text-black/50 shadow-sm backdrop-blur">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/15 border-t-[var(--studio-accent-strong)]" />
-              正在按需加载 PDF 第 {page} 页…
+              <span>
+                正在按需加载 PDF 第 {page} 页…
+                {loadingProgress > 0 ? ` ${loadingProgress}%` : ''}
+              </span>
             </div>
           </div>
         )}

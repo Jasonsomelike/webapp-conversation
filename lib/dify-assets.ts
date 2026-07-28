@@ -8,6 +8,7 @@ const imageExtension = /\.(?:avif|gif|jpe?g|png|svg|webp)(?:[?#].*)?$/i
 const downloadableExtension = /\.(?:csv|docx?|md|pdf|pptx?|rtf|txt|xlsx?|zip)(?:[?#].*)?$/i
 const exactDifyAssetUrl = /^(?:(?:https?:\/\/(?:dify\.jasonsome\.cn(?::22380)?|www\.jasonsome\.cn|jasonsome\.cn))?\/(?:files|page-images)\/[^\s<>"')\]]+)$/i
 const generatedToolFilePattern = /\/files\/tools\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:\.([a-z0-9]+))?$/i
+const generatedToolFileInTextPattern = /(?:https?:\/\/(?:dify\.jasonsome\.cn(?::22380)?|www\.jasonsome\.cn|jasonsome\.cn))?\/files\/tools\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?:\.[a-z0-9]+)?(?:\?[^\s<>"'`)\]]+)?/gi
 
 export const toAbsoluteDifyAssetUrl = (value: string) => {
   const url = value.trim()
@@ -188,3 +189,20 @@ export const normalizeAssistantMarkdown = (content: string) => {
 export const isImageAsset = (value: string) => imageExtension.test(value)
 export const isDownloadableAsset = (value: string) =>
   downloadableExtension.test(value) || /(?:^|\/)files\//i.test(value)
+
+/**
+ * Some Dify tools return a durable `/files/tools/<uuid>.<ext>` path only in
+ * their thought text instead of emitting a `message_file` event. Recover those
+ * image references so the UI can still render the generated result. The
+ * authenticated generated-file route keeps the underlying storage private.
+ */
+export const extractGeneratedToolImageUrls = (...values: Array<string | undefined | null>) => {
+  const urls = values.flatMap(value =>
+    [...String(value || '').matchAll(generatedToolFileInTextPattern)]
+      .map(match => match[0]),
+  )
+  return [...new Set(urls
+    .filter(isImageAsset)
+    .map(url => toDifyAssetProxyUrl(url))
+    .filter(Boolean))]
+}

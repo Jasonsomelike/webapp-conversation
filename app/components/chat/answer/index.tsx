@@ -19,6 +19,7 @@ import s from '../style.module.css'
 import Thought from '../thought'
 import ReasoningPanel, { splitReasoningContent } from './reasoning-panel'
 import {
+  extractGeneratedToolImageUrls,
   isImageAsset,
   toDifyAssetProxyUrl,
 } from '@/lib/dify-assets'
@@ -103,10 +104,21 @@ const Answer: FC<IAnswerProps> = ({
       .map(match => toDifyAssetProxyUrl(match[1]))
       .filter(Boolean),
   )
-  const assistantImages = [...new Set((message_files || [])
-    .filter(file => file.type === 'image' || isImageAsset(file.url || ''))
-    .map(file => toDifyAssetProxyUrl(file.url))
-    .filter(Boolean))]
+  const generatedToolImages = extractGeneratedToolImageUrls(
+    safeContent,
+    ...(agent_thoughts || []).flatMap(thought => [
+      thought.thought,
+      thought.observation,
+      ...(thought.files || []),
+    ]),
+  )
+  const assistantImages = [...new Set([
+    ...(message_files || [])
+      .filter(file => file.type === 'image' || isImageAsset(file.url || ''))
+      .map(file => toDifyAssetProxyUrl(file.url))
+      .filter(Boolean),
+    ...generatedToolImages,
+  ])]
     .filter(url => !contentImageUrls.has(url))
   const assistantDocuments = (message_files || [])
     .filter(file => file.url && file.type !== 'image' && !isImageAsset(file.url))
