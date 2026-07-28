@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { repairCp866Utf8Mojibake } from '@/lib/text-encoding'
 
 export interface ExtractedReference {
   content?: string
@@ -23,7 +24,7 @@ const stableSegmentId = (value: string) =>
   `derived_${createHash('sha256').update(value).digest('hex').slice(0, 28)}`
 
 export const cleanReferenceDocumentName = (value: unknown) => {
-  let name = String(value || '').trim()
+  let name = repairCp866Utf8Mojibake(String(value || '').trim())
   const quotedParts = name.split(/["“”'‘’`|]/).map(part => part.trim()).filter(Boolean)
   const quotedFilename = [...quotedParts].reverse().find(part => documentExtension.test(part))
   if (quotedFilename)

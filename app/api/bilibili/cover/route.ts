@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
+import { getBilibiliRequestHeaders } from '@/lib/bilibili-server'
 
 const normalizeCoverUrl = (value: string) => {
   const trimmed = value.trim()
@@ -30,11 +31,7 @@ export async function GET(request: NextRequest) {
   }
 
   const upstream = await fetch(target, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
-      'Referer': 'https://www.bilibili.com/',
-      'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-    },
+    headers: getBilibiliRequestHeaders('image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'),
     next: { revalidate: 60 * 60 * 24 * 7 },
   }).catch(() => null)
 

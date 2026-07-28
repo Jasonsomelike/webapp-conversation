@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
+import { getBilibiliRequestHeaders } from '@/lib/bilibili-server'
 
 const BVID_PATTERN = /^BV[0-9A-Za-z]{10,16}$/
 
@@ -32,11 +33,7 @@ export async function GET(request: NextRequest) {
   }
 
   const upstream = await fetch(`https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
-      'Referer': 'https://www.bilibili.com/',
-      'Accept': 'application/json,text/plain,*/*',
-    },
+    headers: getBilibiliRequestHeaders('application/json,text/plain,*/*'),
     next: { revalidate: 60 * 60 * 24 },
   }).catch(() => null)
 

@@ -23,8 +23,6 @@ export default async function LibraryPage({
     result = await listKnowledgeDocuments({
       page: 1,
       limit: 10000,
-      keyword: params.keyword || '',
-      status: params.status || '',
       all: true,
     })
     result = await attachUserKnowledgeDocumentHitCounts(result, session.id)

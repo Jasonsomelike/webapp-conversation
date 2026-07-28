@@ -209,7 +209,7 @@ const fetchCompleteKnowledgeCatalog = async () => {
     hasMore = result.has_more && result.data.length > 0
     page += 1
   }
-  return documents
+  return normalizeCatalogDocuments(documents)
 }
 
 const normalizeCatalogDocuments = (value: unknown): DifyKnowledgeDocument[] => {
@@ -223,7 +223,26 @@ const normalizeCatalogDocuments = (value: unknown): DifyKnowledgeDocument[] => {
     const document = item as Record<string, unknown>
     if (typeof document.id !== 'string' || typeof document.name !== 'string')
     { throw new Error('LIBRARY_CATALOG_INVALID_DOCUMENT') }
-    return document as unknown as DifyKnowledgeDocument
+    const repairedName = cleanReferenceDocumentName(document.name)
+    const detail = document.data_source_detail_dict as Record<string, unknown> | undefined
+    const uploadFile = detail?.upload_file as Record<string, unknown> | undefined
+    let repairedDetail = detail
+    if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
+      repairedDetail = { ...detail }
+      if (uploadFile && typeof uploadFile === 'object' && !Array.isArray(uploadFile)) {
+        repairedDetail.upload_file = {
+          ...uploadFile,
+          name: typeof uploadFile.name === 'string'
+            ? cleanReferenceDocumentName(uploadFile.name)
+            : uploadFile.name,
+        }
+      }
+    }
+    return {
+      ...document,
+      name: repairedName,
+      data_source_detail_dict: repairedDetail,
+    } as unknown as DifyKnowledgeDocument
   })
 }
 

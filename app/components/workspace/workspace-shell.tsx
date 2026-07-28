@@ -1,7 +1,7 @@
 'use client'
 
 import type { MouseEvent, ReactNode } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import gsap from 'gsap'
@@ -120,14 +120,29 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
   const [chatDetail, setChatDetail] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl)
   const [loginPromptOpen, setLoginPromptOpen] = useState(false)
+  const [quickSearchOpen, setQuickSearchOpen] = useState(false)
+  const [quickQuery, setQuickQuery] = useState('')
   const initialTheme = isThemeId(session.theme) ? session.theme : 'forest'
   const [theme, setTheme] = useState<ThemeId>(initialTheme)
   const shellRef = useRef<HTMLDivElement>(null)
+  const quickSearchInputRef = useRef<HTMLInputElement>(null)
   const previousPathnameRef = useRef(pathname)
   const chatResponding = useChatRuntime(state => state.isResponding)
   const current = routeMeta[pathname] || routeMeta['/chat']
-  const sidebarNavItems = isAdminSession(session) ? [...navItems, adminNavItem] : navItems
+  const sessionIsAdmin = isAdminSession(session)
+  const sidebarNavItems = useMemo(
+    () => sessionIsAdmin ? [...navItems, adminNavItem] : navItems,
+    [sessionIsAdmin],
+  )
   const isGuest = session.provider === 'guest'
+  const quickSearchItems = useMemo(() => {
+    const normalizedQuery = quickQuery.trim().toLocaleLowerCase('zh-CN')
+    return sidebarNavItems.filter((item) => {
+      const meta = routeMeta[item.href]
+      const haystack = `${item.label} ${item.shortLabel} ${meta?.eyebrow || ''} ${meta?.description || ''}`.toLocaleLowerCase('zh-CN')
+      return !normalizedQuery || haystack.includes(normalizedQuery)
+    })
+  }, [quickQuery, sidebarNavItems])
 
   useGSAP(() => {
     const root = shellRef.current
@@ -256,6 +271,20 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
   }, [])
 
   useEffect(() => {
+    const handleQuickSearchShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'k') {
+        event.preventDefault()
+        setQuickSearchOpen(true)
+        globalThis.setTimeout(() => quickSearchInputRef.current?.focus(), 0)
+      }
+      if (event.key === 'Escape')
+      { setQuickSearchOpen(false) }
+    }
+    globalThis.addEventListener('keydown', handleQuickSearchShortcut)
+    return () => globalThis.removeEventListener('keydown', handleQuickSearchShortcut)
+  }, [])
+
+  useEffect(() => {
     if (nativeApp)
     { window.NetworkStudyApp?.setShellState(pathname, current.title, current.eyebrow) }
   }, [current.eyebrow, current.title, nativeApp, pathname])
@@ -308,6 +337,19 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
     setMobileOpen(false)
     if (pathname !== href)
     { setPendingHref(href) }
+  }
+
+  const navigateFromQuickSearch = (href: string) => {
+    setQuickSearchOpen(false)
+    setQuickQuery('')
+    if (isGuest && !guestAllowedRoutes.has(href)) {
+      setLoginPromptOpen(true)
+      return
+    }
+    if (pathname !== href) {
+      setPendingHref(href)
+      router.push(href)
+    }
   }
 
   const changeTheme = async (nextTheme: ThemeId) => {
@@ -454,10 +496,20 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
               <p className="hidden truncate text-xs text-black/45 xl:block">{current.description}</p>
             </div>
           </div>
-          <div className="hidden h-10 w-[240px] items-center gap-2 rounded-xl border border-black/10 bg-white px-3 xl:flex">
+          <button
+            type="button"
+            onClick={() => {
+              setQuickSearchOpen(true)
+              globalThis.setTimeout(() => quickSearchInputRef.current?.focus(), 0)
+            }}
+            className="group flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-black/10 bg-white text-left transition hover:border-black/20 hover:shadow-sm xl:w-[250px] xl:justify-start xl:px-3"
+            aria-label="打开全局快速导航"
+            title="快速导航（Ctrl K）"
+          >
             <MagnifyingGlassIcon className="h-4 w-4 text-black/40" />
-            <span className="text-xs text-black/35">搜索知识点、文档或会话</span>
-          </div>
+            <span className="hidden flex-1 text-xs text-black/35 xl:block">快速查找功能或页面</span>
+            <kbd className="hidden rounded-md border border-black/[0.08] bg-black/[0.025] px-1.5 py-0.5 text-[9px] text-black/35 xl:block">Ctrl K</kbd>
+          </button>
           <div className="relative">
             <button
               onClick={() => setThemeOpen(open => !open)}
@@ -503,7 +555,7 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
           </div>
         </header>
 
-        <main className={`min-h-0 flex-1 overflow-auto ${nativeApp || chatDetail ? 'pb-0' : 'pb-[calc(68px+env(safe-area-inset-bottom))] lg:pb-0'}`}>
+        <main className={`min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable] ${nativeApp || chatDetail ? 'pb-0' : 'pb-[calc(68px+env(safe-area-inset-bottom))] lg:pb-0'}`}>
           {children}
         </main>
 
@@ -531,6 +583,73 @@ export default function WorkspaceShell({ children, session, avatarUrl: initialAv
             )
           })}
         </nav>
+        {quickSearchOpen && (
+          <div className="fixed inset-0 z-[95] flex items-start justify-center bg-black/45 p-3 pt-[10vh] backdrop-blur-sm sm:p-6 sm:pt-[14vh]">
+            <button
+              type="button"
+              className="absolute inset-0 cursor-default"
+              aria-label="关闭快速导航"
+              onClick={() => setQuickSearchOpen(false)}
+            />
+            <GsapPresence variant="dialog" role="dialog" aria-modal="true" aria-label="快速导航" className="relative w-full max-w-xl overflow-hidden rounded-[24px] border border-white/20 bg-[var(--studio-surface)] shadow-2xl">
+              <div className="flex items-center gap-3 border-b border-black/[0.07] px-4 py-3 sm:px-5">
+                <MagnifyingGlassIcon className="h-5 w-5 shrink-0 text-[var(--studio-muted)]" />
+                <input
+                  ref={quickSearchInputRef}
+                  value={quickQuery}
+                  onChange={event => setQuickQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && quickSearchItems[0])
+                    { navigateFromQuickSearch(quickSearchItems[0].href) }
+                  }}
+                  placeholder="输入“文档”“图谱”“画像”…"
+                  className="h-11 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-black/30"
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  onClick={() => setQuickSearchOpen(false)}
+                  className="grid h-8 w-8 place-items-center rounded-lg text-black/40 transition hover:bg-black/[0.05] hover:text-black/70"
+                  aria-label="关闭快速导航"
+                >
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="max-h-[52vh] overflow-y-auto p-2 sm:p-3">
+                {quickSearchItems.length
+                  ? quickSearchItems.map((item) => {
+                    const Icon = item.icon
+                    const meta = routeMeta[item.href]
+                    return (
+                      <button
+                        type="button"
+                        key={item.href}
+                        onClick={() => navigateFromQuickSearch(item.href)}
+                        className="group flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-[var(--studio-accent)]/20 focus-visible:bg-[var(--studio-accent)]/20 focus-visible:outline-none"
+                      >
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-black/[0.035] text-black/55 transition group-hover:bg-[var(--studio-accent)]/45 group-hover:text-[var(--studio-deep)]">
+                          <Icon className="h-5 w-5" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-semibold">{item.label}</span>
+                          <span className="mt-0.5 block truncate text-[11px] text-[var(--studio-muted)]">{meta?.description}</span>
+                        </span>
+                        <span className="text-xs text-black/25">进入</span>
+                      </button>
+                    )
+                  })
+                  : (
+                    <div className="px-4 py-10 text-center text-sm text-[var(--studio-muted)]">
+                      没有匹配的页面，换个关键词试试。
+                    </div>
+                  )}
+              </div>
+              <div className="border-t border-black/[0.06] px-5 py-2.5 text-[10px] text-black/35">
+                Enter 打开首项 · Esc 关闭 · Ctrl K 随时唤起
+              </div>
+            </GsapPresence>
+          </div>
+        )}
         {loginPromptOpen && (
           <div className="fixed inset-0 z-[90] grid place-items-center bg-black/45 p-5 backdrop-blur-sm">
             <GsapPresence variant="dialog" className="w-full max-w-sm rounded-[26px] bg-[var(--studio-surface)] p-6 text-center shadow-2xl">
