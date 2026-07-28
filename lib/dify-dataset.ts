@@ -144,6 +144,11 @@ const libraryCatalogServiceUrls = () => {
   rawUrls.forEach((rawUrl) => {
     try {
       const url = new URL(rawUrl.replace(/\/$/, ''))
+      if (url.hostname === 'dify.jasonsome.cn' && url.port === '22380') {
+        const standardUrl = new URL(url)
+        standardUrl.port = ''
+        candidates.push(standardUrl.toString().replace(/\/$/, ''))
+      }
       candidates.push(url.toString().replace(/\/$/, ''))
       if (url.hostname === 'dify.jasonsome.cn' && !url.port) {
         url.port = '22380'

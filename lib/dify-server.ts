@@ -10,8 +10,20 @@ export const difyApiKey = process.env.DIFY_API_KEY
 
 const transientStatuses = new Set([408, 425, 429, 500, 502, 503, 504])
 const fallbackStatuses = new Set([404])
-const knownDifyApiBaseUrl = 'https://dify.jasonsome.cn:22380/v1'
+const standardDifyApiBaseUrl = 'https://dify.jasonsome.cn/v1'
+const legacyDifyApiBaseUrl = 'https://dify.jasonsome.cn:22380/v1'
 const normalizeDifyApiBaseUrl = (value: string) => value.trim().replace(/\/$/, '')
+const standardPortVariant = (value: string) => {
+  try {
+    const url = new URL(value)
+    if (url.hostname === 'dify.jasonsome.cn' && url.port === '22380') {
+      url.port = ''
+      return normalizeDifyApiBaseUrl(url.toString())
+    }
+  }
+  catch {}
+  return ''
+}
 const isUsableDifyApiBaseUrl = (value: string) => {
   try {
     const url = new URL(value)
@@ -28,9 +40,11 @@ const isUsableDifyApiBaseUrl = (value: string) => {
   }
 }
 const difyApiBaseUrls = [...new Set([
+  standardPortVariant(difyApiBaseUrl),
   difyApiBaseUrl,
   ...(process.env.DIFY_API_FALLBACK_URLS || '').split(',').map(value => value.trim()).filter(Boolean),
-  knownDifyApiBaseUrl,
+  standardDifyApiBaseUrl,
+  legacyDifyApiBaseUrl,
 ]
   .map(normalizeDifyApiBaseUrl)
   .filter(isUsableDifyApiBaseUrl))]
